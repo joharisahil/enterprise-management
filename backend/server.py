@@ -129,7 +129,7 @@ async def create_property(property_data: PropertyCreate, current_user: dict = De
     prop_dict["updated_at"] = prop_dict["updated_at"].isoformat()
     
     await db.properties.insert_one(prop_dict)
-    return prop_dict
+    return serialize_doc(prop_dict)
 
 @api_router.get("/properties")
 async def get_properties(
