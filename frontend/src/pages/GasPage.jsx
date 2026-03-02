@@ -174,7 +174,7 @@ export const GasPage = () => {
                   />
                 </div>
                 <div>
-                  <Label>Rate per Unit (₹) *</Label>
+                  <Label>Rate per Unit (Rs ) *</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -184,7 +184,7 @@ export const GasPage = () => {
                   />
                 </div>
                 <div>
-                  <Label>Fixed Charges (₹) *</Label>
+                  <Label>Fixed Charges (Rs ) *</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -197,7 +197,7 @@ export const GasPage = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Total Bill (₹) *</Label>
+                  <Label>Total Bill (Rs ) *</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -299,11 +299,11 @@ export const GasPage = () => {
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Rate/Unit</p>
-                    <p className="text-lg font-bold text-slate-900">₹{bill.rate_per_unit}</p>
+                    <p className="text-lg font-bold text-slate-900">Rs {bill.rate_per_unit}</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Bill</p>
-                    <p className="text-lg font-bold text-slate-900">₹{bill.total_bill.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-slate-900">Rs {bill.total_bill.toLocaleString()}</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Due Date</p>

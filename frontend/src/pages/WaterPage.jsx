@@ -164,7 +164,7 @@ export const WaterPage = () => {
                   />
                 </div>
                 <div>
-                  <Label>Sewage Charges (₹) *</Label>
+                  <Label>Sewage Charges (Rs ) *</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -174,7 +174,7 @@ export const WaterPage = () => {
                   />
                 </div>
                 <div>
-                  <Label>Tanker Usage (₹)</Label>
+                  <Label>Tanker Usage (Rs )</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -186,7 +186,7 @@ export const WaterPage = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Total Bill (₹) *</Label>
+                  <Label>Total Bill (Rs ) *</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -287,11 +287,11 @@ export const WaterPage = () => {
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Sewage</p>
-                    <p className="text-lg font-bold text-slate-900">₹{bill.sewage_charges}</p>
+                    <p className="text-lg font-bold text-slate-900">Rs {bill.sewage_charges}</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Bill</p>
-                    <p className="text-lg font-bold text-slate-900">₹{bill.total_bill.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-slate-900">Rs {bill.total_bill.toLocaleString()}</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Due Date</p>
