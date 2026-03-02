@@ -185,7 +185,7 @@ async def create_property_tax(tax_data: PropertyTaxCreate, current_user: dict = 
         tax_dict["payment_date"] = tax_dict["payment_date"].isoformat()
     
     await db.property_taxes.insert_one(tax_dict)
-    return tax_dict
+    return serialize_doc(tax_dict)
 
 @api_router.get("/property-taxes")
 async def get_property_taxes(
@@ -219,7 +219,7 @@ async def create_electricity_bill(bill_data: ElectricityBillCreate, current_user
         bill_dict["payment_date"] = bill_dict["payment_date"].isoformat()
     
     await db.electricity_bills.insert_one(bill_dict)
-    return bill_dict
+    return serialize_doc(bill_dict)
 
 @api_router.get("/electricity-bills")
 async def get_electricity_bills(
@@ -255,7 +255,7 @@ async def create_solar_meter(meter_data: SolarMeterCreate, current_user: dict = 
     meter_dict["billing_period_end"] = meter_dict["billing_period_end"].isoformat()
     
     await db.solar_meters.insert_one(meter_dict)
-    return meter_dict
+    return serialize_doc(meter_dict)
 
 @api_router.get("/solar-meters")
 async def get_solar_meters(
@@ -289,7 +289,7 @@ async def create_gas_bill(bill_data: GasBillCreate, current_user: dict = Depends
         bill_dict["payment_date"] = bill_dict["payment_date"].isoformat()
     
     await db.gas_bills.insert_one(bill_dict)
-    return bill_dict
+    return serialize_doc(bill_dict)
 
 @api_router.get("/gas-bills")
 async def get_gas_bills(
@@ -323,7 +323,7 @@ async def create_water_bill(bill_data: WaterBillCreate, current_user: dict = Dep
         bill_dict["payment_date"] = bill_dict["payment_date"].isoformat()
     
     await db.water_bills.insert_one(bill_dict)
-    return bill_dict
+    return serialize_doc(bill_dict)
 
 @api_router.get("/water-bills")
 async def get_water_bills(
@@ -352,7 +352,7 @@ async def create_vehicle(vehicle_data: VehicleCreate, current_user: dict = Depen
     vehicle_dict["updated_at"] = vehicle_dict["updated_at"].isoformat()
     
     await db.vehicles.insert_one(vehicle_dict)
-    return vehicle_dict
+    return serialize_doc(vehicle_dict)
 
 @api_router.get("/vehicles")
 async def get_vehicles(
@@ -423,7 +423,7 @@ async def create_vehicle_document(doc_data: VehicleDocumentCreate, current_user:
     doc_dict["expiry_date"] = doc_dict["expiry_date"].isoformat()
     
     await db.vehicle_documents.insert_one(doc_dict)
-    return doc_dict
+    return serialize_doc(doc_dict)
 
 @api_router.get("/vehicle-documents")
 async def get_vehicle_documents(
@@ -537,7 +537,7 @@ async def create_service_record(service_data: ServiceRecordCreate, current_user:
         service_dict["next_service_due_date"] = service_dict["next_service_due_date"].isoformat()
     
     await db.service_records.insert_one(service_dict)
-    return service_dict
+    return serialize_doc(service_dict)
 
 @api_router.get("/service-records")
 async def get_service_records(
@@ -566,7 +566,7 @@ async def create_gps_device(device_data: GPSDeviceCreate, current_user: dict = D
     device_dict["updated_at"] = device_dict["updated_at"].isoformat()
     
     await db.gps_devices.insert_one(device_dict)
-    return device_dict
+    return serialize_doc(device_dict)
 
 @api_router.get("/gps-devices")
 async def get_gps_devices(current_user: dict = Depends(get_current_user)):
@@ -695,8 +695,7 @@ async def calculate_trip(
     trip_dict["end_time"] = trip_dict["end_time"].isoformat()
     
     await db.trips.insert_one(trip_dict)
-    
-    return trip_dict
+    return serialize_doc(trip_dict)
 
 @api_router.get("/trips")
 async def get_trips(
@@ -726,7 +725,7 @@ async def create_driver(driver_data: DriverCreate, current_user: dict = Depends(
     driver_dict["license_expiry"] = driver_dict["license_expiry"].isoformat()
     
     await db.drivers.insert_one(driver_dict)
-    return driver_dict
+    return serialize_doc(driver_dict)
 
 @api_router.get("/drivers")
 async def get_drivers(
