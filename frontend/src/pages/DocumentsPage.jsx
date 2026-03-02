@@ -50,6 +50,7 @@ export const DocumentsPage = () => {
       setVehicles(vehiclesRes.data.data);
       setDocuments(docsRes.data.data);
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
@@ -71,6 +72,7 @@ export const DocumentsPage = () => {
       setDialogOpen(false);
       fetchData();
     } catch (error) {
+      console.error("API Error:", error);
       toast.error(error.response?.data?.detail || 'Failed to add document');
     }
   };
@@ -81,6 +83,7 @@ export const DocumentsPage = () => {
       setSelectedDocHistory(response.data);
       setHistoryDialogOpen(true);
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to load document history');
     }
   };

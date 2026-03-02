@@ -31,6 +31,7 @@ export const PropertiesPage = () => {
       const response = await api.get('/properties');
       setProperties(response.data.data);
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to load properties');
     } finally {
       setLoading(false);
@@ -51,6 +52,7 @@ export const PropertiesPage = () => {
       setFormData({ name: '', type: 'Commercial', address: '', area_sqft: '' });
       fetchProperties();
     } catch (error) {
+      console.error("API Error:", error);
       toast.error(error.response?.data?.detail || 'Failed to create property');
     }
   };
@@ -63,6 +65,7 @@ export const PropertiesPage = () => {
       toast.success('Property deleted');
       fetchProperties();
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to delete property');
     }
   };

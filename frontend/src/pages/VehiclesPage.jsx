@@ -37,6 +37,7 @@ export const VehiclesPage = () => {
       const response = await api.get('/vehicles');
       setVehicles(response.data.data);
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to load vehicles');
     } finally {
       setLoading(false);
@@ -66,6 +67,7 @@ export const VehiclesPage = () => {
       });
       fetchVehicles();
     } catch (error) {
+      console.error("API Error:", error);
       toast.error(error.response?.data?.detail || 'Failed to add vehicle');
     }
   };
@@ -78,6 +80,7 @@ export const VehiclesPage = () => {
       toast.success('Vehicle deleted');
       fetchVehicles();
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to delete vehicle');
     }
   };

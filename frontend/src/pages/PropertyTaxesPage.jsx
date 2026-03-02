@@ -49,6 +49,7 @@ export const PropertyTaxesPage = () => {
       setProperties(propsRes.data.data);
       setTaxes(taxesRes.data.data);
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
@@ -72,6 +73,7 @@ export const PropertyTaxesPage = () => {
       resetForm();
       fetchData();
     } catch (error) {
+      console.error("API Error:", error);
       toast.error(error.response?.data?.detail || 'Failed to create tax record');
     }
   };
@@ -84,6 +86,7 @@ export const PropertyTaxesPage = () => {
       toast.success('Tax record deleted');
       fetchData();
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to delete tax record');
     }
   };

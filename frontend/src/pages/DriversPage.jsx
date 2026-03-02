@@ -31,6 +31,7 @@ export const DriversPage = () => {
       const response = await api.get('/drivers');
       setDrivers(response.data.data);
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to load drivers');
     } finally {
       setLoading(false);
@@ -50,6 +51,7 @@ export const DriversPage = () => {
       setDialogOpen(false);
       fetchDrivers();
     } catch (error) {
+      console.error("API Error:", error);
       toast.error(error.response?.data?.detail || 'Failed to add driver');
     }
   };

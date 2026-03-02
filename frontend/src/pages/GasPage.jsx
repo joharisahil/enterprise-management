@@ -46,6 +46,7 @@ export const GasPage = () => {
       setProperties(propsRes.data.data);
       setBills(billsRes.data.data);
     } catch (error) {
+      console.error("API Error:", error);
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
@@ -72,6 +73,7 @@ export const GasPage = () => {
       setDialogOpen(false);
       fetchData();
     } catch (error) {
+      console.error("API Error:", error);
       toast.error(error.response?.data?.detail || 'Failed to create gas bill');
     }
   };
