@@ -16,6 +16,13 @@ from auth import get_password_hash, verify_password, create_access_token, get_cu
 from telematics import get_telematics_provider, TelematicsService
 from automation import AutomationService
 
+# Helper function to convert datetime objects to ISO strings
+def serialize_doc(doc):
+    """Convert datetime objects in a dict to ISO format strings for JSON serialization"""
+    if isinstance(doc, dict):
+        return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in doc.items()}
+    return doc
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
