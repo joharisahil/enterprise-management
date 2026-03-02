@@ -21,7 +21,7 @@ export const ChallansPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     vehicle_id: '',
-    driver_id: '',
+    driver_id: null,
     challan_number: '',
     date: '',
     violation_type: '',
