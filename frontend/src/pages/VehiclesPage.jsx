@@ -55,8 +55,10 @@ export const VehiclesPage = () => {
     try {
       await api.post('/vehicles', {
         ...formData,
+        year: formData.year ? parseInt(formData.year) : null,
         average_kmpl: parseFloat(formData.average_kmpl),
-        tank_capacity_liters: parseFloat(formData.tank_capacity_liters)
+        tank_capacity_liters: parseFloat(formData.tank_capacity_liters),
+        seating_capacity: formData.seating_capacity ? parseInt(formData.seating_capacity) : null
       });
       
       toast.success('Vehicle added successfully');
