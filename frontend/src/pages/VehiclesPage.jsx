@@ -117,13 +117,13 @@ export const VehiclesPage = () => {
               Add Vehicle
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Vehicle</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label>Registration Number</Label>
+                <Label>Registration Number *</Label>
                 <Input
                   required
                   data-testid="vehicle-reg-input"
@@ -135,7 +135,7 @@ export const VehiclesPage = () => {
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Type</Label>
+                  <Label>Type *</Label>
                   <Select
                     value={formData.type}
                     onValueChange={(value) => setFormData({ ...formData, type: value })}
@@ -152,7 +152,7 @@ export const VehiclesPage = () => {
                 </div>
                 
                 <div>
-                  <Label>Fuel Type</Label>
+                  <Label>Fuel Type *</Label>
                   <Select
                     value={formData.fuel_type}
                     onValueChange={(value) => setFormData({ ...formData, fuel_type: value })}
@@ -169,9 +169,9 @@ export const VehiclesPage = () => {
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <Label>Brand</Label>
+                  <Label>Brand *</Label>
                   <Input
                     required
                     data-testid="vehicle-brand-input"
@@ -181,7 +181,7 @@ export const VehiclesPage = () => {
                   />
                 </div>
                 <div>
-                  <Label>Model</Label>
+                  <Label>Model *</Label>
                   <Input
                     required
                     data-testid="vehicle-model-input"
@@ -190,11 +190,62 @@ export const VehiclesPage = () => {
                     placeholder="Ace"
                   />
                 </div>
+                <div>
+                  <Label>Year</Label>
+                  <Input
+                    type="number"
+                    value={formData.year}
+                    onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+                    placeholder="2024"
+                    min="1900"
+                    max="2100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Chassis Number</Label>
+                  <Input
+                    value={formData.chassis_number}
+                    onChange={(e) => setFormData({ ...formData, chassis_number: e.target.value })}
+                    placeholder="MABXXXXXXXXXX1234"
+                  />
+                </div>
+                <div>
+                  <Label>Engine Number</Label>
+                  <Input
+                    value={formData.engine_number}
+                    onChange={(e) => setFormData({ ...formData, engine_number: e.target.value })}
+                    placeholder="ENG123456"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Color</Label>
+                  <Input
+                    value={formData.color}
+                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                    placeholder="White"
+                  />
+                </div>
+                <div>
+                  <Label>Seating Capacity</Label>
+                  <Input
+                    type="number"
+                    value={formData.seating_capacity}
+                    onChange={(e) => setFormData({ ...formData, seating_capacity: e.target.value })}
+                    placeholder="5"
+                    min="1"
+                  />
+                </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Average (km/l)</Label>
+                  <Label>Average (km/l) *</Label>
                   <Input
                     type="number"
                     step="0.1"
@@ -206,7 +257,7 @@ export const VehiclesPage = () => {
                   />
                 </div>
                 <div>
-                  <Label>Tank Capacity (L)</Label>
+                  <Label>Tank Capacity (L) *</Label>
                   <Input
                     type="number"
                     step="0.1"
