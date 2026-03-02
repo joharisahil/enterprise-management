@@ -11,7 +11,10 @@ import { DashboardPage } from './pages/DashboardPage';
 import { PropertiesPage } from './pages/PropertiesPage';
 import { PropertyTaxesPage } from './pages/PropertyTaxesPage';
 import { ElectricityPage } from './pages/ElectricityPage';
+import { GasPage } from './pages/GasPage';
+import { WaterPage } from './pages/WaterPage';
 import { VehiclesPage } from './pages/VehiclesPage';
+import { ChallansPage } from './pages/ChallansPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
