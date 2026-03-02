@@ -61,7 +61,7 @@ export const AccidentsPage = () => {
     try {
       await api.post('/accidents', {
         ...formData,
-        driver_id: formData.driver_id || null,
+        driver_id: formData.driver_id === 'none' ? null : formData.driver_id,
         accident_date: new Date(formData.accident_date).toISOString(),
         repair_cost: parseFloat(formData.repair_cost || 0),
         claim_amount: parseFloat(formData.claim_amount || 0),
@@ -70,8 +70,21 @@ export const AccidentsPage = () => {
       
       toast.success('Accident record created successfully');
       setDialogOpen(false);
+      setFormData({
+        vehicle_id: '',
+        driver_id: null,
+        accident_date: '',
+        location: '',
+        fir_number: '',
+        damage_description: '',
+        repair_cost: '',
+        claim_amount: '',
+        settlement_amount: '',
+        claim_status: 'Filed'
+      });
       fetchData();
     } catch (error) {
+      console.error('Error creating accident:', error);
       toast.error(error.response?.data?.detail || 'Failed to create accident record');
     }
   };
