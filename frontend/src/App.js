@@ -9,6 +9,8 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { PropertiesPage } from './pages/PropertiesPage';
+import { PropertyTaxesPage } from './pages/PropertyTaxesPage';
+import { ElectricityPage } from './pages/ElectricityPage';
 import { VehiclesPage } from './pages/VehiclesPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
