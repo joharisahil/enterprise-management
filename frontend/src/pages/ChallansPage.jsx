@@ -145,14 +145,14 @@ export const ChallansPage = () => {
                 <div>
                   <Label>Driver (Optional)</Label>
                   <Select
-                    value={formData.driver_id}
-                    onValueChange={(value) => setFormData({ ...formData, driver_id: value })}
+                    value={formData.driver_id || 'none'}
+                    onValueChange={(value) => setFormData({ ...formData, driver_id: value === 'none' ? null : value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select driver" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {drivers.map((driver) => (
                         <SelectItem key={driver.id} value={driver.id}>
                           {driver.full_name}
