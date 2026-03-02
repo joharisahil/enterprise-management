@@ -292,9 +292,14 @@ class VehicleBase(BaseModel):
     type: VehicleType
     brand: str
     model: str
+    year: Optional[int] = None
+    chassis_number: Optional[str] = None
+    engine_number: Optional[str] = None
+    color: Optional[str] = None
     fuel_type: FuelType
     average_kmpl: float
     tank_capacity_liters: float
+    seating_capacity: Optional[int] = None
     fastag_id: Optional[str] = None
     gps_device_id: Optional[str] = None
     assigned_property_id: Optional[str] = None
