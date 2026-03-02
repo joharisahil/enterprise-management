@@ -61,7 +61,7 @@ export const ChallansPage = () => {
     try {
       await api.post('/challans', {
         ...formData,
-        driver_id: formData.driver_id || null,
+        driver_id: formData.driver_id === 'none' ? null : formData.driver_id,
         amount: parseFloat(formData.amount),
         date: new Date(formData.date).toISOString(),
         payment_date: formData.payment_date ? new Date(formData.payment_date).toISOString() : null
@@ -69,8 +69,21 @@ export const ChallansPage = () => {
       
       toast.success('Challan record created successfully');
       setDialogOpen(false);
+      setFormData({
+        vehicle_id: '',
+        driver_id: null,
+        challan_number: '',
+        date: '',
+        violation_type: '',
+        amount: '',
+        status: 'Unpaid',
+        payment_date: '',
+        location: '',
+        proof_url: ''
+      });
       fetchData();
     } catch (error) {
+      console.error('Error creating challan:', error);
       toast.error(error.response?.data?.detail || 'Failed to create challan');
     }
   };
