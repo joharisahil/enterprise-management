@@ -30,7 +30,7 @@ automation_service = None
 
 # Background task for automation
 async def automation_background_task():
-    \"\"\"Run automation checks periodically\"\"\"
+    """Run automation checks periodically"""
     while True:
         try:
             await automation_service.run_all_checks()
