@@ -23,9 +23,14 @@ export const VehiclesPage = () => {
     type: 'Car',
     brand: '',
     model: '',
+    year: '',
+    chassis_number: '',
+    engine_number: '',
+    color: '',
     fuel_type: 'Diesel',
     average_kmpl: '',
-    tank_capacity_liters: ''
+    tank_capacity_liters: '',
+    seating_capacity: ''
   });
 
   useEffect(() => {
