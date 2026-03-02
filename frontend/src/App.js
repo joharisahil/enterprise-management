@@ -14,10 +14,12 @@ import { ElectricityPage } from './pages/ElectricityPage';
 import { GasPage } from './pages/GasPage';
 import { WaterPage } from './pages/WaterPage';
 import { VehiclesPage } from './pages/VehiclesPage';
+import { DocumentsPage } from './pages/DocumentsPage';
 import { ChallansPage } from './pages/ChallansPage';
 import { ServicePage } from './pages/ServicePage';
 import { GPSPage } from './pages/GPSPage';
 import { DriversPage } from './pages/DriversPage';
+import { AccidentsPage } from './pages/AccidentsPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
