@@ -93,25 +93,25 @@ export const ChallansPage = () => {
 
   if (loading) {
     return (
-      <div className=\"flex items-center justify-center min-h-screen\">
-        <div className=\"animate-spin rounded-full h-12 w-12 border-b-2 border-blue-800\"></div>
+      <div className="flex items-center justify-center min-h-screen\">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-800\"></div>
       </div>
     );
   }
 
   return (
-    <div className=\"p-8\" data-testid=\"challans-page\">
-      <div className=\"flex items-center justify-between mb-8\">
+    <div className="p-8\" data-testid=\"challans-page\">
+      <div className="flex items-center justify-between mb-8\">
         <div>
-          <h1 className=\"text-4xl font-bold text-slate-900 tracking-tight mb-2\" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+          <h1 className="text-4xl font-bold text-slate-900 tracking-tight mb-2\" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
             Traffic Challans
           </h1>
-          <p className=\"text-slate-600\">Track vehicle violations and fines</p>
+          <p className="text-slate-600\">Track vehicle violations and fines</p>
         </div>
         
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button className=\"bg-rose-600 hover:bg-rose-700\" data-testid=\"add-challan-button\">
+            <Button className="bg-rose-600 hover:bg-rose-700\" data-testid=\"add-challan-button\">
               <Plus size={18} className=\"mr-2\" />
               Add Challan
             </Button>
@@ -120,8 +120,8 @@ export const ChallansPage = () => {
             <DialogHeader>
               <DialogTitle>Add Traffic Challan</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className=\"space-y-4\">
-              <div className=\"grid grid-cols-2 gap-4\">
+            <form onSubmit={handleSubmit} className="space-y-4\">
+              <div className="grid grid-cols-2 gap-4\">
                 <div>
                   <Label>Vehicle *</Label>
                   <Select
@@ -163,7 +163,7 @@ export const ChallansPage = () => {
                 </div>
               </div>
 
-              <div className=\"grid grid-cols-2 gap-4\">
+              <div className="grid grid-cols-2 gap-4\">
                 <div>
                   <Label>Challan Number *</Label>
                   <Input
@@ -205,7 +205,7 @@ export const ChallansPage = () => {
                 />
               </div>
 
-              <div className=\"grid grid-cols-2 gap-4\">
+              <div className="grid grid-cols-2 gap-4\">
                 <div>
                   <Label>Amount (Rs ) *</Label>
                   <Input
@@ -247,7 +247,7 @@ export const ChallansPage = () => {
                 </div>
               )}
 
-              <Button type=\"submit\" className=\"w-full bg-rose-600 hover:bg-rose-700\">
+              <Button type=\"submit\" className="w-full bg-rose-600 hover:bg-rose-700\">
                 Create Challan
               </Button>
             </form>
@@ -256,48 +256,48 @@ export const ChallansPage = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className=\"grid grid-cols-1 md:grid-cols-3 gap-4 mb-6\">
-        <Card className=\"border-slate-200 shadow-sm\">
-          <CardContent className=\"p-6\">
-            <div className=\"flex items-center justify-between\">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6\">
+        <Card className="border-slate-200 shadow-sm\">
+          <CardContent className="p-6\">
+            <div className="flex items-center justify-between\">
               <div>
-                <p className=\"text-xs text-slate-500 uppercase tracking-wide mb-1\">Total Challans</p>
-                <p className=\"text-3xl font-bold text-slate-900\">{challans.length}</p>
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1\">Total Challans</p>
+                <p className="text-3xl font-bold text-slate-900\">{challans.length}</p>
               </div>
-              <AlertTriangle size={32} className=\"text-slate-400\" />
+              <AlertTriangle size={32} className="text-slate-400\" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className=\"border-slate-200 shadow-sm\">
-          <CardContent className=\"p-6\">
-            <div className=\"flex items-center justify-between\">
+        <Card className="border-slate-200 shadow-sm\">
+          <CardContent className="p-6\">
+            <div className="flex items-center justify-between\">
               <div>
-                <p className=\"text-xs text-slate-500 uppercase tracking-wide mb-1\">Unpaid Challans</p>
-                <p className=\"text-3xl font-bold text-rose-600\">{unpaidChallans.length}</p>
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1\">Unpaid Challans</p>
+                <p className="text-3xl font-bold text-rose-600\">{unpaidChallans.length}</p>
               </div>
-              <AlertTriangle size={32} className=\"text-rose-400\" />
+              <AlertTriangle size={32} className="text-rose-400\" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className=\"border-slate-200 shadow-sm\">
-          <CardContent className=\"p-6\">
-            <div className=\"flex items-center justify-between\">
+        <Card className="border-slate-200 shadow-sm\">
+          <CardContent className="p-6\">
+            <div className="flex items-center justify-between\">
               <div>
-                <p className=\"text-xs text-slate-500 uppercase tracking-wide mb-1\">Unpaid Amount</p>
-                <p className=\"text-3xl font-bold text-rose-600\">Rs {unpaidTotal.toLocaleString()}</p>
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1\">Unpaid Amount</p>
+                <p className="text-3xl font-bold text-rose-600\">Rs {unpaidTotal.toLocaleString()}</p>
               </div>
-              <DollarSign size={32} className=\"text-rose-400\" />
+              <DollarSign size={32} className="text-rose-400\" />
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Filter */}
-      <div className=\"mb-6\">
+      <div className="mb-6\">
         <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
-          <SelectTrigger className=\"w-64\">
+          <SelectTrigger className="w-64\">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -311,26 +311,26 @@ export const ChallansPage = () => {
         </Select>
       </div>
 
-      <Tabs defaultValue=\"all\" className=\"space-y-6\">
+      <Tabs defaultValue=\"all\" className="space-y-6\">
         <TabsList>
           <TabsTrigger value=\"all\">All ({challans.length})</TabsTrigger>
           <TabsTrigger value=\"unpaid\">Unpaid ({unpaidChallans.length})</TabsTrigger>
           <TabsTrigger value=\"paid\">Paid ({paidChallans.length})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value=\"all\" className=\"space-y-4\">
+        <TabsContent value=\"all\" className="space-y-4\">
           {challans.map((challan) => (
             <ChallanCard key={challan.id} challan={challan} getVehicleName={getVehicleName} getDriverName={getDriverName} />
           ))}
         </TabsContent>
 
-        <TabsContent value=\"unpaid\" className=\"space-y-4\">
+        <TabsContent value=\"unpaid\" className="space-y-4\">
           {unpaidChallans.map((challan) => (
             <ChallanCard key={challan.id} challan={challan} getVehicleName={getVehicleName} getDriverName={getDriverName} />
           ))}
         </TabsContent>
 
-        <TabsContent value=\"paid\" className=\"space-y-4\">
+        <TabsContent value=\"paid\" className="space-y-4\">
           {paidChallans.map((challan) => (
             <ChallanCard key={challan.id} challan={challan} getVehicleName={getVehicleName} getDriverName={getDriverName} />
           ))}
@@ -338,10 +338,10 @@ export const ChallansPage = () => {
       </Tabs>
 
       {challans.length === 0 && (
-        <div className=\"text-center py-16\">
+        <div className="text-center py-16\">
           <AlertTriangle size={64} className=\"mx-auto text-slate-300 mb-4\" />
-          <h3 className=\"text-xl font-semibold text-slate-900 mb-2\">No challans yet</h3>
-          <p className=\"text-slate-600\">Clean driving record!</p>
+          <h3 className="text-xl font-semibold text-slate-900 mb-2\">No challans yet</h3>
+          <p className="text-slate-600\">Clean driving record!</p>
         </div>
       )}
     </div>
@@ -355,18 +355,18 @@ const ChallanCard = ({ challan, getVehicleName, getDriverName }) => {
       animate={{ opacity: 1, y: 0 }}
       data-testid={`challan-card-${challan.id}`}
     >
-      <Card className=\"border-slate-200 shadow-sm\">
-        <CardContent className=\"p-6\">
-          <div className=\"flex items-start justify-between mb-4\">
-            <div className=\"flex-1\">
-              <div className=\"flex items-center gap-3 mb-2\">
-                <AlertTriangle size={20} className=\"text-rose-600\" />
-                <h3 className=\"font-semibold text-lg text-slate-900 font-mono\">{challan.challan_number}</h3>
+      <Card className="border-slate-200 shadow-sm\">
+        <CardContent className="p-6\">
+          <div className="flex items-start justify-between mb-4\">
+            <div className="flex-1\">
+              <div className="flex items-center gap-3 mb-2\">
+                <AlertTriangle size={20} className="text-rose-600\" />
+                <h3 className="font-semibold text-lg text-slate-900 font-mono\">{challan.challan_number}</h3>
               </div>
-              <p className=\"text-sm text-slate-600 mb-1\">
+              <p className="text-sm text-slate-600 mb-1\">
                 {getVehicleName(challan.vehicle_id)} • Driver: {getDriverName(challan.driver_id)}
               </p>
-              <p className=\"text-xs text-slate-500\">
+              <p className="text-xs text-slate-500\">
                 {new Date(challan.date).toLocaleDateString()} • {challan.location}
               </p>
             </div>
@@ -376,19 +376,19 @@ const ChallanCard = ({ challan, getVehicleName, getDriverName }) => {
             </Badge>
           </div>
 
-          <div className=\"grid grid-cols-2 md:grid-cols-3 gap-4\">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4\">
             <div>
-              <p className=\"text-xs text-slate-500 uppercase tracking-wide mb-1\">Violation</p>
-              <p className=\"text-sm font-semibold text-slate-900\">{challan.violation_type}</p>
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1\">Violation</p>
+              <p className="text-sm font-semibold text-slate-900\">{challan.violation_type}</p>
             </div>
             <div>
-              <p className=\"text-xs text-slate-500 uppercase tracking-wide mb-1\">Fine Amount</p>
-              <p className=\"text-lg font-bold text-rose-600\">Rs {challan.amount.toLocaleString()}</p>
+              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1\">Fine Amount</p>
+              <p className="text-lg font-bold text-rose-600\">Rs {challan.amount.toLocaleString()}</p>
             </div>
             {challan.payment_date && (
               <div>
-                <p className=\"text-xs text-slate-500 uppercase tracking-wide mb-1\">Paid On</p>
-                <p className=\"text-sm font-medium text-emerald-700\">{new Date(challan.payment_date).toLocaleDateString()}</p>
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1\">Paid On</p>
+                <p className="text-sm font-medium text-emerald-700\">{new Date(challan.payment_date).toLocaleDateString()}</p>
               </div>
             )}
           </div>
