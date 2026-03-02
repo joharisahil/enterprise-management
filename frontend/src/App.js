@@ -109,7 +109,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="Vehicle Documents" description="Versioned document management with expiry tracking" />
+                  <DocumentsPage />
                 </Layout>
               </PrivateRoute>
             }
@@ -159,7 +159,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="Accidents & Claims" description="Track accidents and insurance claims" />
+                  <AccidentsPage />
                 </Layout>
               </PrivateRoute>
             }
