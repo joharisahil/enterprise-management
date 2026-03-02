@@ -22,7 +22,7 @@ export const AccidentsPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     vehicle_id: '',
-    driver_id: '',
+    driver_id: null,
     accident_date: '',
     location: '',
     fir_number: '',
