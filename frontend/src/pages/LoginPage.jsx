@@ -4,9 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { Building2, Lock, Mail } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
