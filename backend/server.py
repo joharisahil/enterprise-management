@@ -20,7 +20,10 @@ from automation import AutomationService
 def serialize_doc(doc):
     """Convert datetime objects in a dict to ISO format strings for JSON serialization"""
     if isinstance(doc, dict):
-        return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in doc.items()}
+        # Remove MongoDB's _id field if present
+        result = {k: v for k, v in doc.items() if k != '_id'}
+        # Convert datetime objects to ISO strings
+        return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in result.items()}
     return doc
 
 ROOT_DIR = Path(__file__).parent
