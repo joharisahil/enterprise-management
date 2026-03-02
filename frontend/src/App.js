@@ -127,7 +127,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="Service & Maintenance" description="Vehicle service records and reminders" />
+                  <ServicePage />
                 </Layout>
               </PrivateRoute>
             }
@@ -137,7 +137,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="GPS & Trips" description="Provider-agnostic telematics with simulation mode" />
+                  <GPSPage />
                 </Layout>
               </PrivateRoute>
             }
@@ -147,7 +147,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="Drivers" description="Driver management with risk scoring" />
+                  <DriversPage />
                 </Layout>
               </PrivateRoute>
             }
