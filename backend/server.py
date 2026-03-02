@@ -573,7 +573,8 @@ async def simulate_gps_data(
     end_time: datetime,
     current_user: dict = Depends(get_current_user)
 ):
-    """Generate and store simulated GPS data for a device"""\n    device = await db.gps_devices.find_one({"id": device_id, "is_deleted": False})
+    """Generate and store simulated GPS data for a device"""
+    device = await db.gps_devices.find_one({"id": device_id, "is_deleted": False})
     if not device:
         raise HTTPException(status_code=404, detail="GPS device not found")
     
@@ -626,7 +627,8 @@ async def calculate_trip(
     fuel_price_per_liter: float = 100.0,
     current_user: dict = Depends(get_current_user)
 ):
-    """Calculate trip metrics from GPS logs"""\n    # Get vehicle
+    """Calculate trip metrics from GPS logs"""
+    # Get vehicle
     vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
@@ -741,7 +743,8 @@ async def update_driver(driver_id: str, driver_data: DriverCreate, current_user:
     return {"message": "Driver updated"}
 
 async def update_driver_risk_score(driver_id: str):
-    """Calculate and update driver risk score based on violations and accidents"""\n    challan_count = await db.challans.count_documents({"driver_id": driver_id, "is_deleted": False})
+    """Calculate and update driver risk score based on violations and accidents"""
+    challan_count = await db.challans.count_documents({"driver_id": driver_id, "is_deleted": False})
     accident_count = await db.accidents.count_documents({"driver_id": driver_id, "is_deleted": False})
     
     # Simple risk score: 10 points per challan + 50 points per accident
@@ -831,30 +834,37 @@ async def mark_notification_read(notification_id: str, current_user: dict = Depe
 
 @api_router.get("/dashboard/stats")
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
-    """Get enterprise dashboard statistics"""\n    now = datetime.now(timezone.utc)
-    \n    # Property stats
+    """Get enterprise dashboard statistics"""
+    now = datetime.now(timezone.utc)
+    
+    # Property stats
     total_properties = await db.properties.count_documents({"is_deleted": False})
-    \n    # Vehicle stats
+    
+    # Vehicle stats
     total_vehicles = await db.vehicles.count_documents({"is_deleted": False})
-    \n    # Unpaid bills
+    
+    # Unpaid bills
     unpaid_electricity = await db.electricity_bills.count_documents({"status": "Unpaid", "is_deleted": False})
     unpaid_gas = await db.gas_bills.count_documents({"status": "Unpaid", "is_deleted": False})
     unpaid_water = await db.water_bills.count_documents({"status": "Unpaid", "is_deleted": False})
     total_unpaid_bills = unpaid_electricity + unpaid_gas + unpaid_water
-    \n    # Expired taxes
+    
+    # Expired taxes
     expired_taxes = await db.property_taxes.count_documents({
         "expiry_date": {"$lt": now.isoformat()},
         "status": "Unpaid",
         "is_deleted": False
     })
-    \n    # Expiring documents (next 30 days)
+    
+    # Expiring documents (next 30 days)
     expiring_threshold = now + timedelta(days=30)
     expiring_docs = await db.vehicle_documents.count_documents({
         "expiry_date": {"$lte": expiring_threshold.isoformat(), "$gte": now.isoformat()},
         "is_current": True,
         "is_deleted": False
     })
-    \n    # Unpaid challans
+    
+    # Unpaid challans
     unpaid_challans_pipeline = [
         {"$match": {"status": "Unpaid", "is_deleted": False}},
         {"$group": {"_id": None, "count": {"$sum": 1}, "total": {"$sum": "$amount"}}}
@@ -862,7 +872,8 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     unpaid_challans_result = await db.challans.aggregate(unpaid_challans_pipeline).to_list(1)
     unpaid_challans_count = unpaid_challans_result[0]["count"] if unpaid_challans_result else 0
     unpaid_challans_amount = unpaid_challans_result[0]["total"] if unpaid_challans_result else 0
-    \n    # Total energy consumption (last 30 days)
+    
+    # Total energy consumption (last 30 days)
     thirty_days_ago = now - timedelta(days=30)
     energy_pipeline = [
         {"$match": {
@@ -873,7 +884,8 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     ]
     energy_result = await db.electricity_bills.aggregate(energy_pipeline).to_list(1)
     total_energy_units = energy_result[0]["total_units"] if energy_result else 0
-    \n    # Solar generation (last 30 days)
+    
+    # Solar generation (last 30 days)
     solar_pipeline = [
         {"$match": {
             "billing_period_start": {"$gte": thirty_days_ago.isoformat()},
@@ -883,7 +895,8 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     ]
     solar_result = await db.solar_meters.aggregate(solar_pipeline).to_list(1)
     total_solar_generated = solar_result[0]["total_generated"] if solar_result else 0
-    \n    # Total fuel cost (last 30 days)
+    
+    # Total fuel cost (last 30 days)
     fuel_pipeline = [
         {"$match": {
             "start_time": {"$gte": thirty_days_ago.isoformat()},
@@ -894,18 +907,22 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     fuel_result = await db.trips.aggregate(fuel_pipeline).to_list(1)
     total_fuel_cost = fuel_result[0]["total_cost"] if fuel_result else 0
     total_distance = fuel_result[0]["total_distance"] if fuel_result else 0
-    \n    # Unread notifications
+    
+    # Unread notifications
     unread_notifications = await db.notifications.count_documents({"is_read": False, "is_deleted": False})
-    \n    # Critical alerts
+    
+    # Critical alerts
     critical_alerts = await db.notifications.count_documents({
         "severity": "critical",
         "is_read": False,
         "is_deleted": False
     })
-    \n    # Sustainability metrics
+    
+    # Sustainability metrics
     renewable_percentage = (total_solar_generated / total_energy_units * 100) if total_energy_units > 0 else 0
     co2_saved = total_solar_generated * 0.92  # Approx 0.92 kg CO2 per kWh
-    \n    return {
+    
+    return {
         "properties": {
             "total": total_properties
         },
@@ -951,21 +968,28 @@ async def get_energy_trends(
     months: int = 12,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get monthly energy consumption trends"""\n    query = {"is_deleted": False}
+    """Get monthly energy consumption trends"""
+    query = {"is_deleted": False}
     if property_id:
         query["property_id"] = property_id
-    \n    # Get last N months of data
+    
+    # Get last N months of data
     bills = await db.electricity_bills.find(query, {"_id": 0}).sort("billing_period_start", -1).limit(months).to_list(months)
-    \n    trends = []\n    for bill in reversed(bills):\n        if isinstance(bill["billing_period_start"], str):
+    
+    trends = []
+    for bill in reversed(bills):
+        if isinstance(bill["billing_period_start"], str):
             period_start = datetime.fromisoformat(bill["billing_period_start"])
         else:
             period_start = bill["billing_period_start"]
-        \n        trends.append({
+        
+        trends.append({
             "month": period_start.strftime("%b %Y"),
             "units_consumed": bill["units_consumed"],
             "total_amount": bill["total_amount"]
         })
-    \n    return {"data": trends}
+    
+    return {"data": trends}
 
 @api_router.get("/analytics/fuel-efficiency")
 async def get_fuel_efficiency(
@@ -973,14 +997,18 @@ async def get_fuel_efficiency(
     months: int = 6,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get fuel efficiency analytics"""\n    query = {"is_deleted": False}
+    """Get fuel efficiency analytics"""
+    query = {"is_deleted": False}
     if vehicle_id:
         query["vehicle_id"] = vehicle_id
-    \n    # Get trips from last N months
+    
+    # Get trips from last N months
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=months * 30)
     query["start_time"] = {"$gte": cutoff_date.isoformat()}
-    \n    trips = await db.trips.find(query, {"_id": 0}).sort("start_time", -1).to_list(1000)
-    \n    # Group by vehicle and month
+    
+    trips = await db.trips.find(query, {"_id": 0}).sort("start_time", -1).to_list(1000)
+    
+    # Group by vehicle and month
     vehicle_stats = {}
     for trip in trips:
         vid = trip["vehicle_id"]
@@ -992,21 +1020,25 @@ async def get_fuel_efficiency(
                 "total_fuel_cost": 0,
                 "trip_count": 0
             }
-        \n        vehicle_stats[vid]["total_distance"] += trip["distance_km"]
+        
+        vehicle_stats[vid]["total_distance"] += trip["distance_km"]
         vehicle_stats[vid]["total_fuel_consumed"] += trip["fuel_consumed_liters"]
         vehicle_stats[vid]["total_fuel_cost"] += trip["fuel_cost"]
         vehicle_stats[vid]["trip_count"] += 1
-    \n    # Calculate efficiency
+    
+    # Calculate efficiency
     for vid, stats in vehicle_stats.items():
         if stats["total_fuel_consumed"] > 0:
             stats["average_kmpl"] = round(stats["total_distance"] / stats["total_fuel_consumed"], 2)
         else:
             stats["average_kmpl"] = 0
-        \n        if stats["total_distance"] > 0:
+        
+        if stats["total_distance"] > 0:
             stats["cost_per_km"] = round(stats["total_fuel_cost"] / stats["total_distance"], 2)
         else:
             stats["cost_per_km"] = 0
-    \n    return {"data": list(vehicle_stats.values())}
+    
+    return {"data": list(vehicle_stats.values())}
 
 # Include router
 app.include_router(api_router)
