@@ -207,7 +207,7 @@ export const ChallansPage = () => {
 
               <div className=\"grid grid-cols-2 gap-4\">
                 <div>
-                  <Label>Amount (₹) *</Label>
+                  <Label>Amount (Rs ) *</Label>
                   <Input
                     type=\"number\"
                     step=\"0.01\"
@@ -286,7 +286,7 @@ export const ChallansPage = () => {
             <div className=\"flex items-center justify-between\">
               <div>
                 <p className=\"text-xs text-slate-500 uppercase tracking-wide mb-1\">Unpaid Amount</p>
-                <p className=\"text-3xl font-bold text-rose-600\">₹{unpaidTotal.toLocaleString()}</p>
+                <p className=\"text-3xl font-bold text-rose-600\">Rs {unpaidTotal.toLocaleString()}</p>
               </div>
               <DollarSign size={32} className=\"text-rose-400\" />
             </div>
@@ -383,7 +383,7 @@ const ChallanCard = ({ challan, getVehicleName, getDriverName }) => {
             </div>
             <div>
               <p className=\"text-xs text-slate-500 uppercase tracking-wide mb-1\">Fine Amount</p>
-              <p className=\"text-lg font-bold text-rose-600\">₹{challan.amount.toLocaleString()}</p>
+              <p className=\"text-lg font-bold text-rose-600\">Rs {challan.amount.toLocaleString()}</p>
             </div>
             {challan.payment_date && (
               <div>
