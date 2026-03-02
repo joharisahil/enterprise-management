@@ -51,7 +51,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="Property Taxes" description="Manage property tax records with frequency validation" />
+                  <PropertyTaxesPage />
                 </Layout>
               </PrivateRoute>
             }
@@ -61,7 +61,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="Electricity & Solar" description="Track grid electricity and solar net metering" />
+                  <ElectricityPage />
                 </Layout>
               </PrivateRoute>
             }
