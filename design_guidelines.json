@@ -1,0 +1,184 @@
+{
+  "identity": {
+    "persona": "E1: The Anti-AI Designer",
+    "mission": "Create a production-grade Enterprise ERP that breaks the 'boring admin panel' stereotype. Prioritize density, clarity, and authority (Swiss Style) over generic SaaS gradients.",
+    "core_principles": [
+      "Fusion over Imitation: Mix Swiss Print Design with High-Performance Cockpit UI.",
+      "Information Density: Every pixel must earn its rent. No massive empty spaces in tables.",
+      "Role-Based Context: The UI changes based on who is looking (Admin vs Driver).",
+      "No Center-Everything: Align left for speed reading. Asymmetry creates tension."
+    ]
+  },
+  "design_philosophy": {
+    "theme_strategy": "Swiss Performance (Archetype 4 + 2)",
+    "mood": "Authoritative, Precise, Industrial, Clean.",
+    "visual_style": "Stark contrast, heavy use of borders, grid lines, and monochromatic foundations with sharp functional accents.",
+    "anti_patterns": [
+      "No generic 'SaaS Purple' or 'Teal' gradients.",
+      "No rounded 'bubbly' cards (max border-radius: 6px-8px).",
+      "No 'Inter' for Headings (Use Plus Jakarta Sans).",
+      "No centered text in data tables or forms."
+    ]
+  },
+  "typography": {
+    "font_family_heading": "Plus Jakarta Sans, sans-serif",
+    "font_family_body": "Inter, sans-serif",
+    "font_family_code": "JetBrains Mono, monospace",
+    "weights": {
+      "heading": "700 (Bold) or 800 (ExtraBold)",
+      "subheading": "600 (SemiBold)",
+      "body": "400 (Regular)",
+      "label": "500 (Medium)"
+    },
+    "scale": {
+      "h1": "text-4xl tracking-tight font-bold text-slate-900",
+      "h2": "text-2xl tracking-tight font-semibold text-slate-900",
+      "h3": "text-xl font-semibold text-slate-800",
+      "body": "text-sm leading-relaxed text-slate-600",
+      "small": "text-xs font-medium text-slate-500 uppercase tracking-wide"
+    }
+  },
+  "colors": {
+    "palette_name": "Industrial Swiss",
+    "primary": {
+      "name": "International Klein Blue",
+      "hex": "#002fa7",
+      "tailwind": "bg-blue-800",
+      "usage": "Primary CTAs, Active States, Key Metrics"
+    },
+    "secondary": {
+      "name": "Carbon",
+      "hex": "#1a1a1a",
+      "tailwind": "bg-slate-900",
+      "usage": "Sidebar, Headers, Dark Mode Backgrounds"
+    },
+    "accent": {
+      "name": "Signal Orange",
+      "hex": "#ff4500",
+      "tailwind": "bg-orange-600",
+      "usage": "Alerts, Critical Status, 'Action Required'"
+    },
+    "background": {
+      "light": "#f8f9fa",
+      "paper": "#ffffff",
+      "dark": "#0f172a"
+    },
+    "neutral": {
+      "border": "border-slate-200",
+      "text_main": "text-slate-900",
+      "text_muted": "text-slate-500"
+    },
+    "status": {
+      "success": "bg-emerald-100 text-emerald-700 border-emerald-200",
+      "warning": "bg-amber-100 text-amber-700 border-amber-200",
+      "error": "bg-rose-100 text-rose-700 border-rose-200",
+      "info": "bg-sky-100 text-sky-700 border-sky-200"
+    }
+  },
+  "spacing_layout": {
+    "scale": "Tailwind Scale (p-1 to p-64)",
+    "container_padding": "p-6 md:p-8",
+    "section_gap": "gap-8",
+    "grid_strategy": {
+      "dashboard_home": "grid grid-cols-1 md:grid-cols-12 gap-6",
+      "bento_hero": "col-span-full md:col-span-8",
+      "bento_side": "col-span-full md:col-span-4",
+      "data_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+    },
+    "sidebar": {
+      "width": "w-64",
+      "collapsed_width": "w-16",
+      "style": "fixed left-0 top-0 h-full border-r border-slate-200 bg-slate-900 text-white z-40"
+    }
+  },
+  "components": {
+    "library": "Shadcn UI (Customized)",
+    "customization_rules": [
+      "Radius: Rounded-md (6px) or Rounded-sm (4px) for a tighter, technical feel.",
+      "Shadows: shadow-sm or shadow-none with border-opacity-100.",
+      "Inputs: bg-white border-slate-300 focus:ring-2 focus:ring-blue-800/20.",
+      "Cards: Border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-200."
+    ],
+    "specific_components": {
+      "Button": "Sharp corners or slight rounding (rounded-md). No pill shapes for primary actions.",
+      "Table": "Dense. py-2 px-3 for cells. Stripes: even:bg-slate-50. Header: uppercase text-xs font-bold tracking-wider text-slate-500.",
+      "Badge": "Flat with border. No solid bright blobs. Use 'outline' variant often.",
+      "Dialog": "Backdrop blur-sm. Sharp modal with clear header separation."
+    }
+  },
+  "visual_enhancements": {
+    "glassmorphism": "Use sparingly. Only for sticky headers or floating overlays (backdrop-blur-md bg-white/80).",
+    "gradients": "BANNED for backgrounds. Allowed only for subtle 'active' borders or data viz areas.",
+    "textures": "Subtle noise overlay on the sidebar to reduce digital flatness.",
+    "motion": {
+      "library": "framer-motion",
+      "transitions": "transition-all duration-200 ease-out",
+      "page_load": "opacity-0 to opacity-100 y-4 to y-0"
+    },
+    "icons": {
+      "library": "lucide-react",
+      "style": "Stroke width 1.5 or 2. Clean, consistent."
+    }
+  },
+  "image_assets": {
+    "login_hero": "https://images.unsplash.com/photo-1769697646209-f7ca8736d0f7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjBidWlsZGluZyUyMHNvbGFyJTIwcGFuZWxzfGVufDB8fHx8MTc3MjQ1MDE4NHww&ixlib=rb-4.1.0&q=85",
+    "placeholders": {
+      "vehicle_fleet": "https://images.unsplash.com/photo-1649777689107-564e35810571?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NDh8MHwxfHNlYXJjaHwyfHxlbGVjdHJpYyUyMHV0aWxpdHklMjB0cnVjayUyMGZsZWV0JTIwd2hpdGUlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3MjQ1MDE4NXww&ixlib=rb-4.1.0&q=85",
+      "industrial_equipment": "https://images.unsplash.com/photo-1758873263491-f3969d8c6fda?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBpbmR1c3RyaWFsJTIwZ2VuZXJhdG9yJTIwZXF1aXBtZW50fGVufDB8fHx8MTc3MjQ1MDE4N3ww&ixlib=rb-4.1.0&q=85",
+      "office_building": "https://images.unsplash.com/photo-1764885517995-a4a4f940e1a6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBvZmZpY2UlMjBidWlsZGluZyUyMHNvbGFyJTIwcGFuZWxzfGVufDB8fHx8MTc3MjQ1MDE4NHww&ixlib=rb-4.1.0&q=85",
+      "avatars": [
+        "https://images.unsplash.com/photo-1762522927402-f390672558d8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBjb3Jwb3JhdGUlMjBoZWFkc2hvdHxlbnwwfHx8fDE3NzI0NTAxODV8MA&ixlib=rb-4.1.0&q=85",
+        "https://images.unsplash.com/photo-1762522926157-bcc04bf0b10a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBjb3Jwb3JhdGUlMjBoZWFkc2hvdHxlbnwwfHx8fDE3NzI0NTAxODV8MA&ixlib=rb-4.1.0&q=85"
+      ]
+    }
+  },
+  "tech_stack_instructions": {
+    "frontend": {
+      "framework": "React (Create React App)",
+      "styling": "Tailwind CSS",
+      "components": "Shadcn UI",
+      "charts": "Recharts",
+      "icons": "lucide-react, react-icons",
+      "forms": "react-hook-form + zod",
+      "date": "date-fns",
+      "animations": "framer-motion (INSTALL THIS)",
+      "notifications": "sonner"
+    },
+    "backend": {
+      "framework": "FastAPI (Python)",
+      "database": "MongoDB"
+    }
+  },
+  "feature_specific_guidelines": {
+    "dashboard": {
+      "layout": "Bento Grid",
+      "widgets": [
+        "Map (Telematics)",
+        "Fuel Efficiency Gauge",
+        "Cost vs Budget Chart",
+        "Pending Compliance Alerts"
+      ]
+    },
+    "fleet": {
+      "list_view": "Dense table with 'Status' pills (Moving, Idle, Maintenance).",
+      "detail_view": "Header with large Vehicle ID. Tabs for 'Telematics', 'Service', 'Docs'.",
+      "gps_simulation": "Use a map placeholder with animated markers."
+    },
+    "utilities": {
+      "charts": "Bar charts for monthly consumption. Line charts for year-over-year comparison.",
+      "bill_entry": "Split form: Left side image of bill (upload), right side data entry fields."
+    },
+    "documents": {
+      "versioning_ui": "Timeline view showing 'Current' vs 'Archived' versions of insurance/docs."
+    }
+  },
+  "universal_guidelines": [
+    "NEVER use generic 'lorem ipsum' in final mockups. Use realistic data (e.g., 'MH-02-DN-4921', 'Tata Power', 'Invoice #9921').",
+    "All interactive elements MUST have `data-testid` attributes (e.g., `data-testid='login-submit'`).",
+    "Use `framer-motion` for page transitions and micro-interactions (e.g., button click scale).",
+    "Error states must be descriptive. Red border + Red text message below input.",
+    "Loading states: Use Skeleton loaders (Shadcn `Skeleton`), not just spinners.",
+    "Mobile Responsiveness: All tables must have a card-view fallback or horizontal scroll on mobile.",
+    "Do NOT use 'transparent' background on dropdowns or headers overlaying content."
+  ]
+}
