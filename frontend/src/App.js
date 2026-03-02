@@ -15,6 +15,9 @@ import { GasPage } from './pages/GasPage';
 import { WaterPage } from './pages/WaterPage';
 import { VehiclesPage } from './pages/VehiclesPage';
 import { ChallansPage } from './pages/ChallansPage';
+import { ServicePage } from './pages/ServicePage';
+import { GPSPage } from './pages/GPSPage';
+import { DriversPage } from './pages/DriversPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
