@@ -74,7 +74,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="Gas Bills" description="Manage gas consumption and bills" />
+                  <GasPage />
                 </Layout>
               </PrivateRoute>
             }
@@ -84,7 +84,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="Water Bills" description="Track water consumption and sewage charges" />
+                  <WaterPage />
                 </Layout>
               </PrivateRoute>
             }
@@ -114,7 +114,7 @@ function App() {
             element={
               <PrivateRoute>
                 <Layout>
-                  <PlaceholderPage title="Challans" description="Track vehicle violations and fines" />
+                  <ChallansPage />
                 </Layout>
               </PrivateRoute>
             }
