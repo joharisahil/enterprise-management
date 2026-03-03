@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import api from '../utils/api';
 import { toast } from 'sonner';
-import { Receipt, Plus, Edit, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Receipt, Plus, Edit, Trash2, CheckCircle, AlertCircle, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -16,24 +16,29 @@ const taxTypes = ['House Tax', 'Property Tax', 'Municipal Tax', 'Other'];
 const frequencies = ['Yearly', 'Half-Yearly', 'One-Time'];
 const statusOptions = ['Paid', 'Unpaid'];
 
+const initialFormData = {
+  property_id: '',
+  tax_type: 'House Tax',
+  custom_tax_name: '',
+  amount: '',
+  issue_date: '',
+  expiry_date: '',
+  payment_date: '',
+  status: 'Unpaid',
+  frequency: 'Yearly',
+  receipt_url: ''
+};
+
 export const PropertyTaxesPage = () => {
   const [taxes, setTaxes] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState('all');
-  const [formData, setFormData] = useState({
-    property_id: '',
-    tax_type: 'House Tax',
-    custom_tax_name: '',
-    amount: '',
-    issue_date: '',
-    expiry_date: '',
-    payment_date: '',
-    status: 'Unpaid',
-    frequency: 'Yearly',
-    receipt_url: ''
-  });
+  const [selectedTax, setSelectedTax] = useState(null);
+  const [formData, setFormData] = useState(initialFormData);
 
   useEffect(() => {
     fetchData();
@@ -78,6 +83,50 @@ export const PropertyTaxesPage = () => {
     }
   };
 
+  const handleEdit = (tax) => {
+    setSelectedTax(tax);
+    setFormData({
+      property_id: tax.property_id,
+      tax_type: tax.tax_type,
+      custom_tax_name: tax.custom_tax_name || '',
+      amount: tax.amount.toString(),
+      issue_date: new Date(tax.issue_date).toISOString().split('T')[0],
+      expiry_date: new Date(tax.expiry_date).toISOString().split('T')[0],
+      payment_date: tax.payment_date ? new Date(tax.payment_date).toISOString().split('T')[0] : '',
+      status: tax.status,
+      frequency: tax.frequency,
+      receipt_url: tax.receipt_url || ''
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleView = (tax) => {
+    setSelectedTax(tax);
+    setViewDialogOpen(true);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    
+    try {
+      await api.put(`/property-taxes/${selectedTax.id}`, {
+        ...formData,
+        amount: parseFloat(formData.amount),
+        issue_date: new Date(formData.issue_date).toISOString(),
+        expiry_date: new Date(formData.expiry_date).toISOString(),
+        payment_date: formData.payment_date ? new Date(formData.payment_date).toISOString() : null
+      });
+      
+      toast.success('Property tax record updated successfully');
+      setEditDialogOpen(false);
+      resetForm();
+      fetchData();
+    } catch (error) {
+      console.error("API Error:", error);
+      toast.error(error.response?.data?.detail || 'Failed to update tax record');
+    }
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this tax record?')) return;
     
@@ -92,27 +141,13 @@ export const PropertyTaxesPage = () => {
   };
 
   const resetForm = () => {
-    setFormData({
-      property_id: '',
-      tax_type: 'House Tax',
-      custom_tax_name: '',
-      amount: '',
-      issue_date: '',
-      expiry_date: '',
-      payment_date: '',
-      status: 'Unpaid',
-      frequency: 'Yearly',
-      receipt_url: ''
-    });
+    setFormData(initialFormData);
+    setSelectedTax(null);
   };
 
   const getPropertyName = (propertyId) => {
     const prop = properties.find(p => p.id === propertyId);
     return prop ? prop.name : propertyId;
-  };
-
-  const isExpired = (expiryDate) => {
-    return new Date(expiryDate) < new Date();
   };
 
   const paidTaxes = taxes.filter(t => t.status === 'Paid');
@@ -126,6 +161,149 @@ export const PropertyTaxesPage = () => {
     );
   }
 
+  const TaxForm = ({ onSubmit, submitText }) => (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div>
+        <Label>Property *</Label>
+        <Select
+          value={formData.property_id}
+          onValueChange={(value) => setFormData({ ...formData, property_id: value })}
+          required
+        >
+          <SelectTrigger data-testid="tax-property-select">
+            <SelectValue placeholder="Select property" />
+          </SelectTrigger>
+          <SelectContent>
+            {properties.map((prop) => (
+              <SelectItem key={prop.id} value={prop.id}>
+                {prop.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Tax Type *</Label>
+          <Select
+            value={formData.tax_type}
+            onValueChange={(value) => setFormData({ ...formData, tax_type: value })}
+          >
+            <SelectTrigger data-testid="tax-type-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {taxTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Frequency *</Label>
+          <Select
+            value={formData.frequency}
+            onValueChange={(value) => setFormData({ ...formData, frequency: value })}
+          >
+            <SelectTrigger data-testid="tax-frequency-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {frequencies.map((freq) => (
+                <SelectItem key={freq} value={freq}>{freq}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {formData.tax_type === 'Other' && (
+        <div>
+          <Label>Custom Tax Name</Label>
+          <Input
+            value={formData.custom_tax_name}
+            onChange={(e) => setFormData({ ...formData, custom_tax_name: e.target.value })}
+            placeholder="e.g., Development Tax"
+          />
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Amount (Rs) *</Label>
+          <Input
+            type="number"
+            required
+            data-testid="tax-amount-input"
+            value={formData.amount}
+            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+            placeholder="15000"
+          />
+        </div>
+
+        <div>
+          <Label>Status *</Label>
+          <Select
+            value={formData.status}
+            onValueChange={(value) => setFormData({ ...formData, status: value })}
+          >
+            <SelectTrigger data-testid="tax-status-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {statusOptions.map((status) => (
+                <SelectItem key={status} value={status}>{status}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Issue Date *</Label>
+          <Input
+            type="date"
+            required
+            data-testid="tax-issue-date-input"
+            value={formData.issue_date}
+            onChange={(e) => setFormData({ ...formData, issue_date: e.target.value })}
+          />
+        </div>
+
+        <div>
+          <Label>Expiry Date *</Label>
+          <Input
+            type="date"
+            required
+            data-testid="tax-expiry-date-input"
+            value={formData.expiry_date}
+            onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+          />
+        </div>
+      </div>
+
+      {formData.status === 'Paid' && (
+        <div>
+          <Label>Payment Date *</Label>
+          <Input
+            type="date"
+            required
+            data-testid="tax-payment-date-input"
+            value={formData.payment_date}
+            onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
+          />
+        </div>
+      )}
+
+      <Button type="submit" className="w-full bg-blue-800 hover:bg-blue-900" data-testid="submit-tax-button">
+        {submitText}
+      </Button>
+    </form>
+  );
+
   return (
     <div className="p-8" data-testid="property-taxes-page">
       <div className="flex items-center justify-between mb-8">
@@ -136,7 +314,7 @@ export const PropertyTaxesPage = () => {
           <p className="text-slate-600">Track property taxes with frequency validation</p>
         </div>
         
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
           <DialogTrigger asChild>
             <Button className="bg-blue-800 hover:bg-blue-900" data-testid="add-tax-button">
               <Plus size={18} className="mr-2" />
@@ -147,152 +325,83 @@ export const PropertyTaxesPage = () => {
             <DialogHeader>
               <DialogTitle>Add Property Tax Record</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label>Property *</Label>
-                <Select
-                  value={formData.property_id}
-                  onValueChange={(value) => setFormData({ ...formData, property_id: value })}
-                  required
-                >
-                  <SelectTrigger data-testid="tax-property-select">
-                    <SelectValue placeholder="Select property" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {properties.map((prop) => (
-                      <SelectItem key={prop.id} value={prop.id}>
-                        {prop.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Tax Type *</Label>
-                  <Select
-                    value={formData.tax_type}
-                    onValueChange={(value) => setFormData({ ...formData, tax_type: value })}
-                  >
-                    <SelectTrigger data-testid="tax-type-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {taxTypes.map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label>Frequency *</Label>
-                  <Select
-                    value={formData.frequency}
-                    onValueChange={(value) => setFormData({ ...formData, frequency: value })}
-                  >
-                    <SelectTrigger data-testid="tax-frequency-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {frequencies.map((freq) => (
-                        <SelectItem key={freq} value={freq}>{freq}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {formData.tax_type === 'Other' && (
-                <div>
-                  <Label>Custom Tax Name</Label>
-                  <Input
-                    value={formData.custom_tax_name}
-                    onChange={(e) => setFormData({ ...formData, custom_tax_name: e.target.value })}
-                    placeholder="e.g., Development Tax"
-                  />
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Amount (₹) *</Label>
-                  <Input
-                    type="number"
-                    required
-                    data-testid="tax-amount-input"
-                    value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    placeholder="15000"
-                  />
-                </div>
-
-                <div>
-                  <Label>Status *</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) => setFormData({ ...formData, status: value })}
-                  >
-                    <SelectTrigger data-testid="tax-status-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statusOptions.map((status) => (
-                        <SelectItem key={status} value={status}>{status}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Issue Date *</Label>
-                  <Input
-                    type="date"
-                    required
-                    data-testid="tax-issue-date-input"
-                    value={formData.issue_date}
-                    onChange={(e) => setFormData({ ...formData, issue_date: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <Label>Expiry Date *</Label>
-                  <Input
-                    type="date"
-                    required
-                    data-testid="tax-expiry-date-input"
-                    value={formData.expiry_date}
-                    onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Must match frequency: Yearly (+1 year), Half-Yearly (+6 months)
-                  </p>
-                </div>
-              </div>
-
-              {formData.status === 'Paid' && (
-                <div>
-                  <Label>Payment Date *</Label>
-                  <Input
-                    type="date"
-                    required
-                    data-testid="tax-payment-date-input"
-                    value={formData.payment_date}
-                    onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
-                  />
-                </div>
-              )}
-
-              <Button type="submit" className="w-full bg-blue-800 hover:bg-blue-900" data-testid="submit-tax-button">
-                Create Tax Record
-              </Button>
-            </form>
+            <TaxForm onSubmit={handleSubmit} submitText="Create Tax Record" />
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={(open) => { setEditDialogOpen(open); if (!open) resetForm(); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Property Tax Record</DialogTitle>
+          </DialogHeader>
+          <TaxForm onSubmit={handleUpdate} submitText="Update Tax Record" />
+        </DialogContent>
+      </Dialog>
+
+      {/* View Dialog */}
+      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Tax Record Details</DialogTitle>
+          </DialogHeader>
+          {selectedTax && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <Receipt size={32} className="text-blue-700" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-slate-900">
+                    {selectedTax.tax_type === 'Other' ? selectedTax.custom_tax_name : selectedTax.tax_type}
+                  </h3>
+                  <p className="text-sm text-slate-600">{getPropertyName(selectedTax.property_id)}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Amount</p>
+                  <p className="text-lg font-bold text-slate-900">Rs {selectedTax.amount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Frequency</p>
+                  <Badge variant="outline">{selectedTax.frequency}</Badge>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Issue Date</p>
+                  <p className="text-sm text-slate-700">{new Date(selectedTax.issue_date).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Expiry Date</p>
+                  <p className="text-sm text-slate-700">{new Date(selectedTax.expiry_date).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Status</p>
+                  {selectedTax.status === 'Paid' ? (
+                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                      <CheckCircle size={14} className="mr-1" />
+                      Paid
+                    </Badge>
+                  ) : (
+                    <Badge variant="destructive">
+                      <AlertCircle size={14} className="mr-1" />
+                      Unpaid
+                    </Badge>
+                  )}
+                </div>
+                {selectedTax.payment_date && (
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Payment Date</p>
+                    <p className="text-sm text-slate-700">{new Date(selectedTax.payment_date).toLocaleDateString()}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Filter */}
       <div className="mb-6">
@@ -320,19 +429,19 @@ export const PropertyTaxesPage = () => {
 
         <TabsContent value="all" className="space-y-4">
           {taxes.map((tax) => (
-            <TaxCard key={tax.id} tax={tax} getPropertyName={getPropertyName} onDelete={handleDelete} />
+            <TaxCard key={tax.id} tax={tax} getPropertyName={getPropertyName} onDelete={handleDelete} onEdit={handleEdit} onView={handleView} />
           ))}
         </TabsContent>
 
         <TabsContent value="unpaid" className="space-y-4">
           {unpaidTaxes.map((tax) => (
-            <TaxCard key={tax.id} tax={tax} getPropertyName={getPropertyName} onDelete={handleDelete} />
+            <TaxCard key={tax.id} tax={tax} getPropertyName={getPropertyName} onDelete={handleDelete} onEdit={handleEdit} onView={handleView} />
           ))}
         </TabsContent>
 
         <TabsContent value="paid" className="space-y-4">
           {paidTaxes.map((tax) => (
-            <TaxCard key={tax.id} tax={tax} getPropertyName={getPropertyName} onDelete={handleDelete} />
+            <TaxCard key={tax.id} tax={tax} getPropertyName={getPropertyName} onDelete={handleDelete} onEdit={handleEdit} onView={handleView} />
           ))}
         </TabsContent>
       </Tabs>
@@ -348,7 +457,7 @@ export const PropertyTaxesPage = () => {
   );
 };
 
-const TaxCard = ({ tax, getPropertyName, onDelete }) => {
+const TaxCard = ({ tax, getPropertyName, onDelete, onEdit, onView }) => {
   const isExpired = new Date(tax.expiry_date) < new Date();
   const isExpiringSoon = new Date(tax.expiry_date) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
@@ -377,7 +486,7 @@ const TaxCard = ({ tax, getPropertyName, onDelete }) => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Amount</p>
-                  <p className="text-lg font-bold text-slate-900">₹{tax.amount.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-slate-900">Rs {tax.amount.toLocaleString()}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Frequency</p>
@@ -425,15 +534,35 @@ const TaxCard = ({ tax, getPropertyName, onDelete }) => {
               </div>
             </div>
 
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-              onClick={() => onDelete(tax.id)}
-              data-testid={`delete-tax-${tax.id}`}
-            >
-              <Trash2 size={16} />
-            </Button>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0"
+                onClick={() => onView(tax)}
+                data-testid={`view-tax-${tax.id}`}
+              >
+                <Eye size={16} />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0"
+                onClick={() => onEdit(tax)}
+                data-testid={`edit-tax-${tax.id}`}
+              >
+                <Edit size={16} />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                onClick={() => onDelete(tax.id)}
+                data-testid={`delete-tax-${tax.id}`}
+              >
+                <Trash2 size={16} />
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

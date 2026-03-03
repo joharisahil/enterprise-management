@@ -1,0 +1,269 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - complementary [ref=e4]:
+        - generic [ref=e5]:
+          - heading "ERP System" [level=1] [ref=e7]
+          - button [ref=e8] [cursor=pointer]:
+            - img [ref=e10]
+        - navigation [ref=e13]:
+          - generic [ref=e14]:
+            - link "Dashboard" [ref=e15] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e16]
+              - generic [ref=e21]: Dashboard
+            - link "Properties" [ref=e22] [cursor=pointer]:
+              - /url: /properties
+              - img [ref=e23]
+              - generic [ref=e27]: Properties
+            - link "Property Taxes" [ref=e28] [cursor=pointer]:
+              - /url: /property-taxes
+              - img [ref=e29]
+              - generic [ref=e32]: Property Taxes
+            - link "Electricity" [ref=e33] [cursor=pointer]:
+              - /url: /electricity
+              - img [ref=e34]
+              - generic [ref=e36]: Electricity
+            - link "Gas" [ref=e37] [cursor=pointer]:
+              - /url: /gas
+              - img [ref=e38]
+              - generic [ref=e41]: Gas
+            - link "Water" [ref=e42] [cursor=pointer]:
+              - /url: /water
+              - img [ref=e43]
+              - generic [ref=e45]: Water
+            - link "Fleet" [ref=e46] [cursor=pointer]:
+              - /url: /vehicles
+              - img [ref=e47]
+              - generic [ref=e52]: Fleet
+            - link "Documents" [ref=e53] [cursor=pointer]:
+              - /url: /documents
+              - img [ref=e54]
+              - generic [ref=e57]: Documents
+            - link "Challans" [ref=e58] [cursor=pointer]:
+              - /url: /challans
+              - img [ref=e59]
+              - generic [ref=e61]: Challans
+            - link "Service" [ref=e62] [cursor=pointer]:
+              - /url: /service
+              - img [ref=e63]
+              - generic [ref=e65]: Service
+            - link "GPS & Trips" [ref=e66] [cursor=pointer]:
+              - /url: /gps
+              - img [ref=e67]
+              - generic [ref=e69]: GPS & Trips
+            - link "Drivers" [ref=e70] [cursor=pointer]:
+              - /url: /drivers
+              - img [ref=e71]
+              - generic [ref=e74]: Drivers
+            - link "Accidents" [ref=e75] [cursor=pointer]:
+              - /url: /accidents
+              - img [ref=e76]
+              - generic [ref=e78]: Accidents
+            - link "Alerts" [ref=e79] [cursor=pointer]:
+              - /url: /alerts
+              - img [ref=e80]
+              - generic [ref=e82]: Alerts
+            - link "Analytics" [ref=e83] [cursor=pointer]:
+              - /url: /analytics
+              - img [ref=e84]
+              - generic [ref=e86]: Analytics
+        - generic [ref=e87]:
+          - generic [ref=e89]:
+            - paragraph [ref=e90]: Logged in as
+            - paragraph [ref=e91]: Admin User
+            - paragraph [ref=e92]: SuperAdmin
+          - button "Logout" [ref=e93] [cursor=pointer]:
+            - img [ref=e94]
+            - generic [ref=e98]: Logout
+      - main [ref=e99]:
+        - generic [ref=e101]:
+          - generic [ref=e102]:
+            - generic [ref=e103]:
+              - heading "Properties" [level=1] [ref=e104]
+              - paragraph [ref=e105]: Manage your commercial, residential & industrial properties
+            - button "Add Property" [active] [ref=e106] [cursor=pointer]:
+              - img
+              - text: Add Property
+          - generic [ref=e108]:
+            - generic [ref=e110]:
+              - generic [ref=e113]:
+                - img [ref=e115]
+                - generic [ref=e119]:
+                  - generic [ref=e120]: Sobti Hotel
+                  - generic [ref=e121]: Industrial
+              - generic [ref=e122]:
+                - generic [ref=e123]:
+                  - img [ref=e124]
+                  - generic [ref=e127]: Green Park
+                - generic [ref=e128]:
+                  - generic [ref=e129]: 5,000 sq ft
+                  - generic [ref=e130]:
+                    - button [ref=e131] [cursor=pointer]:
+                      - img
+                    - button [ref=e132] [cursor=pointer]:
+                      - img
+                    - button [ref=e133] [cursor=pointer]:
+                      - img
+            - generic [ref=e135]:
+              - generic [ref=e138]:
+                - img [ref=e140]
+                - generic [ref=e144]:
+                  - generic [ref=e145]: Sobti School
+                  - generic [ref=e146]: Commercial
+              - generic [ref=e147]:
+                - generic [ref=e148]:
+                  - img [ref=e149]
+                  - generic [ref=e152]: Inside Green Park
+                - generic [ref=e153]:
+                  - generic [ref=e154]: 1,000 sq ft
+                  - generic [ref=e155]:
+                    - button [ref=e156] [cursor=pointer]:
+                      - img
+                    - button [ref=e157] [cursor=pointer]:
+                      - img
+                    - button [ref=e158] [cursor=pointer]:
+                      - img
+            - generic [ref=e160]:
+              - generic [ref=e163]:
+                - img [ref=e165]
+                - generic [ref=e169]:
+                  - generic [ref=e170]: Test Property
+                  - generic [ref=e171]: Commercial
+              - generic [ref=e172]:
+                - generic [ref=e173]:
+                  - img [ref=e174]
+                  - generic [ref=e177]: 123 Test St
+                - generic [ref=e178]:
+                  - generic [ref=e179]: 5,000 sq ft
+                  - generic [ref=e180]:
+                    - button [ref=e181] [cursor=pointer]:
+                      - img
+                    - button [ref=e182] [cursor=pointer]:
+                      - img
+                    - button [ref=e183] [cursor=pointer]:
+                      - img
+            - generic [ref=e185]:
+              - generic [ref=e188]:
+                - img [ref=e190]
+                - generic [ref=e194]:
+                  - generic [ref=e195]: Test Property 2
+                  - generic [ref=e196]: Commercial
+              - generic [ref=e197]:
+                - generic [ref=e198]:
+                  - img [ref=e199]
+                  - generic [ref=e202]: 456 Test Ave
+                - generic [ref=e203]:
+                  - generic [ref=e204]: 3,000 sq ft
+                  - generic [ref=e205]:
+                    - button [ref=e206] [cursor=pointer]:
+                      - img
+                    - button [ref=e207] [cursor=pointer]:
+                      - img
+                    - button [ref=e208] [cursor=pointer]:
+                      - img
+            - generic [ref=e210]:
+              - generic [ref=e213]:
+                - img [ref=e215]
+                - generic [ref=e219]:
+                  - generic [ref=e220]: TEST_Property_1772540461586
+                  - generic [ref=e221]: Commercial
+              - generic [ref=e222]:
+                - generic [ref=e223]:
+                  - img [ref=e224]
+                  - generic [ref=e227]: 123 Test Street, Mumbai
+                - generic [ref=e228]:
+                  - generic [ref=e229]: 5,000 sq ft
+                  - generic [ref=e230]:
+                    - button [ref=e231] [cursor=pointer]:
+                      - img
+                    - button [ref=e232] [cursor=pointer]:
+                      - img
+                    - button [ref=e233] [cursor=pointer]:
+                      - img
+            - generic [ref=e235]:
+              - generic [ref=e238]:
+                - img [ref=e240]
+                - generic [ref=e244]:
+                  - generic [ref=e245]: TEST_Edit_1772540481031
+                  - generic [ref=e246]: Commercial
+              - generic [ref=e247]:
+                - generic [ref=e248]:
+                  - img [ref=e249]
+                  - generic [ref=e252]: Edit Test Address
+                - generic [ref=e253]:
+                  - generic [ref=e254]: 3,000 sq ft
+                  - generic [ref=e255]:
+                    - button [ref=e256] [cursor=pointer]:
+                      - img
+                    - button [ref=e257] [cursor=pointer]:
+                      - img
+                    - button [ref=e258] [cursor=pointer]:
+                      - img
+            - generic [ref=e260]:
+              - generic [ref=e263]:
+                - img [ref=e265]
+                - generic [ref=e269]:
+                  - generic [ref=e270]: TEST_Delete_1772540541890
+                  - generic [ref=e271]: Industrial
+              - generic [ref=e272]:
+                - generic [ref=e273]:
+                  - img [ref=e274]
+                  - generic [ref=e277]: Delete Test Address
+                - generic [ref=e278]:
+                  - generic [ref=e279]: 2,000 sq ft
+                  - generic [ref=e280]:
+                    - button [ref=e281] [cursor=pointer]:
+                      - img
+                    - button [ref=e282] [cursor=pointer]:
+                      - img
+                    - button [ref=e283] [cursor=pointer]:
+                      - img
+            - generic [ref=e285]:
+              - generic [ref=e288]:
+                - img [ref=e290]
+                - generic [ref=e294]:
+                  - generic [ref=e295]: TEST_Prop_1772540654444
+                  - generic [ref=e296]: Commercial
+              - generic [ref=e297]:
+                - generic [ref=e298]:
+                  - img [ref=e299]
+                  - generic [ref=e302]: 123 Test Street
+                - generic [ref=e303]:
+                  - generic [ref=e304]: 5,000 sq ft
+                  - generic [ref=e305]:
+                    - button [ref=e306] [cursor=pointer]:
+                      - img
+                    - button [ref=e307] [cursor=pointer]:
+                      - img
+                    - button [ref=e308] [cursor=pointer]:
+                      - img
+            - generic [ref=e310]:
+              - generic [ref=e313]:
+                - img [ref=e315]
+                - generic [ref=e319]:
+                  - generic [ref=e320]: TEST_Prop_1772540778203
+                  - generic [ref=e321]: Commercial
+              - generic [ref=e322]:
+                - generic [ref=e323]:
+                  - img [ref=e324]
+                  - generic [ref=e327]: 123 Test Street
+                - generic [ref=e328]:
+                  - generic [ref=e329]: 5,000 sq ft
+                  - generic [ref=e330]:
+                    - button [ref=e331] [cursor=pointer]:
+                      - img
+                    - button [ref=e332] [cursor=pointer]:
+                      - img
+                    - button [ref=e333] [cursor=pointer]:
+                      - img
+    - region "Notifications alt+T"
+  - link "Made with Emergent" [ref=e334] [cursor=pointer]:
+    - /url: https://app.emergent.sh/?utm_source=emergent-badge
+    - img [ref=e335]
+    - paragraph [ref=e338]: Made with Emergent
+  - generic [ref=e339]: "0"
+```

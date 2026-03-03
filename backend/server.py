@@ -205,6 +205,38 @@ async def get_property_taxes(
     count = await db.property_taxes.count_documents(query)
     return {"data": taxes, "total": count}
 
+@api_router.get("/property-taxes/{tax_id}")
+async def get_property_tax(tax_id: str, current_user: dict = Depends(get_current_user)):
+    tax = await db.property_taxes.find_one({"id": tax_id, "is_deleted": False}, {"_id": 0})
+    if not tax:
+        raise HTTPException(status_code=404, detail="Property tax not found")
+    return tax
+
+@api_router.put("/property-taxes/{tax_id}")
+async def update_property_tax(tax_id: str, tax_data: PropertyTaxCreate, current_user: dict = Depends(get_current_user)):
+    update_data = tax_data.model_dump()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_by"] = current_user["user_id"]
+    update_data["issue_date"] = update_data["issue_date"].isoformat()
+    update_data["expiry_date"] = update_data["expiry_date"].isoformat()
+    if update_data.get("payment_date"):
+        update_data["payment_date"] = update_data["payment_date"].isoformat()
+    
+    result = await db.property_taxes.update_one({"id": tax_id, "is_deleted": False}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Property tax not found")
+    return {"message": "Property tax updated"}
+
+@api_router.delete("/property-taxes/{tax_id}")
+async def delete_property_tax(tax_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.property_taxes.update_one(
+        {"id": tax_id},
+        {"$set": {"is_deleted": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Property tax not found")
+    return {"message": "Property tax deleted"}
+
 # ==================== ELECTRICITY BILL ROUTES ====================
 
 @api_router.post("/electricity-bills")
@@ -238,6 +270,23 @@ async def get_electricity_bills(
     bills = await db.electricity_bills.find(query, {"_id": 0}).sort("billing_period_start", -1).skip(skip).limit(limit).to_list(limit)
     count = await db.electricity_bills.count_documents(query)
     return {"data": bills, "total": count}
+
+@api_router.get("/electricity-bills/{bill_id}")
+async def get_electricity_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
+    bill = await db.electricity_bills.find_one({"id": bill_id, "is_deleted": False}, {"_id": 0})
+    if not bill:
+        raise HTTPException(status_code=404, detail="Electricity bill not found")
+    return bill
+
+@api_router.delete("/electricity-bills/{bill_id}")
+async def delete_electricity_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.electricity_bills.update_one(
+        {"id": bill_id},
+        {"$set": {"is_deleted": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Electricity bill not found")
+    return {"message": "Electricity bill deleted"}
 
 # ==================== SOLAR METER ROUTES ====================
 
@@ -275,6 +324,23 @@ async def get_solar_meters(
     count = await db.solar_meters.count_documents(query)
     return {"data": meters, "total": count}
 
+@api_router.get("/solar-meters/{meter_id}")
+async def get_solar_meter(meter_id: str, current_user: dict = Depends(get_current_user)):
+    meter = await db.solar_meters.find_one({"id": meter_id, "is_deleted": False}, {"_id": 0})
+    if not meter:
+        raise HTTPException(status_code=404, detail="Solar meter record not found")
+    return meter
+
+@api_router.delete("/solar-meters/{meter_id}")
+async def delete_solar_meter(meter_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.solar_meters.update_one(
+        {"id": meter_id},
+        {"$set": {"is_deleted": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Solar meter record not found")
+    return {"message": "Solar meter record deleted"}
+
 # ==================== GAS BILL ROUTES ====================
 
 @api_router.post("/gas-bills")
@@ -309,6 +375,23 @@ async def get_gas_bills(
     count = await db.gas_bills.count_documents(query)
     return {"data": bills, "total": count}
 
+@api_router.get("/gas-bills/{bill_id}")
+async def get_gas_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
+    bill = await db.gas_bills.find_one({"id": bill_id, "is_deleted": False}, {"_id": 0})
+    if not bill:
+        raise HTTPException(status_code=404, detail="Gas bill not found")
+    return bill
+
+@api_router.delete("/gas-bills/{bill_id}")
+async def delete_gas_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.gas_bills.update_one(
+        {"id": bill_id},
+        {"$set": {"is_deleted": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Gas bill not found")
+    return {"message": "Gas bill deleted"}
+
 # ==================== WATER BILL ROUTES ====================
 
 @api_router.post("/water-bills")
@@ -342,6 +425,23 @@ async def get_water_bills(
     bills = await db.water_bills.find(query, {"_id": 0}).sort("billing_period_start", -1).skip(skip).limit(limit).to_list(limit)
     count = await db.water_bills.count_documents(query)
     return {"data": bills, "total": count}
+
+@api_router.get("/water-bills/{bill_id}")
+async def get_water_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
+    bill = await db.water_bills.find_one({"id": bill_id, "is_deleted": False}, {"_id": 0})
+    if not bill:
+        raise HTTPException(status_code=404, detail="Water bill not found")
+    return bill
+
+@api_router.delete("/water-bills/{bill_id}")
+async def delete_water_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.water_bills.update_one(
+        {"id": bill_id},
+        {"$set": {"is_deleted": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Water bill not found")
+    return {"message": "Water bill deleted"}
 
 # ==================== VEHICLE ROUTES ====================
 

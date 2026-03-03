@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import api from '../utils/api';
 import { toast } from 'sonner';
-import { Zap, Sun, Plus, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Zap, Sun, Plus, TrendingUp, AlertTriangle, Eye, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -11,7 +11,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export const ElectricityPage = () => {
   const [properties, setProperties] = useState([]);
@@ -21,6 +20,10 @@ export const ElectricityPage = () => {
   const [loading, setLoading] = useState(true);
   const [elecDialogOpen, setElecDialogOpen] = useState(false);
   const [solarDialogOpen, setSolarDialogOpen] = useState(false);
+  const [viewElecDialogOpen, setViewElecDialogOpen] = useState(false);
+  const [viewSolarDialogOpen, setViewSolarDialogOpen] = useState(false);
+  const [selectedElecBill, setSelectedElecBill] = useState(null);
+  const [selectedSolarMeter, setSelectedSolarMeter] = useState(null);
 
   const [elecFormData, setElecFormData] = useState({
     property_id: '',
@@ -134,6 +137,40 @@ export const ElectricityPage = () => {
     }
   };
 
+  const handleDeleteElecBill = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this electricity bill?')) return;
+    
+    try {
+      await api.delete(`/electricity-bills/${id}`);
+      toast.success('Electricity bill deleted');
+      fetchData();
+    } catch (error) {
+      toast.error('Failed to delete electricity bill');
+    }
+  };
+
+  const handleDeleteSolarMeter = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this solar meter record?')) return;
+    
+    try {
+      await api.delete(`/solar-meters/${id}`);
+      toast.success('Solar meter record deleted');
+      fetchData();
+    } catch (error) {
+      toast.error('Failed to delete solar meter record');
+    }
+  };
+
+  const handleViewElecBill = (bill) => {
+    setSelectedElecBill(bill);
+    setViewElecDialogOpen(true);
+  };
+
+  const handleViewSolarMeter = (meter) => {
+    setSelectedSolarMeter(meter);
+    setViewSolarDialogOpen(true);
+  };
+
   const getPropertyName = (propertyId) => {
     const prop = properties.find(p => p.id === propertyId);
     return prop ? prop.name : propertyId;
@@ -157,6 +194,148 @@ export const ElectricityPage = () => {
           <p className="text-slate-600">Track grid electricity and solar net metering</p>
         </div>
       </div>
+
+      {/* View Electricity Bill Dialog */}
+      <Dialog open={viewElecDialogOpen} onOpenChange={setViewElecDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Electricity Bill Details</DialogTitle>
+          </DialogHeader>
+          {selectedElecBill && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <Zap size={32} className="text-blue-700" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-slate-900">{getPropertyName(selectedElecBill.property_id)}</h3>
+                  <p className="text-sm text-slate-600">
+                    {new Date(selectedElecBill.billing_period_start).toLocaleDateString()} - {new Date(selectedElecBill.billing_period_end).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Units Consumed</p>
+                  <p className="text-lg font-bold text-slate-900">{selectedElecBill.units_consumed} kWh</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Status</p>
+                  <Badge className={selectedElecBill.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}>
+                    {selectedElecBill.status}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Previous Reading</p>
+                  <p className="text-sm text-slate-700">{selectedElecBill.previous_reading} kWh</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Current Reading</p>
+                  <p className="text-sm text-slate-700">{selectedElecBill.current_reading} kWh</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Slab Charges</p>
+                  <p className="text-sm text-slate-700">Rs {selectedElecBill.slab_charges}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Fixed Charges</p>
+                  <p className="text-sm text-slate-700">Rs {selectedElecBill.fixed_charges}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Taxes</p>
+                  <p className="text-sm text-slate-700">Rs {selectedElecBill.taxes}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Penalty</p>
+                  <p className="text-sm text-slate-700">Rs {selectedElecBill.penalty}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Amount</p>
+                  <p className="text-lg font-bold text-slate-900">Rs {selectedElecBill.total_amount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Due Date</p>
+                  <p className="text-sm text-slate-700">{new Date(selectedElecBill.due_date).toLocaleDateString()}</p>
+                </div>
+                {selectedElecBill.payment_date && (
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Payment Date</p>
+                    <p className="text-sm text-slate-700">{new Date(selectedElecBill.payment_date).toLocaleDateString()}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Solar Meter Dialog */}
+      <Dialog open={viewSolarDialogOpen} onOpenChange={setViewSolarDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Solar Meter Details</DialogTitle>
+          </DialogHeader>
+          {selectedSolarMeter && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 bg-amber-100 rounded-lg">
+                  <Sun size={32} className="text-amber-700" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-slate-900">{getPropertyName(selectedSolarMeter.property_id)}</h3>
+                  <p className="text-sm text-slate-600">
+                    {new Date(selectedSolarMeter.billing_period_start).toLocaleDateString()} - {new Date(selectedSolarMeter.billing_period_end).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Installed Capacity</p>
+                  <p className="text-lg font-bold text-slate-900">{selectedSolarMeter.installed_capacity_kw} kW</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Units Generated</p>
+                  <p className="text-lg font-bold text-emerald-700">{selectedSolarMeter.units_generated} kWh</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Self Consumed</p>
+                  <p className="text-sm text-slate-700">{selectedSolarMeter.self_consumed} kWh</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Exported to Grid</p>
+                  <p className="text-sm text-slate-700">{selectedSolarMeter.exported_to_grid} kWh</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Imported from Grid</p>
+                  <p className="text-sm text-slate-700">{selectedSolarMeter.imported_from_grid} kWh</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Net Units</p>
+                  <p className="text-sm text-slate-700">{selectedSolarMeter.net_units} kWh</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Feed-in Tariff</p>
+                  <p className="text-sm text-slate-700">Rs {selectedSolarMeter.feed_in_tariff}/kWh</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Billable Units</p>
+                  <p className="text-lg font-bold text-slate-900">{selectedSolarMeter.billable_units} kWh</p>
+                </div>
+                {selectedSolarMeter.reconciliation_flag && (
+                  <div className="col-span-2">
+                    <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+                      <AlertTriangle size={12} className="mr-1" />
+                      Reconciliation Alert
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Property Filter */}
       <div className="mb-6">
@@ -268,7 +447,7 @@ export const ElectricityPage = () => {
 
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <Label>Slab Charges (₹) *</Label>
+                      <Label>Slab Charges (Rs) *</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -278,7 +457,7 @@ export const ElectricityPage = () => {
                       />
                     </div>
                     <div>
-                      <Label>Fixed Charges (₹) *</Label>
+                      <Label>Fixed Charges (Rs) *</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -288,7 +467,7 @@ export const ElectricityPage = () => {
                       />
                     </div>
                     <div>
-                      <Label>Taxes (₹) *</Label>
+                      <Label>Taxes (Rs) *</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -301,7 +480,7 @@ export const ElectricityPage = () => {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Penalty (₹)</Label>
+                      <Label>Penalty (Rs)</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -310,7 +489,7 @@ export const ElectricityPage = () => {
                       />
                     </div>
                     <div>
-                      <Label>Total Amount (₹) *</Label>
+                      <Label>Total Amount (Rs) *</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -370,7 +549,13 @@ export const ElectricityPage = () => {
 
           <div className="space-y-4">
             {electricityBills.map((bill) => (
-              <ElectricityBillCard key={bill.id} bill={bill} getPropertyName={getPropertyName} />
+              <ElectricityBillCard 
+                key={bill.id} 
+                bill={bill} 
+                getPropertyName={getPropertyName} 
+                onView={handleViewElecBill}
+                onDelete={handleDeleteElecBill}
+              />
             ))}
           </div>
 
@@ -510,7 +695,7 @@ export const ElectricityPage = () => {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Feed-in Tariff (₹/kWh) *</Label>
+                      <Label>Feed-in Tariff (Rs/kWh) *</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -541,7 +726,13 @@ export const ElectricityPage = () => {
 
           <div className="space-y-4">
             {solarMeters.map((meter) => (
-              <SolarMeterCard key={meter.id} meter={meter} getPropertyName={getPropertyName} />
+              <SolarMeterCard 
+                key={meter.id} 
+                meter={meter} 
+                getPropertyName={getPropertyName}
+                onView={handleViewSolarMeter}
+                onDelete={handleDeleteSolarMeter}
+              />
             ))}
           </div>
 
@@ -558,9 +749,9 @@ export const ElectricityPage = () => {
   );
 };
 
-const ElectricityBillCard = ({ bill, getPropertyName }) => {
+const ElectricityBillCard = ({ bill, getPropertyName, onView, onDelete }) => {
   return (
-    <Card className="border-slate-200 shadow-sm">
+    <Card className="border-slate-200 shadow-sm" data-testid={`electricity-bill-${bill.id}`}>
       <CardContent className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -569,9 +760,29 @@ const ElectricityBillCard = ({ bill, getPropertyName }) => {
               {new Date(bill.billing_period_start).toLocaleDateString()} - {new Date(bill.billing_period_end).toLocaleDateString()}
             </p>
           </div>
-          <Badge className={bill.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}>
-            {bill.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge className={bill.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}>
+              {bill.status}
+            </Badge>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0"
+              onClick={() => onView(bill)}
+              data-testid={`view-electricity-${bill.id}`}
+            >
+              <Eye size={16} />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+              onClick={() => onDelete(bill.id)}
+              data-testid={`delete-electricity-${bill.id}`}
+            >
+              <Trash2 size={16} />
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -581,7 +792,7 @@ const ElectricityBillCard = ({ bill, getPropertyName }) => {
           </div>
           <div>
             <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Amount</p>
-            <p className="text-lg font-bold text-slate-900">₹{bill.total_amount.toLocaleString()}</p>
+            <p className="text-lg font-bold text-slate-900">Rs {bill.total_amount.toLocaleString()}</p>
           </div>
           <div>
             <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Due Date</p>
@@ -589,7 +800,7 @@ const ElectricityBillCard = ({ bill, getPropertyName }) => {
           </div>
           <div>
             <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Reading</p>
-            <p className="text-sm font-medium">{bill.previous_reading} → {bill.current_reading}</p>
+            <p className="text-sm font-medium">{bill.previous_reading} - {bill.current_reading}</p>
           </div>
         </div>
       </CardContent>
@@ -597,11 +808,11 @@ const ElectricityBillCard = ({ bill, getPropertyName }) => {
   );
 };
 
-const SolarMeterCard = ({ meter, getPropertyName }) => {
+const SolarMeterCard = ({ meter, getPropertyName, onView, onDelete }) => {
   const reconciliationOk = !meter.reconciliation_flag;
 
   return (
-    <Card className={`border-slate-200 shadow-sm ${!reconciliationOk ? 'border-l-4 border-l-amber-500' : ''}`}>
+    <Card className={`border-slate-200 shadow-sm ${!reconciliationOk ? 'border-l-4 border-l-amber-500' : ''}`} data-testid={`solar-meter-${meter.id}`}>
       <CardContent className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -621,6 +832,24 @@ const SolarMeterCard = ({ meter, getPropertyName }) => {
           <div className="flex items-center gap-2">
             <Sun size={20} className="text-amber-500" />
             <span className="text-sm font-semibold">{meter.installed_capacity_kw} kW</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0"
+              onClick={() => onView(meter)}
+              data-testid={`view-solar-${meter.id}`}
+            >
+              <Eye size={16} />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+              onClick={() => onDelete(meter.id)}
+              data-testid={`delete-solar-${meter.id}`}
+            >
+              <Trash2 size={16} />
+            </Button>
           </div>
         </div>
 
