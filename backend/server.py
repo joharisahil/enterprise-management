@@ -453,6 +453,8 @@ async def create_vehicle(vehicle_data: VehicleCreate, current_user: dict = Depen
     vehicle_dict = vehicle.model_dump()
     vehicle_dict["created_at"] = vehicle_dict["created_at"].isoformat()
     vehicle_dict["updated_at"] = vehicle_dict["updated_at"].isoformat()
+    if vehicle_dict.get("date_of_registration"):
+        vehicle_dict["date_of_registration"] = vehicle_dict["date_of_registration"].isoformat()
     
     await db.vehicles.insert_one(vehicle_dict)
     return serialize_doc(vehicle_dict)
@@ -479,6 +481,8 @@ async def update_vehicle(vehicle_id: str, vehicle_data: VehicleCreate, current_u
     update_data = vehicle_data.model_dump()
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     update_data["updated_by"] = current_user["user_id"]
+    if update_data.get("date_of_registration"):
+        update_data["date_of_registration"] = update_data["date_of_registration"].isoformat()
     
     result = await db.vehicles.update_one({"id": vehicle_id, "is_deleted": False}, {"$set": update_data})
     if result.matched_count == 0:
@@ -494,6 +498,196 @@ async def delete_vehicle(vehicle_id: str, current_user: dict = Depends(get_curre
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Vehicle not found")
     return {"message": "Vehicle deleted"}
+
+@api_router.get("/vehicles/{vehicle_id}/full-report")
+async def get_vehicle_full_report(vehicle_id: str, current_user: dict = Depends(get_current_user)):
+    """Get comprehensive vehicle report with all related data"""
+    vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False}, {"_id": 0})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    # Get all related data in parallel
+    documents = await db.vehicle_documents.find(
+        {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    
+    challans = await db.challans.find(
+        {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
+    ).sort("date", -1).to_list(100)
+    
+    services = await db.service_records.find(
+        {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
+    ).sort("date", -1).to_list(100)
+    
+    accidents = await db.accidents.find(
+        {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
+    ).sort("date", -1).to_list(100)
+    
+    # Calculate summary stats
+    total_challan_amount = sum(c.get("amount", 0) for c in challans)
+    unpaid_challans = len([c for c in challans if c.get("status") == "Unpaid"])
+    total_service_cost = sum(s.get("total_cost", 0) for s in services)
+    active_documents = len([d for d in documents if d.get("status") == "Active"])
+    expired_documents = len([d for d in documents if d.get("status") == "Expired"])
+    
+    return {
+        "vehicle": vehicle,
+        "documents": documents,
+        "challans": challans,
+        "services": services,
+        "accidents": accidents,
+        "summary": {
+            "total_documents": len(documents),
+            "active_documents": active_documents,
+            "expired_documents": expired_documents,
+            "total_challans": len(challans),
+            "unpaid_challans": unpaid_challans,
+            "total_challan_amount": total_challan_amount,
+            "total_services": len(services),
+            "total_service_cost": total_service_cost,
+            "total_accidents": len(accidents)
+        }
+    }
+
+@api_router.get("/vehicles/export/csv")
+async def export_vehicles_csv(current_user: dict = Depends(get_current_user)):
+    """Export all vehicles as CSV data"""
+    vehicles = await db.vehicles.find({"is_deleted": False}, {"_id": 0}).to_list(1000)
+    
+    # CSV headers
+    headers = [
+        "registration_number", "type", "brand", "model", "year", "chassis_number",
+        "engine_number", "color", "fuel_type", "average_kmpl", "tank_capacity_liters",
+        "seating_capacity", "owner_name", "file_status", "site_name",
+        "date_of_registration", "tax_upto", "remark"
+    ]
+    
+    # Build CSV data
+    csv_rows = [",".join(headers)]
+    for v in vehicles:
+        row = []
+        for h in headers:
+            val = v.get(h, "")
+            if val is None:
+                val = ""
+            elif isinstance(val, bool):
+                val = "Yes" if val else "No"
+            elif h == "date_of_registration" and val:
+                try:
+                    val = val[:10] if isinstance(val, str) else str(val)[:10]
+                except:
+                    val = str(val)
+            else:
+                val = str(val).replace(",", ";").replace("\n", " ")
+            row.append(val)
+        csv_rows.append(",".join(row))
+    
+    return {
+        "csv_data": "\n".join(csv_rows),
+        "filename": f"vehicles_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    }
+
+@api_router.get("/vehicles/template/csv")
+async def get_vehicle_import_template(current_user: dict = Depends(get_current_user)):
+    """Get CSV template for vehicle import with sample data"""
+    headers = [
+        "registration_number", "type", "brand", "model", "year", "chassis_number",
+        "engine_number", "color", "fuel_type", "average_kmpl", "tank_capacity_liters",
+        "seating_capacity", "owner_name", "file_status", "site_name",
+        "date_of_registration", "tax_upto", "remark"
+    ]
+    
+    # Sample data rows
+    sample_data = [
+        ["MH-02-AB-1234", "Car", "Tata", "Nexon", "2024", "MABXX12345678901", "ENG123456", "White", "Diesel", "18.5", "44", "5", "John Doe", "Yes", "Mumbai HQ", "2024-01-15", "2025-03-31", "Company vehicle"],
+        ["MH-12-CD-5678", "Truck", "Ashok Leyland", "Dost", "2023", "MABXX98765432101", "ENG654321", "Blue", "Diesel", "12.0", "90", "3", "Jane Smith", "No", "Pune Branch", "2023-06-20", "Tax valid till Dec 2025", "Delivery truck"],
+        ["DL-01-EF-9012", "Van", "Maruti", "Eeco", "2022", "MABXX11223344556", "ENG112233", "Silver", "Petrol", "15.0", "40", "7", "Raj Kumar", "Yes", "Delhi Office", "2022-08-10", "2024-12-31", "Staff transport"]
+    ]
+    
+    csv_rows = [",".join(headers)]
+    for row in sample_data:
+        csv_rows.append(",".join(row))
+    
+    return {
+        "csv_data": "\n".join(csv_rows),
+        "filename": "vehicle_import_template.csv",
+        "instructions": {
+            "type": "Car, Truck, Van, Bike, or Bus",
+            "fuel_type": "Petrol, Diesel, Electric, CNG, or Hybrid",
+            "file_status": "Yes or No",
+            "date_of_registration": "YYYY-MM-DD format",
+            "tax_upto": "Can be date (YYYY-MM-DD) or text description"
+        }
+    }
+
+@api_router.post("/vehicles/import/csv")
+async def import_vehicles_csv(data: dict, current_user: dict = Depends(get_current_user)):
+    """Import vehicles from CSV data"""
+    csv_data = data.get("csv_data", "")
+    if not csv_data:
+        raise HTTPException(status_code=400, detail="No CSV data provided")
+    
+    lines = csv_data.strip().split("\n")
+    if len(lines) < 2:
+        raise HTTPException(status_code=400, detail="CSV must have header row and at least one data row")
+    
+    headers = [h.strip().lower() for h in lines[0].split(",")]
+    
+    imported = 0
+    errors = []
+    
+    for i, line in enumerate(lines[1:], start=2):
+        try:
+            values = line.split(",")
+            if len(values) != len(headers):
+                errors.append(f"Row {i}: Column count mismatch")
+                continue
+            
+            row_data = dict(zip(headers, [v.strip() for v in values]))
+            
+            # Parse and validate
+            vehicle_id = str(uuid.uuid4())
+            vehicle_dict = {
+                "id": vehicle_id,
+                "registration_number": row_data.get("registration_number", ""),
+                "type": row_data.get("type", "Car"),
+                "brand": row_data.get("brand", ""),
+                "model": row_data.get("model", ""),
+                "year": int(row_data.get("year", 0)) if row_data.get("year") else None,
+                "chassis_number": row_data.get("chassis_number") or None,
+                "engine_number": row_data.get("engine_number") or None,
+                "color": row_data.get("color") or None,
+                "fuel_type": row_data.get("fuel_type", "Diesel"),
+                "average_kmpl": float(row_data.get("average_kmpl", 10)),
+                "tank_capacity_liters": float(row_data.get("tank_capacity_liters", 50)),
+                "seating_capacity": int(row_data.get("seating_capacity", 0)) if row_data.get("seating_capacity") else None,
+                "owner_name": row_data.get("owner_name") or None,
+                "file_status": row_data.get("file_status", "").lower() in ["yes", "true", "1"],
+                "site_name": row_data.get("site_name") or None,
+                "date_of_registration": row_data.get("date_of_registration") or None,
+                "tax_upto": row_data.get("tax_upto") or None,
+                "remark": row_data.get("remark") or None,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": current_user["user_id"],
+                "is_deleted": False
+            }
+            
+            if not vehicle_dict["registration_number"]:
+                errors.append(f"Row {i}: Registration number is required")
+                continue
+            
+            await db.vehicles.insert_one(vehicle_dict)
+            imported += 1
+            
+        except Exception as e:
+            errors.append(f"Row {i}: {str(e)}")
+    
+    return {
+        "imported": imported,
+        "errors": errors,
+        "total_processed": len(lines) - 1
+    }
 
 # ==================== VEHICLE DOCUMENT ROUTES (VERSIONED) ====================
 

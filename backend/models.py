@@ -303,6 +303,13 @@ class VehicleBase(BaseModel):
     fastag_id: Optional[str] = None
     gps_device_id: Optional[str] = None
     assigned_property_id: Optional[str] = None
+    # New fields
+    owner_name: Optional[str] = None
+    file_status: Optional[bool] = False  # Yes/No
+    site_name: Optional[str] = None
+    date_of_registration: Optional[datetime] = None
+    tax_upto: Optional[str] = None  # Can be text or date
+    remark: Optional[str] = None
 
 class VehicleCreate(VehicleBase):
     pass

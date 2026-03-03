@@ -53,12 +53,23 @@ Build a production-grade Enterprise Resource Planning (ERP) system to manage pro
 - [x] View bill details
 - [x] Delete water bill
 
-### 5. Fleet/Vehicle Management
-- [x] Create vehicle (registration, type, brand, model, chassis, engine, fuel specs)
-- [x] View vehicle details
-- [x] Edit vehicle
+### 5. Fleet/Vehicle Management (Enhanced)
+- [x] Create vehicle with extended fields:
+  - Registration Number, Type, Brand, Model, Year
+  - Chassis Number, Engine Number, Color
+  - Fuel Type, Average km/l, Tank Capacity
+  - **NEW:** Owner Name, File Status (Yes/No), Site Name
+  - **NEW:** DOR (Date of Registration), Tax Upto, Remark
+- [x] View vehicle - Comprehensive report showing:
+  - All vehicle details
+  - Summary cards (Documents, Challans, Services, Accidents)
+  - Tabbed view of all related records
+- [x] Edit vehicle with all fields
 - [x] Delete vehicle
-- [x] Track mileage and tank capacity
+- [x] **NEW:** Download PDF Report (full vehicle history)
+- [x] **NEW:** Export vehicles to CSV
+- [x] **NEW:** Import vehicles from CSV
+- [x] **NEW:** Download CSV template with sample data
 
 ### 6. Fleet Operations (Existing)
 - [x] Challans management
@@ -74,54 +85,16 @@ Build a production-grade Enterprise Resource Planning (ERP) system to manage pro
 
 ## API Endpoints
 
-### Authentication
-- POST `/api/auth/login` - User login
-- POST `/api/auth/register` - User registration
-
-### Properties
-- GET `/api/properties` - List all properties
-- GET `/api/properties/{id}` - Get property details
-- POST `/api/properties` - Create property
-- PUT `/api/properties/{id}` - Update property
-- DELETE `/api/properties/{id}` - Delete property
-
-### Property Taxes
-- GET `/api/property-taxes` - List all taxes
-- GET `/api/property-taxes/{id}` - Get tax details
-- POST `/api/property-taxes` - Create tax
-- PUT `/api/property-taxes/{id}` - Update tax
-- DELETE `/api/property-taxes/{id}` - Delete tax
-
-### Electricity Bills
-- GET `/api/electricity-bills` - List all bills
-- GET `/api/electricity-bills/{id}` - Get bill details
-- POST `/api/electricity-bills` - Create bill
-- DELETE `/api/electricity-bills/{id}` - Delete bill
-
-### Solar Meters
-- GET `/api/solar-meters` - List all records
-- GET `/api/solar-meters/{id}` - Get record details
-- POST `/api/solar-meters` - Create record
-- DELETE `/api/solar-meters/{id}` - Delete record
-
-### Gas Bills
-- GET `/api/gas-bills` - List all bills
-- GET `/api/gas-bills/{id}` - Get bill details
-- POST `/api/gas-bills` - Create bill
-- DELETE `/api/gas-bills/{id}` - Delete bill
-
-### Water Bills
-- GET `/api/water-bills` - List all bills
-- GET `/api/water-bills/{id}` - Get bill details
-- POST `/api/water-bills` - Create bill
-- DELETE `/api/water-bills/{id}` - Delete bill
-
-### Vehicles
+### Vehicle Endpoints (New/Updated)
 - GET `/api/vehicles` - List all vehicles
 - GET `/api/vehicles/{id}` - Get vehicle details
-- POST `/api/vehicles` - Create vehicle
-- PUT `/api/vehicles/{id}` - Update vehicle
+- POST `/api/vehicles` - Create vehicle (with new fields)
+- PUT `/api/vehicles/{id}` - Update vehicle (with new fields)
 - DELETE `/api/vehicles/{id}` - Delete vehicle
+- **NEW:** GET `/api/vehicles/{id}/full-report` - Comprehensive vehicle report
+- **NEW:** GET `/api/vehicles/export/csv` - Export all vehicles
+- **NEW:** GET `/api/vehicles/template/csv` - Download import template
+- **NEW:** POST `/api/vehicles/import/csv` - Import vehicles from CSV
 
 ## Completed Work (December 2025)
 
@@ -132,14 +105,25 @@ Build a production-grade Enterprise Resource Planning (ERP) system to manage pro
 - Dashboard with analytics
 
 ### Session 2 - CRUD Completion
-- Added full CRUD operations for Properties (view, edit, delete)
-- Added full CRUD for Property Taxes (view, edit, delete)
-- Added view/delete for Electricity Bills
-- Added view/delete for Solar Meters
-- Added view/delete for Gas Bills
-- Added view/delete for Water Bills
-- Added full CRUD for Fleet/Vehicles (view, edit, delete)
-- All backend endpoints tested and verified
+- Added full CRUD operations for Properties
+- Added full CRUD for Property Taxes
+- Added view/delete for all Utility Bills
+- Added full CRUD for Fleet/Vehicles
+
+### Session 3 - Vehicle Module Enhancement
+- Added new fields: Owner Name, File Status, Site Name, DOR, Tax Upto, Remark
+- Implemented comprehensive View dialog with:
+  - All vehicle information
+  - Summary statistics
+  - Tabbed view of Documents, Challans, Services, Accidents
+- Added PDF report download functionality
+- Implemented CSV export for vehicles
+- Implemented CSV import with template download
+- Added sample data in import template
+
+## Test Credentials
+- **Email:** admin@erp.com
+- **Password:** password123
 
 ## Upcoming Tasks (Prioritized Backlog)
 
@@ -159,21 +143,3 @@ Build a production-grade Enterprise Resource Planning (ERP) system to manage pro
 - Document versioning
 - Soft delete & audit logs
 - Multi-tenant architecture
-
-## Test Credentials
-- **Email:** admin@erp.com
-- **Password:** password123
-
-## Project Structure
-```
-/app/
-├── backend/
-│   ├── server.py      # FastAPI app with all routes
-│   ├── models.py      # Pydantic models
-│   └── requirements.txt
-└── frontend/
-    └── src/
-        ├── pages/     # React components for each module
-        ├── components/# Layout, UI components
-        └── utils/     # API utilities
-```
