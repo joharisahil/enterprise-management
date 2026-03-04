@@ -42,6 +42,214 @@ const initialFormData = {
   remark: ''
 };
 
+  const VehicleForm = ({ formData, setFormData, onSubmit, submitText }) => (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Registration Number *</Label>
+          <Input
+            required
+            data-testid="vehicle-reg-input"
+            value={formData.registration_number}
+            onChange={(e) => setFormData({ ...formData, registration_number: e.target.value })}
+            placeholder="MH-02-DN-4921"
+          />
+        </div>
+        <div>
+          <Label>Owner Name</Label>
+          <Input
+            value={formData.owner_name}
+            onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
+            placeholder="John Doe"
+          />
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <Label>Type *</Label>
+          <Select
+            value={formData.type}
+            onValueChange={(value) => setFormData({ ...formData, type: value })}
+          >
+            <SelectTrigger data-testid="vehicle-type-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {vehicleTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div>
+          <Label>Fuel Type *</Label>
+          <Select
+            value={formData.fuel_type}
+            onValueChange={(value) => setFormData({ ...formData, fuel_type: value })}
+          >
+            <SelectTrigger data-testid="vehicle-fuel-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {fuelTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Site Name</Label>
+          <Input
+            value={formData.site_name}
+            onChange={(e) => setFormData({ ...formData, site_name: e.target.value })}
+            placeholder="Mumbai HQ"
+          />
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-4 gap-4">
+        <div>
+          <Label>Brand *</Label>
+          <Input
+            required
+            data-testid="vehicle-brand-input"
+            value={formData.brand}
+            onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+            placeholder="Tata"
+          />
+        </div>
+        <div>
+          <Label>Model *</Label>
+          <Input
+            required
+            data-testid="vehicle-model-input"
+            value={formData.model}
+            onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+            placeholder="Ace"
+          />
+        </div>
+        <div>
+          <Label>Year</Label>
+          <Input
+            type="number"
+            value={formData.year}
+            onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+            placeholder="2024"
+            min="1900"
+            max="2100"
+          />
+        </div>
+        <div>
+          <Label>Color</Label>
+          <Input
+            value={formData.color}
+            onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+            placeholder="White"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Chassis Number</Label>
+          <Input
+            value={formData.chassis_number}
+            onChange={(e) => setFormData({ ...formData, chassis_number: e.target.value })}
+            placeholder="MABXXXXXXXXXX1234"
+          />
+        </div>
+        <div>
+          <Label>Engine Number</Label>
+          <Input
+            value={formData.engine_number}
+            onChange={(e) => setFormData({ ...formData, engine_number: e.target.value })}
+            placeholder="ENG123456"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <Label>DOR (Date of Registration)</Label>
+          <Input
+            type="date"
+            value={formData.date_of_registration}
+            onChange={(e) => setFormData({ ...formData, date_of_registration: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Tax Upto</Label>
+          <Input
+            value={formData.tax_upto}
+            onChange={(e) => setFormData({ ...formData, tax_upto: e.target.value })}
+            placeholder="2025-03-31 or Dec 2025"
+          />
+        </div>
+        <div>
+          <Label>Seating Capacity</Label>
+          <Input
+            type="number"
+            value={formData.seating_capacity}
+            onChange={(e) => setFormData({ ...formData, seating_capacity: e.target.value })}
+            placeholder="5"
+            min="1"
+          />
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <Label>Average (km/l) *</Label>
+          <Input
+            type="number"
+            step="0.1"
+            required
+            data-testid="vehicle-kmpl-input"
+            value={formData.average_kmpl}
+            onChange={(e) => setFormData({ ...formData, average_kmpl: e.target.value })}
+            placeholder="15"
+          />
+        </div>
+        <div>
+          <Label>Tank Capacity (L) *</Label>
+          <Input
+            type="number"
+            step="0.1"
+            required
+            data-testid="vehicle-tank-input"
+            value={formData.tank_capacity_liters}
+            onChange={(e) => setFormData({ ...formData, tank_capacity_liters: e.target.value })}
+            placeholder="50"
+          />
+        </div>
+        <div className="flex items-center gap-3 pt-6">
+          <Switch
+            checked={formData.file_status}
+            onCheckedChange={(checked) => setFormData({ ...formData, file_status: checked })}
+          />
+          <Label>File Status (Complete)</Label>
+        </div>
+      </div>
+
+      <div>
+        <Label>Remark</Label>
+        <Textarea
+          value={formData.remark}
+          onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+          placeholder="Any additional notes about this vehicle..."
+          rows={2}
+        />
+      </div>
+      
+      <Button type="submit" className="w-full bg-emerald-700 hover:bg-emerald-800" data-testid="submit-vehicle-button">
+        {submitText}
+      </Button>
+    </form>
+  );
+
 export const VehiclesPage = () => {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -400,214 +608,6 @@ export const VehiclesPage = () => {
     setSelectedVehicle(null);
   };
 
-  const VehicleForm = ({ onSubmit, submitText }) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Registration Number *</Label>
-          <Input
-            required
-            data-testid="vehicle-reg-input"
-            value={formData.registration_number}
-            onChange={(e) => setFormData({ ...formData, registration_number: e.target.value })}
-            placeholder="MH-02-DN-4921"
-          />
-        </div>
-        <div>
-          <Label>Owner Name</Label>
-          <Input
-            value={formData.owner_name}
-            onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
-            placeholder="John Doe"
-          />
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <Label>Type *</Label>
-          <Select
-            value={formData.type}
-            onValueChange={(value) => setFormData({ ...formData, type: value })}
-          >
-            <SelectTrigger data-testid="vehicle-type-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {vehicleTypes.map((type) => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div>
-          <Label>Fuel Type *</Label>
-          <Select
-            value={formData.fuel_type}
-            onValueChange={(value) => setFormData({ ...formData, fuel_type: value })}
-          >
-            <SelectTrigger data-testid="vehicle-fuel-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {fuelTypes.map((type) => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <Label>Site Name</Label>
-          <Input
-            value={formData.site_name}
-            onChange={(e) => setFormData({ ...formData, site_name: e.target.value })}
-            placeholder="Mumbai HQ"
-          />
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-4 gap-4">
-        <div>
-          <Label>Brand *</Label>
-          <Input
-            required
-            data-testid="vehicle-brand-input"
-            value={formData.brand}
-            onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-            placeholder="Tata"
-          />
-        </div>
-        <div>
-          <Label>Model *</Label>
-          <Input
-            required
-            data-testid="vehicle-model-input"
-            value={formData.model}
-            onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-            placeholder="Ace"
-          />
-        </div>
-        <div>
-          <Label>Year</Label>
-          <Input
-            type="number"
-            value={formData.year}
-            onChange={(e) => setFormData({ ...formData, year: e.target.value })}
-            placeholder="2024"
-            min="1900"
-            max="2100"
-          />
-        </div>
-        <div>
-          <Label>Color</Label>
-          <Input
-            value={formData.color}
-            onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-            placeholder="White"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Chassis Number</Label>
-          <Input
-            value={formData.chassis_number}
-            onChange={(e) => setFormData({ ...formData, chassis_number: e.target.value })}
-            placeholder="MABXXXXXXXXXX1234"
-          />
-        </div>
-        <div>
-          <Label>Engine Number</Label>
-          <Input
-            value={formData.engine_number}
-            onChange={(e) => setFormData({ ...formData, engine_number: e.target.value })}
-            placeholder="ENG123456"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <Label>DOR (Date of Registration)</Label>
-          <Input
-            type="date"
-            value={formData.date_of_registration}
-            onChange={(e) => setFormData({ ...formData, date_of_registration: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Tax Upto</Label>
-          <Input
-            value={formData.tax_upto}
-            onChange={(e) => setFormData({ ...formData, tax_upto: e.target.value })}
-            placeholder="2025-03-31 or Dec 2025"
-          />
-        </div>
-        <div>
-          <Label>Seating Capacity</Label>
-          <Input
-            type="number"
-            value={formData.seating_capacity}
-            onChange={(e) => setFormData({ ...formData, seating_capacity: e.target.value })}
-            placeholder="5"
-            min="1"
-          />
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <Label>Average (km/l) *</Label>
-          <Input
-            type="number"
-            step="0.1"
-            required
-            data-testid="vehicle-kmpl-input"
-            value={formData.average_kmpl}
-            onChange={(e) => setFormData({ ...formData, average_kmpl: e.target.value })}
-            placeholder="15"
-          />
-        </div>
-        <div>
-          <Label>Tank Capacity (L) *</Label>
-          <Input
-            type="number"
-            step="0.1"
-            required
-            data-testid="vehicle-tank-input"
-            value={formData.tank_capacity_liters}
-            onChange={(e) => setFormData({ ...formData, tank_capacity_liters: e.target.value })}
-            placeholder="50"
-          />
-        </div>
-        <div className="flex items-center gap-3 pt-6">
-          <Switch
-            checked={formData.file_status}
-            onCheckedChange={(checked) => setFormData({ ...formData, file_status: checked })}
-          />
-          <Label>File Status (Complete)</Label>
-        </div>
-      </div>
-
-      <div>
-        <Label>Remark</Label>
-        <Textarea
-          value={formData.remark}
-          onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
-          placeholder="Any additional notes about this vehicle..."
-          rows={2}
-        />
-      </div>
-      
-      <Button type="submit" className="w-full bg-emerald-700 hover:bg-emerald-800" data-testid="submit-vehicle-button">
-        {submitText}
-      </Button>
-    </form>
-  );
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -650,7 +650,12 @@ export const VehiclesPage = () => {
               <DialogHeader>
                 <DialogTitle>Add New Vehicle</DialogTitle>
               </DialogHeader>
-              <VehicleForm onSubmit={handleSubmit} submitText="Add Vehicle" />
+              <VehicleForm
+                formData={formData}
+                setFormData={setFormData}
+                onSubmit={handleSubmit}
+                submitText="Add Vehicle"
+              />
             </DialogContent>
           </Dialog>
         </div>
@@ -662,7 +667,12 @@ export const VehiclesPage = () => {
           <DialogHeader>
             <DialogTitle>Edit Vehicle</DialogTitle>
           </DialogHeader>
-          <VehicleForm onSubmit={handleUpdate} submitText="Update Vehicle" />
+          <VehicleForm
+            formData={formData}
+            setFormData={setFormData}
+            onSubmit={handleUpdate}
+            submitText="Update Vehicle"
+          />
         </DialogContent>
       </Dialog>
 
