@@ -21,6 +21,8 @@ export const DocumentsPage = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
   const [selectedDocHistory, setSelectedDocHistory] = useState(null);
   const [formData, setFormData] = useState({
     vehicle_id: '',
@@ -34,6 +36,7 @@ export const DocumentsPage = () => {
     coverage: '',
     status: 'Active'
   });
+  const [dateValidationError, setDateValidationError] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -46,7 +49,7 @@ export const DocumentsPage = () => {
         api.get('/vehicles'),
         api.get(`/vehicle-documents${filter}`)
       ]);
-      
+
       setVehicles(vehiclesRes.data.data);
       setDocuments(docsRes.data.data);
     } catch (error) {
@@ -57,17 +60,177 @@ export const DocumentsPage = () => {
     }
   };
 
+  const validateDates = () => {
+    if (!formData.issue_date || !formData.expiry_date) {
+      setDateValidationError('');
+      return true;
+    }
+
+    const issue = new Date(formData.issue_date);
+    const expiry = new Date(formData.expiry_date);
+
+    const diffMonths =
+      (expiry.getFullYear() - issue.getFullYear()) * 12 +
+      (expiry.getMonth() - issue.getMonth());
+
+    let valid = true;
+    let message = '';
+
+    switch (formData.document_type) {
+      case 'Insurance':
+        if (diffMonths !== 12) {
+          valid = false;
+          message = 'Insurance validity should be exactly 1 year.';
+        }
+        break;
+
+      case 'PUC':
+        if (diffMonths !== 6) {
+          valid = false;
+          message = 'PUC (Pollution) certificate is usually valid for 6 months.';
+        }
+        break;
+
+      case 'Fitness':
+        if (diffMonths !== 12) {
+          valid = false;
+          message = 'Fitness certificate is usually valid for 1 year.';
+        }
+        break;
+
+      case 'Permit':
+        if (diffMonths !== 60) {
+          valid = false;
+          message = 'Permit validity is usually around 5 years.';
+        }
+        break;
+
+      case 'RC':
+        if (diffMonths !== 180) {
+          valid = false;
+          message = 'RC validity is usually around 15 years.';
+        }
+        break;
+
+      default:
+        valid = true;
+    }
+
+    setDateValidationError(valid ? '' : message);
+    return valid;
+  };
+
+  const MAX_FILE_SIZE = 3 * 1024 * 1024;
+
+  const handleDocumentUpload = async (e) => {
+
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("File too large. Maximum allowed size is 3MB");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+
+    try {
+
+      setUploading(true);
+
+      const res = await api.post("/upload-document", form, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+
+      const { url } = res.data;
+
+      setUploadedFile(url);
+
+      setFormData(prev => ({
+        ...prev,
+        file_url: url
+      }));
+
+      toast.success("Document uploaded successfully");
+
+    } catch (err) {
+
+      toast.error("Upload failed");
+
+    } finally {
+
+      setUploading(false);
+
+    }
+
+  };
+
+  const downloadFile = async (url, name) => {
+
+    try {
+
+      const response = await fetch(url);
+      const blob = await response.blob();
+
+      let extension = "jpg";
+
+      const contentType = response.headers.get("content-type");
+
+      if (
+        contentType?.includes("pdf") ||
+        url.toLowerCase().includes(".pdf") ||
+        url.includes("/raw/")
+      ) {
+        extension = "pdf";
+      }
+
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+
+      link.href = blobUrl;
+
+      link.download = `${name}.${extension}`;
+
+      document.body.appendChild(link);
+
+      link.click();
+
+      link.remove();
+
+      window.URL.revokeObjectURL(blobUrl);
+
+    } catch (error) {
+
+      toast.error("Download failed");
+
+    }
+
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
+    if (uploading) {
+      toast.error("Please wait until the file upload finishes");
+      return;
+    }
+
+    if (!uploadedFile) {
+      toast.error("Please upload a document first");
+      return;
+    }
+
     try {
       await api.post('/vehicle-documents', {
         ...formData,
+        file_url: uploadedFile,
         issue_date: new Date(formData.issue_date).toISOString(),
         expiry_date: new Date(formData.expiry_date).toISOString(),
         premium: formData.premium ? parseFloat(formData.premium) : null
       });
-      
+
       toast.success('Document added successfully (version tracked)');
       setDialogOpen(false);
       fetchData();
@@ -119,7 +282,7 @@ export const DocumentsPage = () => {
           </h1>
           <p className="text-slate-600">Versioned document management with expiry tracking</p>
         </div>
-        
+
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-blue-800 hover:bg-blue-900">
@@ -218,9 +381,18 @@ export const DocumentsPage = () => {
                     type="date"
                     required
                     value={formData.expiry_date}
-                    onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+                    onChange={(e) => {
+                      const updated = { ...formData, expiry_date: e.target.value };
+                      setFormData(updated);
+                      setTimeout(validateDates, 0);
+                    }}
                   />
                 </div>
+                {dateValidationError && (
+                  <p className="text-red-600 text-sm mt-1">
+                    {dateValidationError}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -242,9 +414,46 @@ export const DocumentsPage = () => {
                   />
                 </div>
               </div>
+              <div>
+                <Label>Upload Document</Label>
 
-              <Button type="submit" className="w-full bg-blue-800 hover:bg-blue-900">
-                Add Document (Auto-Versioned)
+                <Input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={handleDocumentUpload}
+                  disabled={uploading}
+                />
+
+                <p className="text-xs text-gray-500 mt-1">
+                  Max file size: 3MB
+                </p>
+
+                {uploading && (
+                  <p className="text-sm text-blue-600 mt-1">
+                    Uploading file...
+                  </p>
+                )}
+
+                {uploadedFile && (
+                  uploadedFile.includes(".pdf") || uploadedFile.includes("/raw/") ? (
+                    <div className="mt-3 border rounded p-3 w-40">
+                      📄 Uploaded PDF
+                    </div>
+                  ) : (
+                    <img
+                      src={uploadedFile}
+                      className="mt-3 w-40 rounded border"
+                    />
+                  )
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                disabled={uploading || !uploadedFile}
+                className="w-full bg-blue-800 hover:bg-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? "Uploading Document..." : "Add Document (Auto-Versioned)"}
               </Button>
             </form>
           </DialogContent>
@@ -279,10 +488,9 @@ export const DocumentsPage = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <Card className={`border-slate-200 shadow-sm ${
-                expired ? 'border-l-4 border-l-rose-500' : 
+              <Card className={`border-slate-200 shadow-sm ${expired ? 'border-l-4 border-l-rose-500' :
                 expiringSoon ? 'border-l-4 border-l-amber-500' : ''
-              }`}>
+                }`}>
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
@@ -310,9 +518,8 @@ export const DocumentsPage = () => {
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Expiry Date</p>
-                          <p className={`text-sm font-semibold ${
-                            expired ? 'text-rose-600' : expiringSoon ? 'text-amber-600' : 'text-slate-900'
-                          }`}>
+                          <p className={`text-sm font-semibold ${expired ? 'text-rose-600' : expiringSoon ? 'text-amber-600' : 'text-slate-900'
+                            }`}>
                             {new Date(doc.expiry_date).toLocaleDateString()}
                           </p>
                         </div>
@@ -339,6 +546,58 @@ export const DocumentsPage = () => {
                         <Badge className={doc.is_current ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}>
                           {doc.is_current ? 'Current' : 'Archived'}
                         </Badge>
+                        {doc.file_url && (
+                          <div className="flex flex-col gap-2 mt-3">
+
+                            {doc.file_url.includes(".pdf") || doc.file_url.includes("/raw/") ? (
+                              <div className="flex items-center gap-3 bg-slate-50 border rounded-lg px-3 py-2">
+
+                                <FileText size={18} className="text-blue-700" />
+
+                                <span className="text-sm font-medium text-slate-700 flex-1">
+                                  Document File
+                                </span>
+
+                                <Button
+                                  size="sm"
+                                  onClick={() => downloadFile(doc.file_url, doc.policy_number)}
+                                >
+                                  Download
+                                </Button>
+
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-3">
+
+                                <img
+                                  src={doc.file_url}
+                                  className="w-20 rounded border"
+                                />
+
+                                <div className="flex gap-2">
+
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(doc.file_url)}
+                                  >
+                                    View
+                                  </Button>
+
+                                  <Button
+                                    size="sm"
+                                    onClick={() => downloadFile(doc.file_url, doc.policy_number)}
+                                  >
+                                    Download
+                                  </Button>
+
+                                </div>
+
+                              </div>
+                            )}
+
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -416,6 +675,26 @@ export const DocumentsPage = () => {
                         <div>
                           <p className="text-xs text-slate-500">Coverage</p>
                           <p>{version.coverage}</p>
+                        </div>
+                      )}
+                      {version.file_url && (
+                        <div className="mt-3 flex gap-2">
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(version.file_url)}
+                          >
+                            View Document
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            onClick={() => downloadFile(version.file_url, version.policy_number)}
+                          >
+                            Download
+                          </Button>
+
                         </div>
                       )}
                     </div>

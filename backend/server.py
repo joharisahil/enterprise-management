@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from contextlib import asynccontextmanager
@@ -15,6 +15,8 @@ from models import *
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, check_role
 from telematics import get_telematics_provider, TelematicsService
 from automation import AutomationService
+import cloudinary
+import cloudinary.uploader
 
 # Helper function to convert datetime objects to ISO strings
 def serialize_doc(doc):
@@ -28,6 +30,16 @@ def serialize_doc(doc):
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True
+)
+
+
+MAX_FILE_SIZE = 3 * 1024 * 1024  # 5MB
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -761,7 +773,43 @@ async def get_document_history(document_id: str, current_user: dict = Depends(ge
             break
     
     return {"vehicle_id": doc["vehicle_id"], "document_type": doc["document_type"], "history": history}
+   
+@api_router.post("/upload-document")
+async def upload_document(file: UploadFile = File(...)):
 
+    try:
+
+        if file.content_type.startswith("image"):
+
+            result = cloudinary.uploader.upload(
+                file.file,
+                folder="vehicle-documents",
+                resource_type="image",
+                transformation=[
+                    {
+                        "quality": "auto",
+                        "fetch_format": "auto",
+                        "width": 1200,
+                        "crop": "limit"
+                    }
+                ]
+            )
+
+        else:
+
+            result = cloudinary.uploader.upload(
+                file.file,
+                folder="vehicle-documents",
+                resource_type="raw"
+            )
+
+        return {
+            "url": result["secure_url"],
+            "public_id": result["public_id"]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))   
 # ==================== CHALLAN ROUTES ====================
 
 @api_router.post("/challans")
@@ -782,7 +830,7 @@ async def create_challan(challan_data: ChallanCreate, current_user: dict = Depen
     if challan_data.driver_id:
         await update_driver_risk_score(challan_data.driver_id)
     
-    return challan_dict
+    return serialize_doc(challan_dict)
 
 @api_router.get("/challans")
 async def get_challans(
@@ -819,6 +867,79 @@ async def get_challans(
         }
     }
 
+@api_router.put("/challans/{challan_id}/pay")
+async def pay_challan(challan_id: str, payment_date: datetime, current_user: dict = Depends(get_current_user)):
+    
+    result = await db.challans.update_one(
+        {"id": challan_id, "is_deleted": False},
+        {
+            "$set": {
+                "status": "Paid",
+                "payment_date": payment_date.isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Challan not found")
+
+    return {"message": "Challan marked as paid"}
+
+@api_router.delete("/challans/{challan_id}")
+async def delete_challan(challan_id: str, current_user: dict = Depends(get_current_user)):
+
+    result = await db.challans.update_one(
+        {"id": challan_id},
+        {
+            "$set": {
+                "is_deleted": True,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Challan not found")
+
+    return {"message": "Challan deleted"}
+
+@api_router.post("/upload-challan")
+async def upload_challan(file: UploadFile = File(...)):
+
+    try:
+
+        if file.content_type.startswith("image"):
+
+            result = cloudinary.uploader.upload(
+                file.file,
+                folder="challans",
+                resource_type="image",
+                transformation=[
+                    {
+                        "quality": "auto",
+                        "fetch_format": "auto",
+                        "width": 1000,
+                        "crop": "limit"
+                    }
+                ]
+            )
+
+        else:
+
+            result = cloudinary.uploader.upload(
+                file.file,
+                folder="challans",
+                resource_type="raw"
+            )
+
+        return {
+            "url": result["secure_url"],
+            "public_id": result["public_id"]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 # ==================== SERVICE RECORD ROUTES ====================
 
 @api_router.post("/service-records")
@@ -1073,7 +1194,7 @@ async def create_accident(accident_data: AccidentCreate, current_user: dict = De
     if accident_data.driver_id:
         await update_driver_risk_score(accident_data.driver_id)
     
-    return accident_dict
+    return serialize_doc(accident_dict)
 
 @api_router.get("/accidents")
 async def get_accidents(

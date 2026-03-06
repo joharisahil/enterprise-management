@@ -11,6 +11,17 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
 
 export const ChallansPage = () => {
   const [vehicles, setVehicles] = useState([]);
@@ -19,6 +30,8 @@ export const ChallansPage = () => {
   const [selectedVehicle, setSelectedVehicle] = useState('all');
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState(null);
   const [formData, setFormData] = useState({
     vehicle_id: '',
     driver_id: null,
@@ -44,7 +57,7 @@ export const ChallansPage = () => {
         api.get('/drivers'),
         api.get(`/challans${filter}`)
       ]);
-      
+
       setVehicles(vehiclesRes.data.data);
       setDrivers(driversRes.data.data);
       setChallans(challansRes.data.data);
@@ -55,9 +68,89 @@ export const ChallansPage = () => {
     }
   };
 
+  const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
+
+  const handleImageUpload = async (e) => {
+
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("File too large. Maximum allowed size is 3MB");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+
+    try {
+
+      setUploading(true);
+
+      const res = await api.post("/upload-challan", form, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+
+      const { url } = res.data;
+
+      setUploadedImage(url);
+
+      setFormData(prev => ({
+        ...prev,
+        proof_url: url
+      }));
+
+      toast.success("Challan image uploaded successfully");
+
+    } catch (err) {
+
+      toast.error("Upload failed");
+
+    } finally {
+
+      setUploading(false);
+
+    }
+
+  };
+
+  const markAsPaid = async (challanId, paymentDate) => {
+    try {
+
+      const isoDate = new Date(paymentDate).toISOString();
+
+      await api.put(`/challans/${challanId}/pay?payment_date=${isoDate}`);
+
+      toast.success("Challan marked as paid");
+
+      fetchData();
+
+    } catch (error) {
+      toast.error("Failed to update challan");
+    }
+  };
+
+  const deleteChallan = async (challanId) => {
+
+    try {
+
+      await api.delete(`/challans/${challanId}`);
+
+      toast.success("Challan deleted successfully");
+
+      fetchData();
+
+    } catch (error) {
+
+      toast.error("Failed to delete challan");
+
+    }
+
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     try {
       await api.post('/challans', {
         ...formData,
@@ -66,7 +159,7 @@ export const ChallansPage = () => {
         date: new Date(formData.date).toISOString(),
         payment_date: formData.payment_date ? new Date(formData.payment_date).toISOString() : null
       });
-      
+
       toast.success('Challan record created successfully');
       setDialogOpen(false);
       setFormData({
@@ -121,7 +214,7 @@ export const ChallansPage = () => {
           </h1>
           <p className="text-slate-600">Track vehicle violations and fines</p>
         </div>
-        
+
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-rose-600 hover:bg-rose-700" data-testid="add-challan-button">
@@ -259,9 +352,49 @@ export const ChallansPage = () => {
                   />
                 </div>
               )}
+              <div>
+                <Label>Upload Challan Image</Label>
+                <Input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={handleImageUpload}
+                  disabled={uploading}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Max file size: 3MB • Images auto-compressed
+                </p>
+                {uploading && (
+                  <p className="text-sm text-blue-600 mt-1">
+                    Uploading & reading OCR...
+                  </p>
+                )}
 
-              <Button type="submit" className="w-full bg-rose-600 hover:bg-rose-700">
-                Create Challan
+                {uploadedImage && (
+                  uploadedImage.includes(".pdf") || uploadedImage.includes("/raw/") ? (
+                    <a
+                      href={uploadedImage}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-block text-blue-600 underline"
+                    >
+                      {/* View Uploaded PDF */}
+                    </a>
+                  ) : (
+                    <img
+                      src={uploadedImage}
+                      alt="Uploaded Challan"
+                      className="mt-3 rounded-lg border w-64"
+                    />
+                  )
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                disabled={uploading}
+                className="w-full bg-rose-600 hover:bg-rose-700 disabled:opacity-50"
+              >
+                {uploading ? "Uploading..." : "Create Challan"}
               </Button>
             </form>
           </DialogContent>
@@ -333,19 +466,22 @@ export const ChallansPage = () => {
 
         <TabsContent value="all" className="space-y-4">
           {challans.map((challan) => (
-            <ChallanCard key={challan.id} challan={challan} getVehicleName={getVehicleName} getDriverName={getDriverName} />
+            <ChallanCard key={challan.id} challan={challan} getVehicleName={getVehicleName} getDriverName={getDriverName} markAsPaid={markAsPaid}
+              deleteChallan={deleteChallan} />
           ))}
         </TabsContent>
 
         <TabsContent value="unpaid" className="space-y-4">
           {unpaidChallans.map((challan) => (
-            <ChallanCard key={challan.id} challan={challan} getVehicleName={getVehicleName} getDriverName={getDriverName} />
+            <ChallanCard key={challan.id} challan={challan} getVehicleName={getVehicleName} getDriverName={getDriverName} markAsPaid={markAsPaid}
+              deleteChallan={deleteChallan} />
           ))}
         </TabsContent>
 
         <TabsContent value="paid" className="space-y-4">
           {paidChallans.map((challan) => (
-            <ChallanCard key={challan.id} challan={challan} getVehicleName={getVehicleName} getDriverName={getDriverName} />
+            <ChallanCard key={challan.id} challan={challan} getVehicleName={getVehicleName} getDriverName={getDriverName} markAsPaid={markAsPaid}
+              deleteChallan={deleteChallan} />
           ))}
         </TabsContent>
       </Tabs>
@@ -361,7 +497,54 @@ export const ChallansPage = () => {
   );
 };
 
-const ChallanCard = ({ challan, getVehicleName, getDriverName }) => {
+const ChallanCard = ({ challan, getVehicleName, getDriverName, markAsPaid, deleteChallan }) => {
+
+  const downloadFile = async (url, challanNumber) => {
+    try {
+
+      const response = await fetch(url);
+
+      const blob = await response.blob();
+
+      let extension = "jpg";
+
+      // detect using content-type
+      const contentType = response.headers.get("content-type");
+
+      if (
+        contentType?.includes("pdf") ||
+        url.toLowerCase().includes(".pdf") ||
+        url.includes("/raw/")
+      ) {
+        extension = "pdf";
+      }
+
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+
+      link.href = blobUrl;
+
+      link.download = `challan-${challanNumber}.${extension}`;
+
+      document.body.appendChild(link);
+
+      link.click();
+
+      link.remove();
+
+      window.URL.revokeObjectURL(blobUrl);
+
+    } catch (error) {
+      console.error("Download failed", error);
+      toast.error("Download failed");
+    }
+  };
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
+
+  const [paymentDate, setPaymentDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -405,6 +588,124 @@ const ChallanCard = ({ challan, getVehicleName, getDriverName }) => {
               </div>
             )}
           </div>
+          {challan.proof_url && (
+            challan.proof_url.includes(".pdf") || challan.proof_url.includes("/raw/") ? (
+              <div
+                onClick={() => downloadFile(challan.proof_url, challan.challan_number)}
+                className="mt-3 w-40 border rounded p-3 cursor-pointer hover:bg-gray-50"
+              >
+                📄 Challan PDF
+                <p className="text-xs text-blue-600">Click to download</p>
+              </div>
+            ) : (
+              <img
+                src={challan.proof_url}
+                onClick={() => downloadFile(challan.proof_url, challan.challan_number)}
+                className="mt-3 w-40 rounded border cursor-pointer hover:opacity-80"
+                title="Click to download challan"
+              />
+            )
+          )}
+          <div className="flex gap-3 mt-4">
+
+            {challan.status === "Unpaid" && (
+
+              <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+
+                <DialogTrigger asChild>
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+                    Mark Paid
+                  </Button>
+                </DialogTrigger>
+
+                <DialogContent>
+
+                  <DialogHeader>
+                    <DialogTitle>Mark Challan as Paid</DialogTitle>
+                  </DialogHeader>
+
+                  <div className="space-y-3">
+
+                    <Label>Payment Date</Label>
+
+                    <Input
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                    />
+
+                    <Button
+                      className="w-full bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => {
+
+                        if (!paymentDate) {
+                          toast.error("Please select payment date");
+                          return;
+                        }
+
+                        markAsPaid(challan.id, paymentDate);
+
+                        setPayDialogOpen(false);
+
+                      }}
+                    >
+                      Confirm Payment
+                    </Button>
+
+                  </div>
+
+                </DialogContent>
+
+              </Dialog>
+
+            )}
+
+            {/* DELETE CONFIRMATION */}
+
+            <AlertDialog>
+
+              <AlertDialogTrigger asChild>
+
+                <Button size="sm" variant="destructive">
+                  Delete
+                </Button>
+
+              </AlertDialogTrigger>
+
+              <AlertDialogContent>
+
+                <AlertDialogHeader>
+
+                  <AlertDialogTitle>
+                    Delete Challan?
+                  </AlertDialogTitle>
+
+                  <AlertDialogDescription>
+                    This action cannot be undone. The challan record will be permanently removed.
+                  </AlertDialogDescription>
+
+                </AlertDialogHeader>
+
+                <AlertDialogFooter>
+
+                  <AlertDialogCancel>
+                    Cancel
+                  </AlertDialogCancel>
+
+                  <AlertDialogAction
+                    onClick={() => deleteChallan(challan.id)}
+                  >
+                    Delete
+                  </AlertDialogAction>
+
+                </AlertDialogFooter>
+
+              </AlertDialogContent>
+
+            </AlertDialog>
+
+          </div>
+
         </CardContent>
       </Card>
     </motion.div>

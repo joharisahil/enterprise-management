@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import api from '../utils/api';
 import { toast } from 'sonner';
-import { 
-  Truck, Plus, Edit, Trash2, Fuel, Gauge, Eye, Download, Upload, 
+import {
+  Truck, Plus, Edit, Trash2, Fuel, Gauge, Eye, Download, Upload,
   FileText, AlertTriangle, Wrench, AlertCircle, Calendar, User, MapPin,
-  CheckCircle, XCircle, X
+  CheckCircle, XCircle, X, EyeOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 
-const vehicleTypes = ['Car', 'Truck', 'Van', 'Bike', 'Bus'];
+const vehicleTypes = ['Car', 'Truck', 'Van', 'Bike', 'Bus', 'JCB', 'Tractor', 'Crane'];
 const fuelTypes = ['Petrol', 'Diesel', 'Electric', 'CNG', 'Hybrid'];
 
 const initialFormData = {
@@ -39,216 +39,307 @@ const initialFormData = {
   site_name: '',
   date_of_registration: '',
   tax_upto: '',
-  remark: ''
+  remark: '',
+  fastag_company: '',
+  fastag_balance: '',
+  fastag_user_id: '',
+  fastag_password: '',
+  fastag_sold: false,
+  fastag_sold_date: ''
+};
+const FastagPasswordInput = ({ formData, setFormData }) => {
+  const [showPassword, setShowPassword] = useState(false);
+
+  return (
+    <div className="relative">
+      <Input
+        type={showPassword ? "text" : "password"}
+        value={formData.fastag_password}
+        onChange={(e) =>
+          setFormData({ ...formData, fastag_password: e.target.value })
+        }
+        placeholder="FASTag Password"
+      />
+
+      <button
+        type="button"
+        onClick={() => setShowPassword(!showPassword)}
+        className="absolute right-2 top-2 text-slate-500 hover:text-slate-700"
+      >
+        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+      </button>
+    </div>
+  );
 };
 
-  const VehicleForm = ({ formData, setFormData, onSubmit, submitText }) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Registration Number *</Label>
-          <Input
-            required
-            data-testid="vehicle-reg-input"
-            value={formData.registration_number}
-            onChange={(e) => setFormData({ ...formData, registration_number: e.target.value })}
-            placeholder="MH-02-DN-4921"
-          />
-        </div>
-        <div>
-          <Label>Owner Name</Label>
-          <Input
-            value={formData.owner_name}
-            onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
-            placeholder="John Doe"
-          />
-        </div>
+const VehicleForm = ({ formData, setFormData, onSubmit, submitText }) => (
+  <form onSubmit={onSubmit} className="space-y-4">
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <Label>Registration Number *</Label>
+        <Input
+          required
+          data-testid="vehicle-reg-input"
+          value={formData.registration_number}
+          onChange={(e) => setFormData({ ...formData, registration_number: e.target.value })}
+          placeholder="MH-02-DN-4921"
+        />
       </div>
-      
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <Label>Type *</Label>
-          <Select
-            value={formData.type}
-            onValueChange={(value) => setFormData({ ...formData, type: value })}
-          >
-            <SelectTrigger data-testid="vehicle-type-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {vehicleTypes.map((type) => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div>
-          <Label>Fuel Type *</Label>
-          <Select
-            value={formData.fuel_type}
-            onValueChange={(value) => setFormData({ ...formData, fuel_type: value })}
-          >
-            <SelectTrigger data-testid="vehicle-fuel-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {fuelTypes.map((type) => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div>
+        <Label>Owner Name</Label>
+        <Input
+          value={formData.owner_name}
+          onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
+          placeholder="John Doe"
+        />
+      </div>
+    </div>
 
-        <div>
-          <Label>Site Name</Label>
-          <Input
-            value={formData.site_name}
-            onChange={(e) => setFormData({ ...formData, site_name: e.target.value })}
-            placeholder="Mumbai HQ"
-          />
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-4 gap-4">
-        <div>
-          <Label>Brand *</Label>
-          <Input
-            required
-            data-testid="vehicle-brand-input"
-            value={formData.brand}
-            onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-            placeholder="Tata"
-          />
-        </div>
-        <div>
-          <Label>Model *</Label>
-          <Input
-            required
-            data-testid="vehicle-model-input"
-            value={formData.model}
-            onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-            placeholder="Ace"
-          />
-        </div>
-        <div>
-          <Label>Year</Label>
-          <Input
-            type="number"
-            value={formData.year}
-            onChange={(e) => setFormData({ ...formData, year: e.target.value })}
-            placeholder="2024"
-            min="1900"
-            max="2100"
-          />
-        </div>
-        <div>
-          <Label>Color</Label>
-          <Input
-            value={formData.color}
-            onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-            placeholder="White"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Chassis Number</Label>
-          <Input
-            value={formData.chassis_number}
-            onChange={(e) => setFormData({ ...formData, chassis_number: e.target.value })}
-            placeholder="MABXXXXXXXXXX1234"
-          />
-        </div>
-        <div>
-          <Label>Engine Number</Label>
-          <Input
-            value={formData.engine_number}
-            onChange={(e) => setFormData({ ...formData, engine_number: e.target.value })}
-            placeholder="ENG123456"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <Label>DOR (Date of Registration)</Label>
-          <Input
-            type="date"
-            value={formData.date_of_registration}
-            onChange={(e) => setFormData({ ...formData, date_of_registration: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Tax Upto</Label>
-          <Input
-            value={formData.tax_upto}
-            onChange={(e) => setFormData({ ...formData, tax_upto: e.target.value })}
-            placeholder="2025-03-31 or Dec 2025"
-          />
-        </div>
-        <div>
-          <Label>Seating Capacity</Label>
-          <Input
-            type="number"
-            value={formData.seating_capacity}
-            onChange={(e) => setFormData({ ...formData, seating_capacity: e.target.value })}
-            placeholder="5"
-            min="1"
-          />
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <Label>Average (km/l) *</Label>
-          <Input
-            type="number"
-            step="0.1"
-            required
-            data-testid="vehicle-kmpl-input"
-            value={formData.average_kmpl}
-            onChange={(e) => setFormData({ ...formData, average_kmpl: e.target.value })}
-            placeholder="15"
-          />
-        </div>
-        <div>
-          <Label>Tank Capacity (L) *</Label>
-          <Input
-            type="number"
-            step="0.1"
-            required
-            data-testid="vehicle-tank-input"
-            value={formData.tank_capacity_liters}
-            onChange={(e) => setFormData({ ...formData, tank_capacity_liters: e.target.value })}
-            placeholder="50"
-          />
-        </div>
-        <div className="flex items-center gap-3 pt-6">
-          <Switch
-            checked={formData.file_status}
-            onCheckedChange={(checked) => setFormData({ ...formData, file_status: checked })}
-          />
-          <Label>File Status (Complete)</Label>
-        </div>
+    <div className="grid grid-cols-3 gap-4">
+      <div>
+        <Label>Type *</Label>
+        <Select
+          value={formData.type}
+          onValueChange={(value) => setFormData({ ...formData, type: value })}
+        >
+          <SelectTrigger data-testid="vehicle-type-select">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {vehicleTypes.map((type) => (
+              <SelectItem key={type} value={type}>{type}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div>
-        <Label>Remark</Label>
-        <Textarea
-          value={formData.remark}
-          onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
-          placeholder="Any additional notes about this vehicle..."
-          rows={2}
+        <Label>Fuel Type *</Label>
+        <Select
+          value={formData.fuel_type}
+          onValueChange={(value) => setFormData({ ...formData, fuel_type: value })}
+        >
+          <SelectTrigger data-testid="vehicle-fuel-select">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {fuelTypes.map((type) => (
+              <SelectItem key={type} value={type}>{type}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label>Site Name</Label>
+        <Input
+          value={formData.site_name}
+          onChange={(e) => setFormData({ ...formData, site_name: e.target.value })}
+          placeholder="Mumbai HQ"
         />
       </div>
-      
-      <Button type="submit" className="w-full bg-emerald-700 hover:bg-emerald-800" data-testid="submit-vehicle-button">
-        {submitText}
-      </Button>
-    </form>
-  );
+    </div>
+
+    <div className="grid grid-cols-4 gap-4">
+      <div>
+        <Label>Brand *</Label>
+        <Input
+          required
+          data-testid="vehicle-brand-input"
+          value={formData.brand}
+          onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+          placeholder="Tata"
+        />
+      </div>
+      <div>
+        <Label>Model *</Label>
+        <Input
+          required
+          data-testid="vehicle-model-input"
+          value={formData.model}
+          onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+          placeholder="Ace"
+        />
+      </div>
+      <div>
+        <Label>Year</Label>
+        <Input
+          type="number"
+          value={formData.year}
+          onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+          placeholder="2024"
+          min="1900"
+          max="2100"
+        />
+      </div>
+      <div>
+        <Label>Color</Label>
+        <Input
+          value={formData.color}
+          onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+          placeholder="White"
+        />
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <Label>Chassis Number</Label>
+        <Input
+          value={formData.chassis_number}
+          onChange={(e) => setFormData({ ...formData, chassis_number: e.target.value })}
+          placeholder="MABXXXXXXXXXX1234"
+        />
+      </div>
+      <div>
+        <Label>Engine Number</Label>
+        <Input
+          value={formData.engine_number}
+          onChange={(e) => setFormData({ ...formData, engine_number: e.target.value })}
+          placeholder="ENG123456"
+        />
+      </div>
+    </div>
+
+    <div className="grid grid-cols-3 gap-4">
+      <div>
+        <Label>DOR (Date of Registration)</Label>
+        <Input
+          type="date"
+          value={formData.date_of_registration}
+          onChange={(e) => setFormData({ ...formData, date_of_registration: e.target.value })}
+        />
+      </div>
+      <div>
+        <Label>Tax Upto</Label>
+        <Input
+          value={formData.tax_upto}
+          onChange={(e) => setFormData({ ...formData, tax_upto: e.target.value })}
+          placeholder="2025-03-31 or Dec 2025"
+        />
+      </div>
+      <div>
+        <Label>Seating Capacity</Label>
+        <Input
+          type="number"
+          value={formData.seating_capacity}
+          onChange={(e) => setFormData({ ...formData, seating_capacity: e.target.value })}
+          placeholder="5"
+          min="1"
+        />
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <Label>Average (km/l) *</Label>
+        <Input
+          type="number"
+          step="0.1"
+          required
+          value={formData.average_kmpl}
+          onChange={(e) => setFormData({ ...formData, average_kmpl: e.target.value })}
+          placeholder="15"
+        />
+      </div>
+
+      <div>
+        <Label>Tank Capacity (L) *</Label>
+        <Input
+          type="number"
+          step="0.1"
+          required
+          value={formData.tank_capacity_liters}
+          onChange={(e) => setFormData({ ...formData, tank_capacity_liters: e.target.value })}
+          placeholder="50"
+        />
+      </div>
+    </div>
+
+    {/* FASTag Section */}
+    <div className="border-t pt-4">
+      <h3 className="text-sm font-semibold text-slate-700 mb-3">FASTag Information</h3>
+
+      <div className="grid grid-cols-4 gap-4">
+
+        <div>
+          <Label>FASTag Company</Label>
+          <Input
+            value={formData.fastag_company}
+            onChange={(e) =>
+              setFormData({ ...formData, fastag_company: e.target.value })
+            }
+            placeholder="Paytm / ICICI / HDFC"
+          />
+        </div>
+
+        <div>
+          <Label>FASTag Balance</Label>
+          <Input
+            type="number"
+            value={formData.fastag_balance}
+            onChange={(e) =>
+              setFormData({ ...formData, fastag_balance: e.target.value })
+            }
+            placeholder="500"
+          />
+        </div>
+
+        <div>
+          <Label>FASTag User ID</Label>
+          <Input
+            value={formData.fastag_user_id}
+            onChange={(e) =>
+              setFormData({ ...formData, fastag_user_id: e.target.value })
+            }
+            placeholder="User ID"
+          />
+        </div>
+
+        <div>
+          <Label>FASTag Password</Label>
+          <FastagPasswordInput formData={formData} setFormData={setFormData} />
+        </div>
+
+      </div>
+
+      <div className="flex items-center gap-3 pt-4">
+        <Switch
+          checked={formData.fastag_sold}
+          onCheckedChange={(checked) =>
+            setFormData({ ...formData, fastag_sold: checked })
+          }
+        />
+        <Label>FASTag Sold</Label>
+      </div>
+    </div>
+
+
+    <div className="flex items-center gap-3 pt-6">
+      <Switch
+        checked={formData.file_status}
+        onCheckedChange={(checked) => setFormData({ ...formData, file_status: checked })}
+      />
+      <Label>File Status (Complete)</Label>
+    </div>
+
+
+
+    <div>
+      <Label>Remark</Label>
+      <Textarea
+        value={formData.remark}
+        onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+        placeholder="Any additional notes about this vehicle..."
+        rows={2}
+      />
+    </div>
+
+    <Button type="submit" className="w-full bg-emerald-700 hover:bg-emerald-800" data-testid="submit-vehicle-button">
+      {submitText}
+    </Button>
+  </form>
+);
 
 export const VehiclesPage = () => {
   const [vehicles, setVehicles] = useState([]);
@@ -281,7 +372,7 @@ export const VehiclesPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     try {
       const payload = {
         ...formData,
@@ -289,18 +380,26 @@ export const VehiclesPage = () => {
         average_kmpl: parseFloat(formData.average_kmpl),
         tank_capacity_liters: parseFloat(formData.tank_capacity_liters),
         seating_capacity: formData.seating_capacity ? parseInt(formData.seating_capacity) : null,
-        date_of_registration: formData.date_of_registration ? new Date(formData.date_of_registration).toISOString() : null
+        date_of_registration: formData.date_of_registration ? new Date(formData.date_of_registration).toISOString() : null,
+        fastag_balance: formData.fastag_balance
+          ? parseFloat(formData.fastag_balance)
+          : null,
+        fastag_sold_date: formData.fastag_sold_date
+          ? new Date(formData.fastag_sold_date).toISOString()
+          : null
       };
-      
+
       await api.post('/vehicles', payload);
-      
+
       toast.success('Vehicle added successfully');
       setDialogOpen(false);
       resetForm();
       fetchVehicles();
     } catch (error) {
       console.error("API Error:", error);
-      toast.error(error.response?.data?.detail || 'Failed to add vehicle');
+      toast.error(
+        error.response?.data?.detail?.[0]?.msg || 'Failed to add vehicle'
+      );
     }
   };
 
@@ -324,7 +423,14 @@ export const VehiclesPage = () => {
       site_name: vehicle.site_name || '',
       date_of_registration: vehicle.date_of_registration ? vehicle.date_of_registration.split('T')[0] : '',
       tax_upto: vehicle.tax_upto || '',
-      remark: vehicle.remark || ''
+      remark: vehicle.remark || '',
+
+      fastag_company: vehicle.fastag_company || '',
+      fastag_balance: vehicle.fastag_balance?.toString() || '',
+      fastag_user_id: vehicle.fastag_user_id || '',
+      fastag_password: vehicle.fastag_password || '',
+      fastag_sold: vehicle.fastag_sold || false,
+      fastag_sold_date: vehicle.fastag_sold_date || ''
     });
     setEditDialogOpen(true);
   };
@@ -332,7 +438,7 @@ export const VehiclesPage = () => {
   const handleView = async (vehicle) => {
     setSelectedVehicle(vehicle);
     setViewDialogOpen(true);
-    
+
     try {
       const response = await api.get(`/vehicles/${vehicle.id}/full-report`);
       setVehicleReport(response.data);
@@ -344,7 +450,7 @@ export const VehiclesPage = () => {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
-    
+
     try {
       const payload = {
         ...formData,
@@ -352,24 +458,36 @@ export const VehiclesPage = () => {
         average_kmpl: parseFloat(formData.average_kmpl),
         tank_capacity_liters: parseFloat(formData.tank_capacity_liters),
         seating_capacity: formData.seating_capacity ? parseInt(formData.seating_capacity) : null,
-        date_of_registration: formData.date_of_registration ? new Date(formData.date_of_registration).toISOString() : null
+        date_of_registration: formData.date_of_registration
+          ? new Date(formData.date_of_registration).toISOString()
+          : null,
+
+        fastag_balance: formData.fastag_balance
+          ? parseFloat(formData.fastag_balance)
+          : null,
+
+        fastag_sold_date: formData.fastag_sold_date
+          ? new Date(formData.fastag_sold_date).toISOString()
+          : null
       };
-      
+
       await api.put(`/vehicles/${selectedVehicle.id}`, payload);
-      
+
       toast.success('Vehicle updated successfully');
       setEditDialogOpen(false);
       resetForm();
       fetchVehicles();
     } catch (error) {
       console.error("API Error:", error);
-      toast.error(error.response?.data?.detail || 'Failed to update vehicle');
+      toast.error(
+        error.response?.data?.detail?.[0]?.msg || 'Failed to update vehicle'
+      );
     }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this vehicle?')) return;
-    
+
     try {
       await api.delete(`/vehicles/${id}`);
       toast.success('Vehicle deleted');
@@ -419,7 +537,7 @@ export const VehiclesPage = () => {
       toast.error('Please paste CSV data');
       return;
     }
-    
+
     setImporting(true);
     try {
       const response = await api.post('/vehicles/import/csv', { csv_data: importData });
@@ -440,9 +558,9 @@ export const VehiclesPage = () => {
 
   const handleDownloadPDF = () => {
     if (!vehicleReport) return;
-    
+
     const { vehicle, documents, challans, services, accidents, summary } = vehicleReport;
-    
+
     // Generate HTML content for PDF
     const htmlContent = `
       <!DOCTYPE html>
@@ -593,7 +711,7 @@ export const VehiclesPage = () => {
       </body>
       </html>
     `;
-    
+
     // Open in new window for printing/saving
     const printWindow = window.open('', '_blank');
     printWindow.document.write(htmlContent);
@@ -625,7 +743,7 @@ export const VehiclesPage = () => {
           </h1>
           <p className="text-slate-600">Manage your vehicle fleet and tracking</p>
         </div>
-        
+
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleDownloadTemplate} data-testid="download-template-btn">
             <Download size={16} className="mr-2" />
@@ -723,7 +841,7 @@ export const VehiclesPage = () => {
               )}
             </div>
           </DialogHeader>
-          
+
           {!vehicleReport ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-800"></div>
@@ -824,6 +942,26 @@ export const VehiclesPage = () => {
                   <p className="text-sm text-amber-900">{vehicleReport.vehicle.remark}</p>
                 </div>
               )}
+
+              <div className="p-3 bg-slate-50 rounded-lg">
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">FASTag Company</p>
+                <p className="font-semibold">{vehicleReport.vehicle.fastag_company || 'N/A'}</p>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-lg">
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">FASTag Balance</p>
+                <p className="font-semibold">
+                  {vehicleReport.vehicle.fastag_balance ? `₹${vehicleReport.vehicle.fastag_balance}` : 'N/A'}
+                </p>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-lg">
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">FASTag Status</p>
+                <p className="font-semibold">
+                  {vehicleReport.vehicle.fastag_sold ? 'Sold' : 'Active'}
+                </p>
+              </div>
+
 
               {/* Tabs for Related Data */}
               <Tabs defaultValue="documents" className="mt-6">
@@ -986,21 +1124,21 @@ export const VehiclesPage = () => {
                   <Badge variant="outline">{vehicle.fuel_type}</Badge>
                   {vehicle.year && <Badge variant="outline">{vehicle.year}</Badge>}
                 </div>
-                
+
                 {vehicle.owner_name && (
                   <div className="flex items-center gap-2 text-sm text-slate-600">
                     <User size={14} />
                     <span>{vehicle.owner_name}</span>
                   </div>
                 )}
-                
+
                 {vehicle.site_name && (
                   <div className="flex items-center gap-2 text-sm text-slate-600">
                     <MapPin size={14} />
                     <span>{vehicle.site_name}</span>
                   </div>
                 )}
-                
+
                 <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
                   <div className="flex items-center gap-2">
                     <Gauge size={16} className="text-slate-500" />
@@ -1017,7 +1155,7 @@ export const VehiclesPage = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex gap-2 pt-3 border-t border-slate-100">
                   <Button
                     size="sm"

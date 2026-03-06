@@ -310,6 +310,13 @@ class VehicleBase(BaseModel):
     date_of_registration: Optional[datetime] = None
     tax_upto: Optional[str] = None  # Can be text or date
     remark: Optional[str] = None
+     # FASTag
+    fastag_company: Optional[str] = None
+    fastag_balance: Optional[float] = None
+    fastag_user_id: Optional[str] = None
+    fastag_password: Optional[str] = None
+    fastag_sold: Optional[bool] = False
+    fastag_sold_date: Optional[datetime] = None
 
 class VehicleCreate(VehicleBase):
     pass
