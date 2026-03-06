@@ -332,6 +332,7 @@ class VehicleDocumentBase(BaseModel):
     custom_document_name: Optional[str] = None
     policy_number: str
     provider: str
+    phone_number: Optional[str] = None
     issue_date: datetime
     expiry_date: datetime
     premium: Optional[float] = None
@@ -354,6 +355,7 @@ class ChallanBase(BaseModel):
     vehicle_id: str
     driver_id: Optional[str] = None
     challan_number: str
+    phone_number: Optional[str] = None
     date: datetime
     violation_type: str
     amount: float

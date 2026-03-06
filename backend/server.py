@@ -972,6 +972,52 @@ async def get_service_records(
     count = await db.service_records.count_documents(query)
     return {"data": records, "total": count}
 
+@api_router.get("/check-phone-usage")
+async def check_phone_usage(
+    vehicle_id: str,
+    phone_number: str,
+    type: str,
+    current_user: dict = Depends(get_current_user)
+):
+    
+    if type == "document":
+
+        docs = await db.vehicle_documents.find(
+            {
+                "vehicle_id": vehicle_id,
+                "phone_number": phone_number,
+                "is_deleted": False
+            },
+            {"_id": 0}
+        ).to_list(50)
+
+        used_in = []
+
+        for d in docs:
+            if d["document_type"] == "Custom":
+                used_in.append(d.get("custom_document_name"))
+            else:
+                used_in.append(d["document_type"])
+
+        return {"used_in": used_in}
+
+    elif type == "challan":
+
+        challans = await db.challans.find(
+            {
+                "vehicle_id": vehicle_id,
+                "phone_number": phone_number,
+                "is_deleted": False
+            },
+            {"_id": 0}
+        ).to_list(50)
+
+        used_in = [c["violation_type"] for c in challans]
+
+        return {"used_in": used_in}
+
+    return {"used_in": []}
+
 # ==================== GPS & TELEMATICS ROUTES ====================
 
 @api_router.post("/gps-devices")

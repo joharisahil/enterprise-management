@@ -32,11 +32,13 @@ export const ChallansPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
+  const [phoneWarning, setPhoneWarning] = useState("");
   const [formData, setFormData] = useState({
     vehicle_id: '',
     driver_id: null,
     challan_number: '',
     date: '',
+    phone_number: '',
     violation_type: '',
     amount: '',
     status: 'Unpaid',
@@ -111,6 +113,45 @@ export const ChallansPage = () => {
       setUploading(false);
 
     }
+
+  };
+
+  let phoneTimer = null;
+
+  const checkPhoneUsage = (value) => {
+
+    if (!value || value.length !== 10 || !formData.vehicle_id) {
+      setPhoneWarning("");
+      return;
+    }
+
+    clearTimeout(phoneTimer);
+
+    phoneTimer = setTimeout(async () => {
+
+      try {
+
+        const res = await api.get(`/check-phone-usage`, {
+          params: {
+            vehicle_id: formData.vehicle_id,
+            phone_number: value,
+            type: "challan"
+          }
+        });
+
+        if (res.data.used_in.length > 0) {
+          setPhoneWarning(
+            `This number is already used in: ${res.data.used_in.join(", ")} challans for this vehicle`
+          );
+        } else {
+          setPhoneWarning("");
+        }
+
+      } catch {
+        setPhoneWarning("");
+      }
+
+    }, 500);
 
   };
 
@@ -353,6 +394,30 @@ export const ChallansPage = () => {
                 </div>
               )}
               <div>
+                <div>
+                  <Label>Phone Number</Label>
+
+                  <Input
+                    type="tel"
+                    maxLength={10}
+                    value={formData.phone_number}
+                    onChange={(e) => {
+
+                      const value = e.target.value.replace(/\D/g, '');
+
+                      setFormData({ ...formData, phone_number: value });
+
+                      checkPhoneUsage(value);
+
+                    }}
+                  />
+
+                  {phoneWarning && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {phoneWarning}
+                    </p>
+                  )}
+                </div>
                 <Label>Upload Challan Image</Label>
                 <Input
                   type="file"

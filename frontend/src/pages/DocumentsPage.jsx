@@ -24,12 +24,14 @@ export const DocumentsPage = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [selectedDocHistory, setSelectedDocHistory] = useState(null);
+  const [phoneWarning, setPhoneWarning] = useState("");
   const [formData, setFormData] = useState({
     vehicle_id: '',
     document_type: 'Insurance',
     custom_document_name: '',
     policy_number: '',
     provider: '',
+    phone_number: '',
     issue_date: '',
     expiry_date: '',
     premium: '',
@@ -206,6 +208,45 @@ export const DocumentsPage = () => {
       toast.error("Download failed");
 
     }
+
+  };
+
+  let phoneTimer = null;
+
+  const checkPhoneUsage = (value) => {
+
+    if (!value || value.length !== 10 || !formData.vehicle_id) {
+      setPhoneWarning("");
+      return;
+    }
+
+    clearTimeout(phoneTimer);
+
+    phoneTimer = setTimeout(async () => {
+
+      try {
+
+        const res = await api.get(`/check-phone-usage`, {
+          params: {
+            vehicle_id: formData.vehicle_id,
+            phone_number: value,
+            type: "document"
+          }
+        });
+
+        if (res.data.used_in.length > 0) {
+          setPhoneWarning(
+            `This number is already used in: ${res.data.used_in.join(", ")} documents for this vehicle`
+          );
+        } else {
+          setPhoneWarning("");
+        }
+
+      } catch {
+        setPhoneWarning("");
+      }
+
+    }, 500);
 
   };
 
@@ -415,6 +456,30 @@ export const DocumentsPage = () => {
                 </div>
               </div>
               <div>
+                <div>
+                  <Label>Phone Number</Label>
+
+                  <Input
+                    type="tel"
+                    value={formData.phone_number}
+                    maxLength={10}
+                    onChange={(e) => {
+
+                      const value = e.target.value.replace(/\D/g, '');
+
+                      setFormData({ ...formData, phone_number: value });
+
+                      checkPhoneUsage(value);
+
+                    }}
+                  />
+
+                  {phoneWarning && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {phoneWarning}
+                    </p>
+                  )}
+                </div>
                 <Label>Upload Document</Label>
 
                 <Input
