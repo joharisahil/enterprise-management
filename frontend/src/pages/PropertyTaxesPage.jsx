@@ -1,8 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useEffect, useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import api from '../utils/api';
 import { toast } from 'sonner';
-import { Receipt, Plus, Edit, Trash2, CheckCircle, AlertCircle, Eye, Phone, Upload, File, X } from 'lucide-react';
+import {
+  Receipt, Plus, Edit, Trash2, CheckCircle, AlertCircle, Eye, Phone, Upload, File, X,
+  Calendar, AlertOctagon, AlertTriangle, Filter, Flame, Clock, TrendingUp, TrendingDown,
+  Building2, CreditCard, IndianRupee, CalendarDays, Gauge, PieChart, Bell, Shield,
+  Clock3, Clock4, Clock9, Sparkles, Star, Activity, Download
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -11,11 +16,24 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import PhoneNumberInput from '@/components/ui/PhoneNumberInput';
 
 const taxTypes = ['House Tax', 'Property Tax', 'Municipal Tax', 'Other'];
 const frequencies = ['Yearly', 'Half-Yearly', 'One-Time'];
 const statusOptions = ['Paid', 'Unpaid'];
+
+// Expiry status categories
+const EXPIRY_STATUS = {
+  EXPIRED: { label: 'Expired', color: 'rose', icon: AlertOctagon, days: 0, bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
+  CRITICAL: { label: 'Critical', color: 'red', icon: Flame, days: 7, bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+  WARNING: { label: 'Warning', color: 'amber', icon: AlertTriangle, days: 15, bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  SOON: { label: 'Expiring Soon', color: 'yellow', icon: Clock, days: 30, bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
+  SAFE: { label: 'Safe', color: 'emerald', icon: CheckCircle, days: 31, bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' }
+};
 
 const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
@@ -34,11 +52,189 @@ const initialFormData = {
   receipt_url: ''
 };
 
+// Expiry Status Badge Component
+const ExpiryStatusBadge = ({ daysLeft, size = "md" }) => {
+  const getStatus = () => {
+    if (daysLeft <= 0) return EXPIRY_STATUS.EXPIRED;
+    if (daysLeft <= 7) return EXPIRY_STATUS.CRITICAL;
+    if (daysLeft <= 15) return EXPIRY_STATUS.WARNING;
+    if (daysLeft <= 30) return EXPIRY_STATUS.SOON;
+    return EXPIRY_STATUS.SAFE;
+  };
+
+  const status = getStatus();
+  const Icon = status.icon;
+
+  const sizeClasses = {
+    sm: "text-xs px-2 py-0.5",
+    md: "text-sm px-3 py-1",
+    lg: "text-base px-4 py-2"
+  };
+
+  const colorClasses = {
+    rose: "bg-rose-100 text-rose-700 border-rose-200",
+    red: "bg-red-100 text-red-700 border-red-200",
+    amber: "bg-amber-100 text-amber-700 border-amber-200",
+    yellow: "bg-yellow-100 text-yellow-700 border-yellow-200",
+    emerald: "bg-emerald-100 text-emerald-700 border-emerald-200"
+  };
+
+  return (
+    <Badge className={`${colorClasses[status.color]} ${sizeClasses[size]} flex items-center gap-1 border font-medium`}>
+      <Icon size={size === "sm" ? 12 : 14} />
+      {status.label} {daysLeft > 0 && `(${daysLeft}d)`}
+    </Badge>
+  );
+};
+
+// Expiry Progress Bar Component
+// Expiry Progress Bar Component - Updated to show days left
+const ExpiryProgress = ({ expiryDate, issueDate }) => {
+  const today = new Date();
+  const expiry = new Date(expiryDate);
+  const issue = new Date(issueDate);
+
+  const totalDuration = expiry - issue;
+  const elapsed = today - issue;
+  const percentageLeft = Math.max(0, Math.min(100, 100 - (elapsed / totalDuration * 100)));
+  const daysLeft = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+
+  const getProgressColor = () => {
+    if (daysLeft <= 0) return "bg-rose-500";
+    if (daysLeft <= 3) return "bg-red-500";
+    if (daysLeft <= 7) return "bg-orange-500";
+    if (daysLeft <= 15) return "bg-amber-500";
+    if (daysLeft <= 30) return "bg-yellow-500";
+    return "bg-emerald-500";
+  };
+
+  const getStatusText = () => {
+    if (daysLeft <= 0) return "Expired";
+    if (daysLeft === 1) return "1 day left";
+    return `${daysLeft} days left`;
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between text-xs text-slate-600">
+        <span>Expires in</span>
+        <span className={`font-medium ${daysLeft <= 0 ? 'text-rose-600' :
+            daysLeft <= 3 ? 'text-red-600' :
+              daysLeft <= 7 ? 'text-orange-600' :
+                daysLeft <= 15 ? 'text-amber-600' :
+                  daysLeft <= 30 ? 'text-yellow-600' : 'text-emerald-600'
+          }`}>
+          {getStatusText()}
+        </span>
+      </div>
+      <Progress value={percentageLeft} className={`h-2 ${getProgressColor()}`} />
+    </div>
+  );
+};
+
+// Expiry Summary Card Component
+const ExpirySummaryCard = ({ title, count, icon: Icon, color, onClick, total }) => {
+  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+
+  // Map color names to Tailwind classes
+  const colorClasses = {
+    rose: {
+      bg: 'bg-rose-50',
+      border: 'border-rose-200',
+      text: 'text-rose-700',
+      textLight: 'text-rose-600',
+      iconBg: 'bg-rose-100',
+      iconColor: 'text-rose-600',
+      progress: 'bg-rose-600',
+      progressBg: 'bg-rose-200'
+    },
+    red: {
+      bg: 'bg-red-50',
+      border: 'border-red-200',
+      text: 'text-red-700',
+      textLight: 'text-red-600',
+      iconBg: 'bg-red-100',
+      iconColor: 'text-red-600',
+      progress: 'bg-red-600',
+      progressBg: 'bg-red-200'
+    },
+    orange: {
+      bg: 'bg-orange-50',
+      border: 'border-orange-200',
+      text: 'text-orange-700',
+      textLight: 'text-orange-600',
+      iconBg: 'bg-orange-100',
+      iconColor: 'text-orange-600',
+      progress: 'bg-orange-600',
+      progressBg: 'bg-orange-200'
+    },
+    amber: {
+      bg: 'bg-amber-50',
+      border: 'border-amber-200',
+      text: 'text-amber-700',
+      textLight: 'text-amber-600',
+      iconBg: 'bg-amber-100',
+      iconColor: 'text-amber-600',
+      progress: 'bg-amber-600',
+      progressBg: 'bg-amber-200'
+    },
+    yellow: {
+      bg: 'bg-yellow-50',
+      border: 'border-yellow-200',
+      text: 'text-yellow-700',
+      textLight: 'text-yellow-600',
+      iconBg: 'bg-yellow-100',
+      iconColor: 'text-yellow-600',
+      progress: 'bg-yellow-600',
+      progressBg: 'bg-yellow-200'
+    },
+    emerald: {
+      bg: 'bg-emerald-50',
+      border: 'border-emerald-200',
+      text: 'text-emerald-700',
+      textLight: 'text-emerald-600',
+      iconBg: 'bg-emerald-100',
+      iconColor: 'text-emerald-600',
+      progress: 'bg-emerald-600',
+      progressBg: 'bg-emerald-200'
+    }
+  };
+
+  const classes = colorClasses[color] || colorClasses.emerald;
+
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      className={`cursor-pointer ${classes.bg} border ${classes.border} rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-200`}
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <p className={`${classes.text} text-sm font-medium mb-1`}>{title}</p>
+          <p className={`${classes.text} text-3xl font-bold`}>{count}</p>
+          <p className={`${classes.textLight} text-xs mt-1`}>{percentage}% of total</p>
+        </div>
+        <div className={`p-3 ${classes.iconBg} rounded-xl`}>
+          <Icon size={24} className={classes.iconColor} />
+        </div>
+      </div>
+      <div className={`mt-3 w-full ${classes.progressBg} rounded-full h-1.5`}>
+        <div
+          className={`${classes.progress} h-1.5 rounded-full`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    </motion.div>
+  );
+};
+
 export const PropertyTaxesPage = () => {
   const [taxes, setTaxes] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState('all');
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -48,6 +244,53 @@ export const PropertyTaxesPage = () => {
   const [formData, setFormData] = useState(initialFormData);
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
+
+  // Calculate expiry stats
+  const expiryStats = useMemo(() => {
+    const stats = {
+      expired: 0,
+      critical: 0,
+      warning: 0,
+      soon: 0,
+      safe: 0
+    };
+
+    taxes.forEach(tax => {
+      const daysLeft = Math.ceil((new Date(tax.expiry_date) - new Date()) / (1000 * 60 * 60 * 24));
+
+      if (daysLeft <= 0) stats.expired++;
+      else if (daysLeft <= 7) stats.critical++;
+      else if (daysLeft <= 15) stats.warning++;
+      else if (daysLeft <= 30) stats.soon++;
+      else stats.safe++;
+    });
+
+    return stats;
+  }, [taxes]);
+
+  // Get filtered taxes based on expiry status
+  const getFilteredTaxes = useMemo(() => {
+    if (selectedFilter === 'all') return taxes;
+
+    return taxes.filter(tax => {
+      const daysLeft = Math.ceil((new Date(tax.expiry_date) - new Date()) / (1000 * 60 * 60 * 24));
+
+      switch (selectedFilter) {
+        case 'expired':
+          return daysLeft <= 0;
+        case 'critical':
+          return daysLeft > 0 && daysLeft <= 7;
+        case 'warning':
+          return daysLeft > 7 && daysLeft <= 15;
+        case 'soon':
+          return daysLeft > 15 && daysLeft <= 30;
+        case 'safe':
+          return daysLeft > 30;
+        default:
+          return true;
+      }
+    });
+  }, [taxes, selectedFilter]);
 
   useEffect(() => {
     fetchData();
@@ -74,14 +317,12 @@ export const PropertyTaxesPage = () => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Check file size
     if (file.size > MAX_FILE_SIZE) {
       toast.error('File size must be less than 3MB');
       e.target.value = '';
       return;
     }
 
-    // Check file type
     if (!ALLOWED_FILE_TYPES.includes(file.type)) {
       toast.error('Only images (JPEG, PNG, WEBP) and PDF files are allowed');
       e.target.value = '';
@@ -90,7 +331,6 @@ export const PropertyTaxesPage = () => {
 
     setSelectedFile(file);
 
-    // Create preview for images
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -105,7 +345,6 @@ export const PropertyTaxesPage = () => {
   const clearSelectedFile = () => {
     setSelectedFile(null);
     setFilePreview(null);
-    // Reset file input
     const fileInput = document.getElementById('receipt-upload');
     if (fileInput) fileInput.value = '';
   };
@@ -118,7 +357,6 @@ export const PropertyTaxesPage = () => {
     formData.append('file', selectedFile);
 
     try {
-      // You'll need to create this endpoint in your backend
       const response = await api.post('/upload-document', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -126,7 +364,7 @@ export const PropertyTaxesPage = () => {
       });
 
       toast.success('File uploaded successfully');
-      return response.data.url; // Cloudinary URL
+      return response.data.url;
     } catch (error) {
       console.error('Upload error:', error);
       toast.error(error.response?.data?.detail || 'Failed to upload file');
@@ -141,14 +379,13 @@ export const PropertyTaxesPage = () => {
     e.preventDefault();
 
     try {
-      // Upload file first if selected
       let receiptUrl = formData.receipt_url;
       if (selectedFile) {
         const uploadedUrl = await uploadFile();
         if (uploadedUrl) {
           receiptUrl = uploadedUrl;
         } else {
-          return; // Stop submission if upload failed
+          return;
         }
       }
 
@@ -198,14 +435,13 @@ export const PropertyTaxesPage = () => {
     e.preventDefault();
 
     try {
-      // Upload new file if selected
       let receiptUrl = formData.receipt_url;
       if (selectedFile) {
         const uploadedUrl = await uploadFile();
         if (uploadedUrl) {
           receiptUrl = uploadedUrl;
         } else {
-          return; // Stop submission if upload failed
+          return;
         }
       }
 
@@ -259,25 +495,18 @@ export const PropertyTaxesPage = () => {
     if (!url) return;
 
     try {
-      // Show loading toast
       const loadingToast = toast.loading('Downloading file...');
-
-      // Fetch the file
       const response = await fetch(url);
       const blob = await response.blob();
 
-      // Get the file extension from the URL or content type
-      let extension = '.pdf'; // default
+      let extension = '.pdf';
       if (url.toLowerCase().includes('.pdf') || blob.type === 'application/pdf') {
         extension = '.pdf';
       } else if (blob.type.startsWith('image/')) {
         extension = '.' + blob.type.split('/')[1];
       }
 
-      // Create filename if not provided
       const finalFilename = filename || `receipt_${Date.now()}${extension}`;
-
-      // Create download link
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -285,11 +514,7 @@ export const PropertyTaxesPage = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-
-      // Cleanup
       window.URL.revokeObjectURL(downloadUrl);
-
-      // Dismiss loading toast and show success
       toast.dismiss(loadingToast);
       toast.success('File downloaded successfully');
     } catch (error) {
@@ -301,22 +526,21 @@ export const PropertyTaxesPage = () => {
   const openReceipt = (url, propertyName, taxType, customTaxName) => {
     if (!url) return;
 
-    // Get the tax display name
     const taxDisplayName = taxType === 'Other' && customTaxName ? customTaxName : taxType;
-
-    // Create a clean filename: PropertyName_TaxType_timestamp
     const cleanPropertyName = propertyName.replace(/[^a-zA-Z0-9]/g, '_');
     const cleanTaxName = taxDisplayName.replace(/[^a-zA-Z0-9]/g, '_');
-    const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const timestamp = new Date().toISOString().split('T')[0];
 
-    // For PDFs, we want to download with correct extension
     if (url.toLowerCase().includes('.pdf') || url.includes('raw/upload')) {
       const filename = `${cleanPropertyName}_${cleanTaxName}_${timestamp}.pdf`;
       downloadReceipt(url, filename);
     } else {
-      // For images, open in new tab
       window.open(url, '_blank');
     }
+  };
+
+  const getDaysUntilExpiry = (expiryDate) => {
+    return Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
   };
 
   if (loading) {
@@ -578,13 +802,14 @@ export const PropertyTaxesPage = () => {
   );
 
   return (
-    <div className="p-8" data-testid="property-taxes-page">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-8 space-y-6" data-testid="property-taxes-page">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-slate-900 tracking-tight mb-2" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
             Property Taxes
           </h1>
-          <p className="text-slate-600">Track property taxes with frequency validation</p>
+          <p className="text-slate-600">Track and manage property taxes with expiry monitoring</p>
         </div>
 
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
@@ -603,6 +828,98 @@ export const PropertyTaxesPage = () => {
         </Dialog>
       </div>
 
+      {/* Expiry Summary Dashboard */}
+      <div className="grid grid-cols-5 gap-4">
+        <ExpirySummaryCard
+          title="Expired"
+          count={expiryStats.expired}
+          icon={AlertOctagon}
+          color="rose"
+          total={taxes.length}
+          onClick={() => setSelectedFilter('expired')}
+        />
+        <ExpirySummaryCard
+          title="Critical (≤7d)"
+          count={expiryStats.critical}
+          icon={Flame}
+          color="red"
+          total={taxes.length}
+          onClick={() => setSelectedFilter('critical')}
+        />
+        <ExpirySummaryCard
+          title="Warning (≤15d)"
+          count={expiryStats.warning}
+          icon={AlertTriangle}
+          color="amber"
+          total={taxes.length}
+          onClick={() => setSelectedFilter('warning')}
+        />
+        <ExpirySummaryCard
+          title="Soon (≤30d)"
+          count={expiryStats.soon}
+          icon={Clock}
+          color="yellow"
+          total={taxes.length}
+          onClick={() => setSelectedFilter('soon')}
+        />
+        <ExpirySummaryCard
+          title="Safe (>30d)"
+          count={expiryStats.safe}
+          icon={CheckCircle}
+          color="emerald"
+          total={taxes.length}
+          onClick={() => setSelectedFilter('safe')}
+        />
+      </div>
+
+      {/* Filters Section */}
+      <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 text-slate-600">
+          <Filter size={18} />
+          <span className="text-sm font-medium">Filters:</span>
+        </div>
+
+        <Select value={selectedProperty} onValueChange={setSelectedProperty}>
+          <SelectTrigger className="w-64">
+            <SelectValue placeholder="Filter by property" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Properties</SelectItem>
+            {properties.map((prop) => (
+              <SelectItem key={prop.id} value={prop.id}>
+                {prop.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Tabs value={selectedFilter} onValueChange={setSelectedFilter} className="flex-1">
+          <TabsList className="bg-slate-100">
+            <TabsTrigger value="all" className="data-[state=active]:bg-white">
+              All ({taxes.length})
+            </TabsTrigger>
+            <TabsTrigger value="unpaid" className="data-[state=active]:bg-white">
+              Unpaid ({unpaidTaxes.length})
+            </TabsTrigger>
+            <TabsTrigger value="paid" className="data-[state=active]:bg-white">
+              Paid ({paidTaxes.length})
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {selectedFilter !== 'all' && selectedFilter !== 'unpaid' && selectedFilter !== 'paid' && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedFilter('all')}
+            className="text-slate-600 hover:text-slate-900"
+          >
+            <X size={14} className="mr-1" />
+            Clear Filter
+          </Button>
+        )}
+      </div>
+
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => { setEditDialogOpen(open); if (!open) resetForm(); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -613,7 +930,7 @@ export const PropertyTaxesPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog - UPDATED with receipt display */}
+      {/* View Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -632,6 +949,16 @@ export const PropertyTaxesPage = () => {
                   <p className="text-sm text-slate-600">{getPropertyName(selectedTax.property_id)}</p>
                 </div>
               </div>
+
+              {/* Expiry Status for View Dialog */}
+              {(() => {
+                const daysLeft = getDaysUntilExpiry(selectedTax.expiry_date);
+                return (
+                  <div className="mb-4">
+                    <ExpiryStatusBadge daysLeft={daysLeft} size="lg" />
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -670,7 +997,6 @@ export const PropertyTaxesPage = () => {
                     <p className="text-sm text-slate-700">{new Date(selectedTax.payment_date).toLocaleDateString()}</p>
                   </div>
                 )}
-                {/* Phone Number Display */}
                 {selectedTax.phone_number && (
                   <div className="col-span-2">
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Phone Number</p>
@@ -680,16 +1006,10 @@ export const PropertyTaxesPage = () => {
                     </p>
                   </div>
                 )}
-                {/* Receipt Display */}
                 {selectedTax.receipt_url && (
                   <div className="col-span-2">
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Receipt Document</p>
                     <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-md border border-slate-200">
-                      {/* {selectedTax.receipt_url.toLowerCase().includes('.pdf') ? (
-        <File size={20} className="text-red-500" />
-      ) : (
-        <img src={selectedTax.receipt_url} alt="Receipt" className="h-12 w-12 object-cover rounded" />
-      )} */}
                       <Button
                         variant="link"
                         className="text-blue-600 p-0 h-auto"
@@ -706,228 +1026,205 @@ export const PropertyTaxesPage = () => {
                     </div>
                   </div>
                 )}
-
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Filter */}
-      <div className="mb-6">
-        <Select value={selectedProperty} onValueChange={setSelectedProperty}>
-          <SelectTrigger className="w-64">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Properties</SelectItem>
-            {properties.map((prop) => (
-              <SelectItem key={prop.id} value={prop.id}>
-                {prop.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Tax Cards Grid */}
+      <AnimatePresence>
+        <div className="space-y-4">
+          {getFilteredTaxes.map((tax) => {
+            const daysLeft = getDaysUntilExpiry(tax.expiry_date);
 
-      <Tabs defaultValue="all" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="all">All ({taxes.length})</TabsTrigger>
-          <TabsTrigger value="unpaid">Unpaid ({unpaidTaxes.length})</TabsTrigger>
-          <TabsTrigger value="paid">Paid ({paidTaxes.length})</TabsTrigger>
-        </TabsList>
+            return (
+              <motion.div
+                key={tax.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                layout
+              >
+                <Card className={`border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 ${daysLeft <= 0 ? 'border-l-4 border-l-rose-500' :
+                    daysLeft <= 7 ? 'border-l-4 border-l-red-500' :
+                      daysLeft <= 15 ? 'border-l-4 border-l-amber-500' :
+                        daysLeft <= 30 ? 'border-l-4 border-l-yellow-500' : ''
+                  }`}>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        {/* Header with badges */}
+                        <div className="flex items-center gap-3 mb-3 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 bg-blue-100 rounded-md">
+                              <Receipt size={20} className="text-blue-700" />
+                            </div>
+                            <h3 className="font-semibold text-lg text-slate-900">
+                              {tax.tax_type === 'Other' ? tax.custom_tax_name : tax.tax_type}
+                            </h3>
+                          </div>
+                          <Badge variant="outline">{tax.frequency}</Badge>
+                          <ExpiryStatusBadge daysLeft={daysLeft} />
+                        </div>
 
-        <TabsContent value="all" className="space-y-4">
-          {taxes.map((tax) => (
-            <TaxCard
-              key={tax.id}
-              tax={tax}
-              getPropertyName={getPropertyName}
-              onDelete={handleDelete}
-              onEdit={handleEdit}
-              onView={handleView}
-              onViewReceipt={openReceipt}  // This is already being passed!
-            />
-          ))}
-        </TabsContent>
+                        {/* Property and Phone */}
+                        <p className="text-sm text-slate-600 mb-3">
+                          {getPropertyName(tax.property_id)}
+                          {tax.phone_number && (
+                            <span className="ml-3 inline-flex items-center gap-1 text-xs text-slate-500">
+                              <Phone size={12} className="text-slate-400" />
+                              {tax.phone_number}
+                            </span>
+                          )}
+                        </p>
 
-        <TabsContent value="unpaid" className="space-y-4">
-          {unpaidTaxes.map((tax) => (
-            <TaxCard
-              key={tax.id}
-              tax={tax}
-              getPropertyName={getPropertyName}
-              onDelete={handleDelete}
-              onEdit={handleEdit}
-              onView={handleView}
-              onViewReceipt={openReceipt}
-            />
-          ))}
-        </TabsContent>
+                        {/* Progress bar for expiry */}
+                        <div className="mb-4 max-w-md">
+                          <ExpiryProgress expiryDate={tax.expiry_date} issueDate={tax.issue_date} />
+                        </div>
 
-        <TabsContent value="paid" className="space-y-4">
-          {paidTaxes.map((tax) => (
-            <TaxCard
-              key={tax.id}
-              tax={tax}
-              getPropertyName={getPropertyName}
-              onDelete={handleDelete}
-              onEdit={handleEdit}
-              onView={handleView}
-              onViewReceipt={openReceipt}
-            />
-          ))}
-        </TabsContent>
-      </Tabs>
+                        {/* Details grid */}
+                        <div className="grid grid-cols-4 gap-4 mb-3">
+                          <div>
+                            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Amount</p>
+                            <p className="text-sm font-bold text-slate-900">Rs {tax.amount.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Issue Date</p>
+                            <p className="text-sm">{new Date(tax.issue_date).toLocaleDateString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Expiry Date</p>
+                            <p className={`text-sm font-medium ${daysLeft <= 0 ? 'text-rose-600' :
+                                daysLeft <= 7 ? 'text-red-600' :
+                                  daysLeft <= 15 ? 'text-amber-600' :
+                                    daysLeft <= 30 ? 'text-yellow-600' : ''
+                              }`}>
+                              {new Date(tax.expiry_date).toLocaleDateString()}
+                              {daysLeft > 0 && daysLeft <= 30 && ` (${daysLeft}d)`}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Status</p>
+                            {tax.status === 'Paid' ? (
+                              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                                <CheckCircle size={12} className="mr-1" />
+                                Paid
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive">
+                                <AlertCircle size={12} className="mr-1" />
+                                Unpaid
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
 
-      {taxes.length === 0 && (
-        <div className="text-center py-16">
-          <Receipt size={64} className="mx-auto text-slate-300 mb-4" />
-          <h3 className="text-xl font-semibold text-slate-900 mb-2">No tax records yet</h3>
-          <p className="text-slate-600 mb-4">Add your first property tax record</p>
+                        {/* Receipt indicator */}
+                        {tax.receipt_url && (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              onClick={() => {
+                                const propertyName = getPropertyName(tax.property_id);
+                                const taxDisplayName = tax.tax_type === 'Other' && tax.custom_tax_name
+                                  ? tax.custom_tax_name
+                                  : tax.tax_type;
+                                openReceipt(tax.receipt_url, propertyName, taxDisplayName, tax.custom_tax_name);
+                              }}
+                            >
+                              <Upload size={12} className="mr-1" />
+                              {tax.receipt_url.toLowerCase().includes('.pdf') ? 'Download PDF' : 'View Receipt'}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex gap-1 ml-4">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0"
+                                onClick={() => handleView(tax)}
+                                data-testid={`view-tax-${tax.id}`}
+                              >
+                                <Eye size={16} />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>View Details</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                onClick={() => handleEdit(tax)}
+                                data-testid={`edit-tax-${tax.id}`}
+                              >
+                                <Edit size={16} />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Edit Record</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                onClick={() => handleDelete(tax.id)}
+                                data-testid={`delete-tax-${tax.id}`}
+                              >
+                                <Trash2 size={16} />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Delete Record</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
         </div>
+      </AnimatePresence>
+
+      {/* Empty state */}
+      {getFilteredTaxes.length === 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center py-16 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200"
+        >
+          <Receipt size={64} className="mx-auto text-slate-300 mb-4" />
+          <h3 className="text-xl font-semibold text-slate-900 mb-2">No tax records found</h3>
+          <p className="text-slate-600">
+            {selectedFilter !== 'all' && selectedFilter !== 'unpaid' && selectedFilter !== 'paid'
+              ? `No taxes in the ${selectedFilter} category`
+              : selectedFilter === 'unpaid'
+                ? 'No unpaid taxes found'
+                : selectedFilter === 'paid'
+                  ? 'No paid taxes found'
+                  : 'Add your first property tax record'}
+          </p>
+        </motion.div>
       )}
     </div>
-  );
-};
-
-// UPDATED TaxCard with receipt indicator
-const TaxCard = ({ tax, getPropertyName, onDelete, onEdit, onView, onViewReceipt }) => {
-  const isExpired = new Date(tax.expiry_date) < new Date();
-  const isExpiringSoon = new Date(tax.expiry_date) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      data-testid={`tax-card-${tax.id}`}
-    >
-      <Card className={`border-slate-200 shadow-sm ${isExpired && tax.status === 'Unpaid' ? 'border-l-4 border-l-rose-500' : isExpiringSoon && tax.status === 'Unpaid' ? 'border-l-4 border-l-amber-500' : ''}`}>
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-blue-100 rounded-md">
-                  <Receipt size={20} className="text-blue-700" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg text-slate-900">
-                    {tax.tax_type === 'Other' ? tax.custom_tax_name : tax.tax_type}
-                  </h3>
-                  <p className="text-sm text-slate-600">{getPropertyName(tax.property_id)}</p>
-                  {/* Phone Number Display */}
-                  {tax.phone_number && (
-                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                      <Phone size={12} className="text-slate-400" />
-                      {tax.phone_number}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Amount</p>
-                  <p className="text-lg font-bold text-slate-900">Rs {tax.amount.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Frequency</p>
-                  <Badge variant="outline">{tax.frequency}</Badge>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Issue Date</p>
-                  <p className="text-sm font-medium">{new Date(tax.issue_date).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Expiry Date</p>
-                  <p className={`text-sm font-medium ${isExpired ? 'text-rose-600' : isExpiringSoon ? 'text-amber-600' : ''}`}>
-                    {new Date(tax.expiry_date).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                {tax.status === 'Paid' ? (
-                  <>
-                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-                      <CheckCircle size={14} className="mr-1" />
-                      Paid
-                    </Badge>
-                    {tax.payment_date && (
-                      <span className="text-xs text-slate-600">
-                        on {new Date(tax.payment_date).toLocaleDateString()}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Badge variant="destructive">
-                      <AlertCircle size={14} className="mr-1" />
-                      Unpaid
-                    </Badge>
-                    {isExpired && (
-                      <Badge variant="destructive">Expired</Badge>
-                    )}
-                    {isExpiringSoon && !isExpired && (
-                      <Badge className="bg-amber-100 text-amber-700 border-amber-200">Expiring Soon</Badge>
-                    )}
-                  </>
-                )}
-
-                {/* Receipt Indicator */}
-                {/* // In TaxCard component, update the Receipt button to use onViewReceipt prop: */}
-                {tax.receipt_url && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                    onClick={() => {
-                      const propertyName = getPropertyName(tax.property_id);
-                      const taxDisplayName = tax.tax_type === 'Other' && tax.custom_tax_name
-                        ? tax.custom_tax_name
-                        : tax.tax_type;
-                      onViewReceipt(tax.receipt_url, propertyName, taxDisplayName, tax.custom_tax_name);
-                    }}
-                  >
-                    <Upload size={12} className="mr-1" />
-                    {tax.receipt_url.toLowerCase().includes('.pdf') ? 'Download PDF' : 'View Receipt'}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0"
-                onClick={() => onView(tax)}
-                data-testid={`view-tax-${tax.id}`}
-              >
-                <Eye size={16} />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0"
-                onClick={() => onEdit(tax)}
-                data-testid={`edit-tax-${tax.id}`}
-              >
-                <Edit size={16} />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                onClick={() => onDelete(tax.id)}
-                data-testid={`delete-tax-${tax.id}`}
-              >
-                <Trash2 size={16} />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
   );
 };

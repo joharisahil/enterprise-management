@@ -964,6 +964,8 @@ async def upload_document(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))   
 # ==================== CHALLAN ROUTES ====================
 
+# ==================== CHALLAN ROUTES ====================
+
 @api_router.post("/challans")
 async def create_challan(challan_data: ChallanCreate, current_user: dict = Depends(get_current_user)):
     challan_id = str(uuid.uuid4())
@@ -986,25 +988,42 @@ async def create_challan(challan_data: ChallanCreate, current_user: dict = Depen
 
 @api_router.get("/challans")
 async def get_challans(
-    vehicle_id: Optional[str] = None,
-    status: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 100,
+    vehicle_id: Optional[str] = Query(None, description="Filter by vehicle ID"),
+    driver_id: Optional[str] = Query(None, description="Filter by driver ID"),
+    status: Optional[str] = Query(None, description="Filter by status (Paid/Unpaid)"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, ge=1, le=1000, description="Number of records to return"),
     current_user: dict = Depends(get_current_user)
 ):
+    """
+    Get challans with optional filters for vehicle_id, driver_id, and status
+    """
     query = {"is_deleted": False}
+    
     if vehicle_id:
         query["vehicle_id"] = vehicle_id
+    
+    if driver_id:
+        query["driver_id"] = driver_id
+    
     if status:
         query["status"] = status
     
-    challans = await db.challans.find(query, {"_id": 0}).sort("date", -1).skip(skip).limit(limit).to_list(limit)
-    count = await db.challans.count_documents(query)
+    # Get total count for pagination
+    total_count = await db.challans.count_documents(query)
     
-    # Calculate summary
-    unpaid_count = await db.challans.count_documents({**query, "status": "Unpaid"})
+    # Get paginated results
+    challans = await db.challans.find(
+        query, 
+        {"_id": 0}
+    ).sort("date", -1).skip(skip).limit(limit).to_list(limit)
+    
+    # Calculate summary stats
+    unpaid_query = {**query, "status": "Unpaid"}
+    unpaid_count = await db.challans.count_documents(unpaid_query)
+    
     unpaid_pipeline = [
-        {"$match": {**query, "status": "Unpaid"}},
+        {"$match": unpaid_query},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]
     unpaid_result = await db.challans.aggregate(unpaid_pipeline).to_list(1)
@@ -1012,7 +1031,9 @@ async def get_challans(
     
     return {
         "data": challans,
-        "total": count,
+        "total": total_count,
+        "skip": skip,
+        "limit": limit,
         "summary": {
             "unpaid_count": unpaid_count,
             "unpaid_amount": unpaid_amount
@@ -1020,8 +1041,11 @@ async def get_challans(
     }
 
 @api_router.put("/challans/{challan_id}/pay")
-async def pay_challan(challan_id: str, payment_date: datetime, current_user: dict = Depends(get_current_user)):
-    
+async def pay_challan(
+    challan_id: str, 
+    payment_date: datetime, 
+    current_user: dict = Depends(get_current_user)
+):
     result = await db.challans.update_one(
         {"id": challan_id, "is_deleted": False},
         {
@@ -1036,11 +1060,18 @@ async def pay_challan(challan_id: str, payment_date: datetime, current_user: dic
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Challan not found")
 
+    # Get the challan to update driver risk score
+    challan = await db.challans.find_one({"id": challan_id})
+    if challan and challan.get("driver_id"):
+        await update_driver_risk_score(challan["driver_id"])
+
     return {"message": "Challan marked as paid"}
 
 @api_router.delete("/challans/{challan_id}")
 async def delete_challan(challan_id: str, current_user: dict = Depends(get_current_user)):
-
+    # Get the challan before deleting to update driver risk score
+    challan = await db.challans.find_one({"id": challan_id})
+    
     result = await db.challans.update_one(
         {"id": challan_id},
         {
@@ -1053,6 +1084,10 @@ async def delete_challan(challan_id: str, current_user: dict = Depends(get_curre
 
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Challan not found")
+    
+    # Update driver risk score if driver was linked
+    if challan and challan.get("driver_id"):
+        await update_driver_risk_score(challan["driver_id"])
 
     return {"message": "Challan deleted"}
 
@@ -1474,14 +1509,229 @@ async def update_driver(driver_id: str, driver_data: DriverCreate, current_user:
 
 async def update_driver_risk_score(driver_id: str):
     """Calculate and update driver risk score based on violations and accidents"""
-    challan_count = await db.challans.count_documents({"driver_id": driver_id, "is_deleted": False})
-    accident_count = await db.accidents.count_documents({"driver_id": driver_id, "is_deleted": False})
+    if not driver_id:
+        return
     
-    # Simple risk score: 10 points per challan + 50 points per accident
-    risk_score = (challan_count * 10) + (accident_count * 50)
+    # Get all unpaid challans for this driver
+    unpaid_challans = await db.challans.count_documents({
+        "driver_id": driver_id, 
+        "status": "Unpaid",
+        "is_deleted": False
+    })
     
-    await db.drivers.update_one({"id": driver_id}, {"$set": {"risk_score": risk_score}})
+    # Get all paid challans for this driver
+    paid_challans = await db.challans.count_documents({
+        "driver_id": driver_id, 
+        "status": "Paid",
+        "is_deleted": False
+    })
+    
+    # Get accident count
+    accident_count = await db.accidents.count_documents({
+        "driver_id": driver_id, 
+        "is_deleted": False
+    })
+    
+    # Calculate total challan amount
+    challan_pipeline = [
+        {"$match": {"driver_id": driver_id, "is_deleted": False}},
+        {"$group": {"_id": None, "total_amount": {"$sum": "$amount"}}}
+    ]
+    challan_result = await db.challans.aggregate(challan_pipeline).to_list(1)
+    total_challan_amount = challan_result[0]["total_amount"] if challan_result else 0
+    
+    # Calculate risk score based on multiple factors
+    # Base score from number of challans
+    base_score = (unpaid_challans * 15) + (paid_challans * 5)
+    
+    # Additional weight for high-value challans
+    amount_score = min(total_challan_amount / 1000, 50)  # Max 50 points from amount
+    
+    # Accident score
+    accident_score = accident_count * 50
+    
+    risk_score = base_score + amount_score + accident_score
+    
+    await db.drivers.update_one(
+        {"id": driver_id}, 
+        {"$set": {
+            "risk_score": risk_score,
+            "total_challans": unpaid_challans + paid_challans,
+            "unpaid_challans": unpaid_challans,
+            "total_challan_amount": total_challan_amount
+        }}
+    )
 
+# Add these endpoints to your server.py
+
+@api_router.get("/warnings/vehicle/{vehicle_id}")
+async def get_vehicle_warnings(
+    vehicle_id: str,
+    date: Optional[str] = None,
+    violation_type: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get warnings for a vehicle including:
+    - Multiple challans on same day
+    - Pending challans count and amount
+    - Similar violation patterns
+    """
+    query = {"vehicle_id": vehicle_id, "is_deleted": False}
+    
+    # Get all challans for this vehicle
+    vehicle_challans = await db.challans.find(
+        query, 
+        {"_id": 0}
+    ).sort("date", -1).to_list(100)
+    
+    warnings = []
+    
+    # Check for multiple challans on same day
+    if date:
+        target_date = datetime.fromisoformat(date).date()
+        same_day_challans = [
+            c for c in vehicle_challans 
+            if datetime.fromisoformat(c["date"]).date() == target_date
+        ]
+        
+        if len(same_day_challans) > 0:
+            warnings.append({
+                "type": "multiple_same_day",
+                "severity": "warning",
+                "message": f"Vehicle has {len(same_day_challans)} challan(s) on this date",
+                "details": [
+                    {
+                        "time": c["date"],
+                        "type": c["violation_type"],
+                        "amount": c["amount"]
+                    } for c in same_day_challans
+                ]
+            })
+    
+    # Check pending challans
+    pending_challans = [c for c in vehicle_challans if c["status"] == "Unpaid"]
+    if len(pending_challans) >= 2:
+        total_amount = sum(c["amount"] for c in pending_challans)
+        warnings.append({
+            "type": "pending",
+            "severity": "warning",
+            "message": f"Vehicle has {len(pending_challans)} pending challans",
+            "total_amount": total_amount
+        })
+    
+    # Check similar violations
+    if violation_type:
+        similar = [
+            c for c in vehicle_challans 
+            if c["violation_type"].lower() == violation_type.lower()
+            and c["status"] == "Unpaid"
+        ]
+        if similar:
+            warnings.append({
+                "type": "repeat",
+                "severity": "info",
+                "message": f"Similar violation recorded on {similar[0]['date'][:10]}"
+            })
+    
+    return {"warnings": warnings}
+
+
+@api_router.get("/warnings/driver/{driver_id}")
+async def get_driver_warnings(
+    driver_id: str,
+    date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get warnings for a driver including:
+    - Multiple challans on same day (with vehicle details)
+    - Multiple challans in last 7 days
+    - Total challans and unpaid amount
+    """
+    query = {"driver_id": driver_id, "is_deleted": False}
+    
+    # Get all challans for this driver
+    driver_challans = await db.challans.find(
+        query, 
+        {"_id": 0}
+    ).sort("date", -1).to_list(100)
+    
+    # Get vehicle details for reference
+    vehicle_ids = list(set(c["vehicle_id"] for c in driver_challans))
+    vehicles = await db.vehicles.find(
+        {"id": {"$in": vehicle_ids}, "is_deleted": False},
+        {"_id": 0, "id": 1, "registration_number": 1}
+    ).to_list(100)
+    
+    vehicle_map = {v["id"]: v["registration_number"] for v in vehicles}
+    
+    warnings = []
+    
+    # Check for multiple challans on same day
+    if date:
+        target_date = datetime.fromisoformat(date).date()
+        same_day_challans = [
+            c for c in driver_challans 
+            if datetime.fromisoformat(c["date"]).date() == target_date
+        ]
+        
+        if len(same_day_challans) > 0:
+            warnings.append({
+                "type": "driver_multiple_same_day",
+                "severity": "warning",
+                "message": f"Driver has {len(same_day_challans)} challan(s) on this date",
+                "details": [
+                    {
+                        "vehicle": vehicle_map.get(c["vehicle_id"], "Unknown"),
+                        "time": c["date"],
+                        "type": c["violation_type"],
+                        "amount": c["amount"]
+                    } for c in same_day_challans
+                ]
+            })
+    
+    # Check last 7 days activity
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    week_challans = [
+        c for c in driver_challans 
+        if datetime.fromisoformat(c["date"]) >= seven_days_ago
+    ]
+    
+    if len(week_challans) >= 2:
+        vehicle_summary = {}
+        for c in week_challans:
+            reg = vehicle_map.get(c["vehicle_id"], "Unknown")
+            vehicle_summary[reg] = vehicle_summary.get(reg, 0) + 1
+        
+        warnings.append({
+            "type": "driver_week_multiple",
+            "severity": "warning",
+            "message": f"Driver has {len(week_challans)} challans in last 7 days",
+            "details": {
+                "vehicles": ", ".join([f"{v} ({c})" for v, c in vehicle_summary.items()]),
+                "count": len(week_challans)
+            }
+        })
+    
+    # Check total statistics
+    total_challans = len(driver_challans)
+    if total_challans >= 3:
+        warnings.append({
+            "type": "frequent",
+            "severity": "warning",
+            "message": f"Driver has {total_challans} total challans"
+        })
+    
+    unpaid_amount = sum(c["amount"] for c in driver_challans if c["status"] == "Unpaid")
+    if unpaid_amount > 5000:
+        warnings.append({
+            "type": "amount",
+            "severity": "warning",
+            "message": f"Driver has Rs {unpaid_amount:,.2f} in unpaid challans"
+        })
+    
+    return {"warnings": warnings}    
 # ==================== ACCIDENT & CLAIM ROUTES ====================
 
 @api_router.post("/accidents")

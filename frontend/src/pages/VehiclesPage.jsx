@@ -39,6 +39,8 @@ const initialFormData = {
   site_name: '',
   date_of_registration: '',
   tax_upto: '',
+  tax_issue_date: '', // Add this
+  tax_expiry_date: '', // Add this
   remark: '',
   fastag_company: '',
   fastag_balance: '',
@@ -72,23 +74,26 @@ const FastagPasswordInput = ({ formData, setFormData }) => {
   );
 };
 
-const VehicleForm = ({ formData, setFormData, onSubmit, submitText }) => {
-
-  const [taxType, setTaxType] = useState("date");
+const VehicleForm = ({ formData, setFormData, onSubmit, submitText, taxType, setTaxType }) => {
 
   useEffect(() => {
     if (taxType === "lifetime") {
-      setFormData({ ...formData, tax_upto: "LIFETIME" })
-    }
-
-    if (taxType === "onetime") {
-      setFormData({ ...formData, tax_upto: "ONE TIME" })
-    }
-
-    if (taxType === "exempted") {
-      setFormData({ ...formData, tax_upto: "EXEMPTED" })
+      setFormData({ ...formData, tax_upto: "LIFETIME", tax_issue_date: '', tax_expiry_date: '' });
+    } else if (taxType === "onetime") {
+      setFormData({ ...formData, tax_upto: "ONE TIME", tax_issue_date: '', tax_expiry_date: '' });
+    } else if (taxType === "exempted") {
+      setFormData({ ...formData, tax_upto: "EXEMPTED", tax_issue_date: '', tax_expiry_date: '' });
     }
   }, [taxType]);
+
+  useEffect(() => {
+    if (taxType === "date" && formData.tax_issue_date && formData.tax_expiry_date) {
+      setFormData({
+        ...formData,
+        tax_upto: `${formData.tax_issue_date} - ${formData.tax_expiry_date}`
+      });
+    }
+  }, [formData.tax_issue_date, formData.tax_expiry_date]);
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
@@ -221,115 +226,107 @@ const VehicleForm = ({ formData, setFormData, onSubmit, submitText }) => {
 
       <div className="grid grid-cols-3 gap-4">
 
-  {/* Date of Registration */}
-  <div>
-    <Label>DOR (Date of Registration)</Label>
-    <Input
-      type="date"
-      value={formData.date_of_registration}
-      onChange={(e) =>
-        setFormData({ ...formData, date_of_registration: e.target.value })
-      }
-    />
-  </div>
+        {/* Date of Registration */}
+        <div>
+          <Label>DOR (Date of Registration)</Label>
+          <Input
+            type="date"
+            value={formData.date_of_registration}
+            onChange={(e) =>
+              setFormData({ ...formData, date_of_registration: e.target.value })
+            }
+          />
+        </div>
 
-  {/* Seating */}
-  <div>
-    <Label>Seating Capacity</Label>
-    <Input
-      type="number"
-      value={formData.seating_capacity}
-      onChange={(e) =>
-        setFormData({ ...formData, seating_capacity: e.target.value })
-      }
-      placeholder="5"
-      min="1"
-    />
-  </div>
-    {/* Tax Type */}
-  <div>
-    <Label>Tax Type</Label>
+        {/* Seating */}
+        <div>
+          <Label>Seating Capacity</Label>
+          <Input
+            type="number"
+            value={formData.seating_capacity}
+            onChange={(e) =>
+              setFormData({ ...formData, seating_capacity: e.target.value })
+            }
+            placeholder="5"
+            min="1"
+          />
+        </div>
+        {/* Tax Type */}
+        <div>
+          <Label>Tax Type</Label>
+          <Select
+            value={taxType}
+            onValueChange={(value) => setTaxType(value)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date">Date Range</SelectItem>
+              <SelectItem value="lifetime">Lifetime</SelectItem>
+              <SelectItem value="onetime">One Time</SelectItem>
+              <SelectItem value="exempted">Exempted</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-    <Select
-      value={taxType}
-      onValueChange={(value) => setTaxType(value)}
-    >
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
+      {/* TAX DATE RANGE - Now with values populated from formData */}
+      {taxType === "date" && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>Issue Date</Label>
+            <Input
+              type="date"
+              value={formData.tax_issue_date || ''}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  tax_issue_date: e.target.value
+                })
+              }
+            />
+          </div>
 
-      <SelectContent>
-        <SelectItem value="date">Date Range</SelectItem>
-        <SelectItem value="lifetime">Lifetime</SelectItem>
-        <SelectItem value="onetime">One Time</SelectItem>
-        <SelectItem value="exempted">Exempted</SelectItem>
-      </SelectContent>
-    </Select>
-  </div>
+          <div>
+            <Label>Expiry Date</Label>
+            <Input
+              type="date"
+              value={formData.tax_expiry_date || ''}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  tax_expiry_date: e.target.value
+                })
+              }
+            />
+          </div>
+        </div>
+      )}
 
-</div>
+      {/* Lifetime */}
+      {taxType === "lifetime" && (
+        <div>
+          <Label>Tax Status</Label>
+          <Input value="LIFETIME TAX" disabled />
+        </div>
+      )}
 
+      {/* One Time */}
+      {taxType === "onetime" && (
+        <div>
+          <Label>Tax Status</Label>
+          <Input value="ONE TIME TAX" disabled />
+        </div>
+      )}
 
-
-
-{/* TAX DATE RANGE */}
-{taxType === "date" && (
-  <div className="grid grid-cols-2 gap-4">
-
-    <div>
-      <Label>Issue Date</Label>
-      <Input
-        type="date"
-        onChange={(e) =>
-          setFormData({
-            ...formData,
-            tax_upto: `${e.target.value} - ${formData.tax_upto?.split(" - ")[1] || ""}`
-          })
-        }
-      />
-    </div>
-
-    <div>
-      <Label>Expiry Date</Label>
-      <Input
-        type="date"
-        onChange={(e) =>
-          setFormData({
-            ...formData,
-            tax_upto: `${formData.tax_upto?.split(" - ")[0] || ""} - ${e.target.value}`
-          })
-        }
-      />
-    </div>
-
-  </div>
-)}
-
-
-{/* Lifetime */}
-{taxType === "lifetime" && (
-  <div>
-    <Label>Tax Status</Label>
-    <Input value="LIFETIME TAX" disabled />
-  </div>
-)}
-
-{/* One Time */}
-{taxType === "onetime" && (
-  <div>
-    <Label>Tax Status</Label>
-    <Input value="ONE TIME TAX" disabled />
-  </div>
-)}
-
-{/* Exempted */}
-{taxType === "exempted" && (
-  <div>
-    <Label>Tax Status</Label>
-    <Input value="TAX EXEMPTED" disabled />
-  </div>
-)}
-
+      {/* Exempted */}
+      {taxType === "exempted" && (
+        <div>
+          <Label>Tax Status</Label>
+          <Input value="TAX EXEMPTED" disabled />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label>Average (km/l) </Label>
@@ -452,10 +449,11 @@ export const VehiclesPage = () => {
   const [formData, setFormData] = useState(initialFormData);
   const [importData, setImportData] = useState('');
   const [importing, setImporting] = useState(false);
-  const [fastagPasses, setFastagPasses] = useState([])
-  const [passDialogOpen, setPassDialogOpen] = useState(false)
-  const [editPassDialogOpen, setEditPassDialogOpen] = useState(false)
-  const [selectedPass, setSelectedPass] = useState(null)
+  const [fastagPasses, setFastagPasses] = useState([]);
+  const [passDialogOpen, setPassDialogOpen] = useState(false);
+  const [editPassDialogOpen, setEditPassDialogOpen] = useState(false);
+  const [selectedPass, setSelectedPass] = useState(null);
+  const [taxType, setTaxType] = useState("date");
 
   const [passForm, setPassForm] = useState({
     pass_name: "",
@@ -465,7 +463,7 @@ export const VehiclesPage = () => {
     expiry_date: "",
     toll_plaza: "",
     status: "Active"
-  })
+  });
 
   useEffect(() => {
     fetchVehicles();
@@ -600,64 +598,97 @@ export const VehiclesPage = () => {
     }
   };
 
-  const handleEdit = (vehicle) => {
-    setSelectedVehicle(vehicle);
-    setFormData({
-      registration_number: vehicle.registration_number,
-      type: vehicle.type,
-      brand: vehicle.brand,
-      model: vehicle.model,
-      year: vehicle.year?.toString() || '',
-      chassis_number: vehicle.chassis_number || '',
-      engine_number: vehicle.engine_number || '',
-      color: vehicle.color || '',
-      fuel_type: vehicle.fuel_type,
-      average_kmpl: vehicle.average_kmpl.toString(),
-      tank_capacity_liters: vehicle.tank_capacity_liters.toString(),
-      seating_capacity: vehicle.seating_capacity?.toString() || '',
-      owner_name: vehicle.owner_name || '',
-      file_status: vehicle.file_status || false,
-      site_name: vehicle.site_name || '',
-      date_of_registration: vehicle.date_of_registration ? vehicle.date_of_registration.split('T')[0] : '',
-      tax_upto: vehicle.tax_upto || '',
-      remark: vehicle.remark || '',
+  const handleEdit = async (vehicle) => {
+    try {
+      // Fetch fresh vehicle data
+      const response = await api.get(`/vehicles/${vehicle.id}`);
+      const freshVehicle = response.data;
 
-      fastag_company: vehicle.fastag_company || '',
-      fastag_balance: vehicle.fastag_balance?.toString() || '',
-      fastag_user_id: vehicle.fastag_user_id || '',
-      fastag_password: vehicle.fastag_password || '',
-      fastag_sold: vehicle.fastag_sold || false,
-      fastag_sold_date: vehicle.fastag_sold_date || ''
-    });
-    setEditDialogOpen(true);
-    if (vehicle.tax_upto === "LIFETIME") {
-  setTaxType("lifetime")
-}
-else if (vehicle.tax_upto === "ONE TIME") {
-  setTaxType("onetime")
-}
-else if (vehicle.tax_upto === "EXEMPTED") {
-  setTaxType("exempted")
-}
-else {
-  setTaxType("date")
-}
+      setSelectedVehicle(freshVehicle);
+
+      // Parse tax_upto for date range
+      let taxTypeValue = "date";
+      let issueDate = "";
+      let expiryDate = "";
+
+      if (freshVehicle.tax_upto) {
+        if (freshVehicle.tax_upto === "LIFETIME") {
+          taxTypeValue = "lifetime";
+        } else if (freshVehicle.tax_upto === "ONE TIME") {
+          taxTypeValue = "onetime";
+        } else if (freshVehicle.tax_upto === "EXEMPTED") {
+          taxTypeValue = "exempted";
+        } else if (freshVehicle.tax_upto.includes(" - ")) {
+          // Parse date range format "YYYY-MM-DD - YYYY-MM-DD"
+          const dates = freshVehicle.tax_upto.split(" - ");
+          if (dates.length === 2) {
+            issueDate = dates[0];
+            expiryDate = dates[1];
+          }
+        }
+      }
+
+      setTaxType(taxTypeValue);
+
+      setFormData({
+        registration_number: freshVehicle.registration_number,
+        type: freshVehicle.type,
+        brand: freshVehicle.brand,
+        model: freshVehicle.model,
+        year: freshVehicle.year?.toString() || '',
+        chassis_number: freshVehicle.chassis_number || '',
+        engine_number: freshVehicle.engine_number || '',
+        color: freshVehicle.color || '',
+        fuel_type: freshVehicle.fuel_type,
+        average_kmpl: freshVehicle.average_kmpl?.toString() || '',
+        tank_capacity_liters: freshVehicle.tank_capacity_liters?.toString() || '',
+        seating_capacity: freshVehicle.seating_capacity?.toString() || '',
+        owner_name: freshVehicle.owner_name || '',
+        file_status: freshVehicle.file_status || false,
+        site_name: freshVehicle.site_name || '',
+        date_of_registration: freshVehicle.date_of_registration ? freshVehicle.date_of_registration.split('T')[0] : '',
+        tax_upto: freshVehicle.tax_upto || '',
+        tax_issue_date: issueDate, // Add this to form data
+        tax_expiry_date: expiryDate, // Add this to form data
+        remark: freshVehicle.remark || '',
+        fastag_company: freshVehicle.fastag_company || '',
+        fastag_balance: freshVehicle.fastag_balance?.toString() || '',
+        fastag_user_id: freshVehicle.fastag_user_id || '',
+        fastag_password: freshVehicle.fastag_password || '',
+        fastag_sold: freshVehicle.fastag_sold || false,
+        fastag_sold_date: freshVehicle.fastag_sold_date || ''
+      });
+
+      setEditDialogOpen(true);
+    } catch (error) {
+      console.error("Edit error:", error);
+      toast.error("Failed to load vehicle data");
+    }
   };
 
   const handleView = async (vehicle) => {
-    setSelectedVehicle(vehicle)
-    setViewDialogOpen(true)
-
     try {
-      const response = await api.get(`/vehicles/${vehicle.id}/full-report`)
-      setVehicleReport(response.data)
+      // Show loading state
+      setViewDialogOpen(true);
 
-      await fetchFastagPasses(vehicle.id)
+      // Fetch fresh vehicle data
+      const vehicleResponse = await api.get(`/vehicles/${vehicle.id}`);
+      const freshVehicle = vehicleResponse.data;
 
+      // Fetch full report with related data
+      const reportResponse = await api.get(`/vehicles/${vehicle.id}/full-report`);
+      setVehicleReport(reportResponse.data);
+
+      // Fetch FASTag passes
+      await fetchFastagPasses(vehicle.id);
+
+      setSelectedVehicle(freshVehicle);
     } catch (error) {
-      toast.error("Failed to load vehicle report")
+      console.error("View error:", error);
+      toast.error("Failed to load vehicle details");
+      setViewDialogOpen(false);
     }
-  }
+  };
 
   const createPass = async (e) => {
     e.preventDefault()
@@ -1047,6 +1078,8 @@ else {
                 setFormData={setFormData}
                 onSubmit={handleSubmit}
                 submitText="Add Vehicle"
+                taxType={taxType}
+                setTaxType={setTaxType}
               />
             </DialogContent>
           </Dialog>
@@ -1064,6 +1097,8 @@ else {
             setFormData={setFormData}
             onSubmit={handleUpdate}
             submitText="Update Vehicle"
+            taxType={taxType}
+            setTaxType={setTaxType}
           />
         </DialogContent>
       </Dialog>
