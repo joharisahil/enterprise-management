@@ -38,6 +38,9 @@ class VehicleType(str, Enum):
     VAN = "Van"
     BIKE = "Bike"
     BUS = "Bus"
+    JCB = "JCB"
+    TRACTOR = "Tractor"
+    CRANE = "Crane"
 
 class FuelType(str, Enum):
     PETROL = "Petrol"
@@ -297,8 +300,8 @@ class VehicleBase(BaseModel):
     engine_number: Optional[str] = None
     color: Optional[str] = None
     fuel_type: FuelType
-    average_kmpl: float
-    tank_capacity_liters: float
+    average_kmpl: Optional[float] = None
+    tank_capacity_liters: Optional[float] = None
     seating_capacity: Optional[int] = None
     fastag_id: Optional[str] = None
     gps_device_id: Optional[str] = None
@@ -519,3 +522,37 @@ class NotificationCreate(NotificationBase):
 class Notification(NotificationBase, TimestampModel):
     model_config = ConfigDict(extra="ignore")
     id: str
+
+class FastagPassStatus(str, Enum):
+    ACTIVE = "Active"
+    EXPIRED = "Expired"
+    USED = "Completed"
+
+class FastagPassStatus(str, Enum):
+    ACTIVE = "Active"
+    INACTIVE = "Inactive"
+    AFTER_RC_UPDATE = "After RC Update"
+
+
+class FastagPassBase(BaseModel):
+    vehicle_id: str
+    pass_name: str
+
+    trips_allowed: int
+    balance_trips: int
+
+    issue_date: datetime
+    expiry_date: datetime
+
+    status: FastagPassStatus = FastagPassStatus.ACTIVE
+
+    toll_plaza: Optional[str] = None
+
+
+class FastagPassCreate(FastagPassBase):
+    pass
+
+
+class FastagPass(FastagPassBase, TimestampModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str    

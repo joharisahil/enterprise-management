@@ -72,274 +72,373 @@ const FastagPasswordInput = ({ formData, setFormData }) => {
   );
 };
 
-const VehicleForm = ({ formData, setFormData, onSubmit, submitText }) => (
-  <form onSubmit={onSubmit} className="space-y-4">
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <Label>Registration Number *</Label>
-        <Input
-          required
-          data-testid="vehicle-reg-input"
-          value={formData.registration_number}
-          onChange={(e) => setFormData({ ...formData, registration_number: e.target.value })}
-          placeholder="MH-02-DN-4921"
-        />
-      </div>
-      <div>
-        <Label>Owner Name</Label>
-        <Input
-          value={formData.owner_name}
-          onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
-          placeholder="John Doe"
-        />
-      </div>
-    </div>
+const VehicleForm = ({ formData, setFormData, onSubmit, submitText }) => {
 
-    <div className="grid grid-cols-3 gap-4">
-      <div>
-        <Label>Type *</Label>
-        <Select
-          value={formData.type}
-          onValueChange={(value) => setFormData({ ...formData, type: value })}
-        >
-          <SelectTrigger data-testid="vehicle-type-select">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {vehicleTypes.map((type) => (
-              <SelectItem key={type} value={type}>{type}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+  const [taxType, setTaxType] = useState("date");
 
-      <div>
-        <Label>Fuel Type *</Label>
-        <Select
-          value={formData.fuel_type}
-          onValueChange={(value) => setFormData({ ...formData, fuel_type: value })}
-        >
-          <SelectTrigger data-testid="vehicle-fuel-select">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {fuelTypes.map((type) => (
-              <SelectItem key={type} value={type}>{type}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+  useEffect(() => {
+    if (taxType === "lifetime") {
+      setFormData({ ...formData, tax_upto: "LIFETIME" })
+    }
+
+    if (taxType === "onetime") {
+      setFormData({ ...formData, tax_upto: "ONE TIME" })
+    }
+
+    if (taxType === "exempted") {
+      setFormData({ ...formData, tax_upto: "EXEMPTED" })
+    }
+  }, [taxType]);
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Registration Number *</Label>
+          <Input
+            required
+            data-testid="vehicle-reg-input"
+            value={formData.registration_number}
+            onChange={(e) => setFormData({ ...formData, registration_number: e.target.value })}
+            placeholder="MH-02-DN-4921"
+          />
+        </div>
+        <div>
+          <Label>Owner Name</Label>
+          <Input
+            value={formData.owner_name}
+            onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
+            placeholder="John Doe"
+          />
+        </div>
       </div>
 
-      <div>
-        <Label>Site Name</Label>
-        <Input
-          value={formData.site_name}
-          onChange={(e) => setFormData({ ...formData, site_name: e.target.value })}
-          placeholder="Mumbai HQ"
-        />
-      </div>
-    </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <Label>Type *</Label>
+          <Select
+            value={formData.type}
+            onValueChange={(value) => setFormData({ ...formData, type: value })}
+          >
+            <SelectTrigger data-testid="vehicle-type-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {vehicleTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-    <div className="grid grid-cols-4 gap-4">
-      <div>
-        <Label>Brand *</Label>
-        <Input
-          required
-          data-testid="vehicle-brand-input"
-          value={formData.brand}
-          onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-          placeholder="Tata"
-        />
-      </div>
-      <div>
-        <Label>Model *</Label>
-        <Input
-          required
-          data-testid="vehicle-model-input"
-          value={formData.model}
-          onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-          placeholder="Ace"
-        />
-      </div>
-      <div>
-        <Label>Year</Label>
-        <Input
-          type="number"
-          value={formData.year}
-          onChange={(e) => setFormData({ ...formData, year: e.target.value })}
-          placeholder="2024"
-          min="1900"
-          max="2100"
-        />
-      </div>
-      <div>
-        <Label>Color</Label>
-        <Input
-          value={formData.color}
-          onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-          placeholder="White"
-        />
-      </div>
-    </div>
+        <div>
+          <Label>Fuel Type *</Label>
+          <Select
+            value={formData.fuel_type}
+            onValueChange={(value) => setFormData({ ...formData, fuel_type: value })}
+          >
+            <SelectTrigger data-testid="vehicle-fuel-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {fuelTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <Label>Chassis Number</Label>
-        <Input
-          value={formData.chassis_number}
-          onChange={(e) => setFormData({ ...formData, chassis_number: e.target.value })}
-          placeholder="MABXXXXXXXXXX1234"
-        />
+        <div>
+          <Label>Site Name</Label>
+          <Input
+            value={formData.site_name}
+            onChange={(e) => setFormData({ ...formData, site_name: e.target.value })}
+            placeholder="Mumbai HQ"
+          />
+        </div>
       </div>
-      <div>
-        <Label>Engine Number</Label>
-        <Input
-          value={formData.engine_number}
-          onChange={(e) => setFormData({ ...formData, engine_number: e.target.value })}
-          placeholder="ENG123456"
-        />
-      </div>
-    </div>
-
-    <div className="grid grid-cols-3 gap-4">
-      <div>
-        <Label>DOR (Date of Registration)</Label>
-        <Input
-          type="date"
-          value={formData.date_of_registration}
-          onChange={(e) => setFormData({ ...formData, date_of_registration: e.target.value })}
-        />
-      </div>
-      <div>
-        <Label>Tax Upto</Label>
-        <Input
-          value={formData.tax_upto}
-          onChange={(e) => setFormData({ ...formData, tax_upto: e.target.value })}
-          placeholder="2025-03-31 or Dec 2025"
-        />
-      </div>
-      <div>
-        <Label>Seating Capacity</Label>
-        <Input
-          type="number"
-          value={formData.seating_capacity}
-          onChange={(e) => setFormData({ ...formData, seating_capacity: e.target.value })}
-          placeholder="5"
-          min="1"
-        />
-      </div>
-    </div>
-
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <Label>Average (km/l) *</Label>
-        <Input
-          type="number"
-          step="0.1"
-          required
-          value={formData.average_kmpl}
-          onChange={(e) => setFormData({ ...formData, average_kmpl: e.target.value })}
-          placeholder="15"
-        />
-      </div>
-
-      <div>
-        <Label>Tank Capacity (L) *</Label>
-        <Input
-          type="number"
-          step="0.1"
-          required
-          value={formData.tank_capacity_liters}
-          onChange={(e) => setFormData({ ...formData, tank_capacity_liters: e.target.value })}
-          placeholder="50"
-        />
-      </div>
-    </div>
-
-    {/* FASTag Section */}
-    <div className="border-t pt-4">
-      <h3 className="text-sm font-semibold text-slate-700 mb-3">FASTag Information</h3>
 
       <div className="grid grid-cols-4 gap-4">
-
         <div>
-          <Label>FASTag Company</Label>
+          <Label>Brand *</Label>
           <Input
-            value={formData.fastag_company}
-            onChange={(e) =>
-              setFormData({ ...formData, fastag_company: e.target.value })
-            }
-            placeholder="Paytm / ICICI / HDFC"
+            required
+            data-testid="vehicle-brand-input"
+            value={formData.brand}
+            onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+            placeholder="Tata"
           />
         </div>
-
         <div>
-          <Label>FASTag Balance</Label>
+          <Label>Model *</Label>
+          <Input
+            required
+            data-testid="vehicle-model-input"
+            value={formData.model}
+            onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+            placeholder="Ace"
+          />
+        </div>
+        <div>
+          <Label>Year</Label>
           <Input
             type="number"
-            value={formData.fastag_balance}
-            onChange={(e) =>
-              setFormData({ ...formData, fastag_balance: e.target.value })
-            }
-            placeholder="500"
+            value={formData.year}
+            onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+            placeholder="2024"
+            min="1900"
+            max="2100"
           />
         </div>
-
         <div>
-          <Label>FASTag User ID</Label>
+          <Label>Color</Label>
           <Input
-            value={formData.fastag_user_id}
-            onChange={(e) =>
-              setFormData({ ...formData, fastag_user_id: e.target.value })
-            }
-            placeholder="User ID"
+            value={formData.color}
+            onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+            placeholder="White"
           />
         </div>
+      </div>
 
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label>FASTag Password</Label>
-          <FastagPasswordInput formData={formData} setFormData={setFormData} />
+          <Label>Chassis Number</Label>
+          <Input
+            value={formData.chassis_number}
+            onChange={(e) => setFormData({ ...formData, chassis_number: e.target.value })}
+            placeholder="MABXXXXXXXXXX1234"
+          />
         </div>
-
+        <div>
+          <Label>Engine Number</Label>
+          <Input
+            value={formData.engine_number}
+            onChange={(e) => setFormData({ ...formData, engine_number: e.target.value })}
+            placeholder="ENG123456"
+          />
+        </div>
       </div>
 
-      <div className="flex items-center gap-3 pt-4">
-        <Switch
-          checked={formData.fastag_sold}
-          onCheckedChange={(checked) =>
-            setFormData({ ...formData, fastag_sold: checked })
-          }
-        />
-        <Label>FASTag Sold</Label>
-      </div>
-    </div>
+      <div className="grid grid-cols-3 gap-4">
+
+  {/* Date of Registration */}
+  <div>
+    <Label>DOR (Date of Registration)</Label>
+    <Input
+      type="date"
+      value={formData.date_of_registration}
+      onChange={(e) =>
+        setFormData({ ...formData, date_of_registration: e.target.value })
+      }
+    />
+  </div>
+
+  {/* Seating */}
+  <div>
+    <Label>Seating Capacity</Label>
+    <Input
+      type="number"
+      value={formData.seating_capacity}
+      onChange={(e) =>
+        setFormData({ ...formData, seating_capacity: e.target.value })
+      }
+      placeholder="5"
+      min="1"
+    />
+  </div>
+    {/* Tax Type */}
+  <div>
+    <Label>Tax Type</Label>
+
+    <Select
+      value={taxType}
+      onValueChange={(value) => setTaxType(value)}
+    >
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+
+      <SelectContent>
+        <SelectItem value="date">Date Range</SelectItem>
+        <SelectItem value="lifetime">Lifetime</SelectItem>
+        <SelectItem value="onetime">One Time</SelectItem>
+        <SelectItem value="exempted">Exempted</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+
+</div>
 
 
-    <div className="flex items-center gap-3 pt-6">
-      <Switch
-        checked={formData.file_status}
-        onCheckedChange={(checked) => setFormData({ ...formData, file_status: checked })}
-      />
-      <Label>File Status (Complete)</Label>
-    </div>
 
 
+{/* TAX DATE RANGE */}
+{taxType === "date" && (
+  <div className="grid grid-cols-2 gap-4">
 
     <div>
-      <Label>Remark</Label>
-      <Textarea
-        value={formData.remark}
-        onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
-        placeholder="Any additional notes about this vehicle..."
-        rows={2}
+      <Label>Issue Date</Label>
+      <Input
+        type="date"
+        onChange={(e) =>
+          setFormData({
+            ...formData,
+            tax_upto: `${e.target.value} - ${formData.tax_upto?.split(" - ")[1] || ""}`
+          })
+        }
       />
     </div>
 
-    <Button type="submit" className="w-full bg-emerald-700 hover:bg-emerald-800" data-testid="submit-vehicle-button">
-      {submitText}
-    </Button>
-  </form>
-);
+    <div>
+      <Label>Expiry Date</Label>
+      <Input
+        type="date"
+        onChange={(e) =>
+          setFormData({
+            ...formData,
+            tax_upto: `${formData.tax_upto?.split(" - ")[0] || ""} - ${e.target.value}`
+          })
+        }
+      />
+    </div>
+
+  </div>
+)}
+
+
+{/* Lifetime */}
+{taxType === "lifetime" && (
+  <div>
+    <Label>Tax Status</Label>
+    <Input value="LIFETIME TAX" disabled />
+  </div>
+)}
+
+{/* One Time */}
+{taxType === "onetime" && (
+  <div>
+    <Label>Tax Status</Label>
+    <Input value="ONE TIME TAX" disabled />
+  </div>
+)}
+
+{/* Exempted */}
+{taxType === "exempted" && (
+  <div>
+    <Label>Tax Status</Label>
+    <Input value="TAX EXEMPTED" disabled />
+  </div>
+)}
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Average (km/l) </Label>
+          <Input
+            type="number"
+            step="0.1"
+            value={formData.average_kmpl}
+            onChange={(e) => setFormData({ ...formData, average_kmpl: e.target.value })}
+            placeholder="15"
+          />
+        </div>
+
+        <div>
+          <Label>Tank Capacity (L) </Label>
+          <Input
+            type="number"
+            step="0.1"
+            value={formData.tank_capacity_liters}
+            onChange={(e) => setFormData({ ...formData, tank_capacity_liters: e.target.value })}
+            placeholder="50"
+          />
+        </div>
+      </div>
+
+      {/* FASTag Section */}
+      <div className="border-t pt-4">
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">FASTag Information</h3>
+
+        <div className="grid grid-cols-4 gap-4">
+
+          <div>
+            <Label>FASTag Company</Label>
+            <Input
+              value={formData.fastag_company}
+              onChange={(e) =>
+                setFormData({ ...formData, fastag_company: e.target.value })
+              }
+              placeholder="Paytm / ICICI / HDFC"
+            />
+          </div>
+
+          <div>
+            <Label>FASTag Balance</Label>
+            <Input
+              type="number"
+              value={formData.fastag_balance}
+              onChange={(e) =>
+                setFormData({ ...formData, fastag_balance: e.target.value })
+              }
+              placeholder="500"
+            />
+          </div>
+
+          <div>
+            <Label>FASTag User ID</Label>
+            <Input
+              value={formData.fastag_user_id}
+              onChange={(e) =>
+                setFormData({ ...formData, fastag_user_id: e.target.value })
+              }
+              placeholder="User ID"
+            />
+          </div>
+
+          <div>
+            <Label>FASTag Password</Label>
+            <FastagPasswordInput formData={formData} setFormData={setFormData} />
+          </div>
+
+        </div>
+
+        <div className="flex items-center gap-3 pt-4">
+          <Switch
+            checked={formData.fastag_sold}
+            onCheckedChange={(checked) =>
+              setFormData({ ...formData, fastag_sold: checked })
+            }
+          />
+          <Label>FASTag Sold</Label>
+        </div>
+      </div>
+
+
+      <div className="flex items-center gap-3 pt-6">
+        <Switch
+          checked={formData.file_status}
+          onCheckedChange={(checked) => setFormData({ ...formData, file_status: checked })}
+        />
+        <Label>File Status (Complete)</Label>
+      </div>
+
+
+
+      <div>
+        <Label>Remark</Label>
+        <Textarea
+          value={formData.remark}
+          onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+          placeholder="Any additional notes about this vehicle..."
+          rows={2}
+        />
+      </div>
+
+      <Button type="submit" className="w-full bg-emerald-700 hover:bg-emerald-800" data-testid="submit-vehicle-button">
+        {submitText}
+      </Button>
+    </form>
+  );
+};
 
 export const VehiclesPage = () => {
   const [vehicles, setVehicles] = useState([]);
@@ -353,6 +452,20 @@ export const VehiclesPage = () => {
   const [formData, setFormData] = useState(initialFormData);
   const [importData, setImportData] = useState('');
   const [importing, setImporting] = useState(false);
+  const [fastagPasses, setFastagPasses] = useState([])
+  const [passDialogOpen, setPassDialogOpen] = useState(false)
+  const [editPassDialogOpen, setEditPassDialogOpen] = useState(false)
+  const [selectedPass, setSelectedPass] = useState(null)
+
+  const [passForm, setPassForm] = useState({
+    pass_name: "",
+    trips_allowed: "",
+    balance_trips: "",
+    issue_date: "",
+    expiry_date: "",
+    toll_plaza: "",
+    status: "Active"
+  })
 
   useEffect(() => {
     fetchVehicles();
@@ -370,6 +483,85 @@ export const VehiclesPage = () => {
     }
   };
 
+  const fetchFastagPasses = async (vehicleId) => {
+    try {
+      const res = await api.get(`/vehicles/${vehicleId}/fastag-passes`)
+      setFastagPasses(res.data.data)
+    } catch (err) {
+      console.error(err)
+      toast.error("Failed to load FASTag passes")
+    }
+  }
+
+  const handleEditPass = (pass) => {
+
+    setSelectedPass(pass)
+
+    setPassForm({
+      pass_name: pass.pass_name,
+      trips_allowed: pass.trips_allowed,
+      balance_trips: pass.balance_trips,
+      issue_date: pass.issue_date.split("T")[0],
+      expiry_date: pass.expiry_date.split("T")[0],
+      toll_plaza: pass.toll_plaza || "",
+      status: pass.status
+    })
+
+    setEditPassDialogOpen(true)
+  }
+
+  const updatePass = async (e) => {
+
+    e.preventDefault()
+
+    try {
+
+      const payload = {
+        vehicle_id: selectedVehicle.id,
+        pass_name: passForm.pass_name,
+        trips_allowed: parseInt(passForm.trips_allowed),
+        balance_trips: parseInt(passForm.balance_trips),
+        issue_date: new Date(passForm.issue_date).toISOString(),
+        expiry_date: new Date(passForm.expiry_date).toISOString(),
+        toll_plaza: passForm.toll_plaza,
+        status: passForm.status
+      }
+
+      await api.put(`/fastag-passes/${selectedPass.id}`, payload)
+
+      toast.success("Pass updated")
+
+      setEditPassDialogOpen(false)
+
+      fetchFastagPasses(selectedVehicle.id)
+
+    } catch (err) {
+
+      toast.error("Failed to update pass")
+
+    }
+  }
+
+  const deletePass = async (id) => {
+
+    if (!window.confirm("Delete this FASTag pass?")) return
+
+    try {
+
+      await api.delete(`/fastag-passes/${id}`)
+
+      toast.success("Pass deleted")
+
+      fetchFastagPasses(selectedVehicle.id)
+
+    } catch {
+
+      toast.error("Failed to delete pass")
+
+    }
+
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -377,8 +569,13 @@ export const VehiclesPage = () => {
       const payload = {
         ...formData,
         year: formData.year ? parseInt(formData.year) : null,
-        average_kmpl: parseFloat(formData.average_kmpl),
-        tank_capacity_liters: parseFloat(formData.tank_capacity_liters),
+        average_kmpl: formData.average_kmpl
+          ? parseFloat(formData.average_kmpl)
+          : null,
+
+        tank_capacity_liters: formData.tank_capacity_liters
+          ? parseFloat(formData.tank_capacity_liters)
+          : null,
         seating_capacity: formData.seating_capacity ? parseInt(formData.seating_capacity) : null,
         date_of_registration: formData.date_of_registration ? new Date(formData.date_of_registration).toISOString() : null,
         fastag_balance: formData.fastag_balance
@@ -433,20 +630,92 @@ export const VehiclesPage = () => {
       fastag_sold_date: vehicle.fastag_sold_date || ''
     });
     setEditDialogOpen(true);
+    if (vehicle.tax_upto === "LIFETIME") {
+  setTaxType("lifetime")
+}
+else if (vehicle.tax_upto === "ONE TIME") {
+  setTaxType("onetime")
+}
+else if (vehicle.tax_upto === "EXEMPTED") {
+  setTaxType("exempted")
+}
+else {
+  setTaxType("date")
+}
   };
 
   const handleView = async (vehicle) => {
-    setSelectedVehicle(vehicle);
-    setViewDialogOpen(true);
+    setSelectedVehicle(vehicle)
+    setViewDialogOpen(true)
 
     try {
-      const response = await api.get(`/vehicles/${vehicle.id}/full-report`);
-      setVehicleReport(response.data);
+      const response = await api.get(`/vehicles/${vehicle.id}/full-report`)
+      setVehicleReport(response.data)
+
+      await fetchFastagPasses(vehicle.id)
+
     } catch (error) {
-      console.error("Error fetching report:", error);
-      toast.error('Failed to load vehicle report');
+      toast.error("Failed to load vehicle report")
     }
-  };
+  }
+
+  const createPass = async (e) => {
+    e.preventDefault()
+
+    try {
+
+      const payload = {
+        vehicle_id: selectedVehicle.id,
+        pass_name: passForm.pass_name,
+
+        trips_allowed: parseInt(passForm.trips_allowed),
+        balance_trips: passForm.balance_trips
+          ? parseInt(passForm.balance_trips)
+          : parseInt(passForm.trips_allowed),
+
+        status: passForm.status,
+
+        issue_date: new Date(passForm.issue_date).toISOString(),
+        expiry_date: new Date(passForm.expiry_date).toISOString(),
+
+        toll_plaza: passForm.toll_plaza
+      }
+
+      await api.post("/fastag-passes", payload)
+
+      toast.success("FASTag pass added")
+
+      setPassDialogOpen(false)
+
+      setPassForm({
+        pass_name: "",
+        trips_allowed: "",
+        balance_trips: "",
+        issue_date: "",
+        expiry_date: "",
+        toll_plaza: "",
+        status: "Active"
+      })
+
+      fetchFastagPasses(selectedVehicle.id)
+
+    } catch (err) {
+      toast.error("Failed to create pass")
+    }
+  }
+
+  const getPassStatus = (pass) => {
+
+    const now = new Date()
+
+    const expiry = new Date(pass.expiry_date)
+
+    if (expiry < now) return "Expired"
+
+    if (pass.balance_trips <= 0) return "Completed"
+
+    return "Active"
+  }
 
   const handleUpdate = async (e) => {
     e.preventDefault();
@@ -455,8 +724,13 @@ export const VehiclesPage = () => {
       const payload = {
         ...formData,
         year: formData.year ? parseInt(formData.year) : null,
-        average_kmpl: parseFloat(formData.average_kmpl),
-        tank_capacity_liters: parseFloat(formData.tank_capacity_liters),
+        average_kmpl: formData.average_kmpl
+          ? parseFloat(formData.average_kmpl)
+          : null,
+
+        tank_capacity_liters: formData.tank_capacity_liters
+          ? parseFloat(formData.tank_capacity_liters)
+          : null,
         seating_capacity: formData.seating_capacity ? parseInt(formData.seating_capacity) : null,
         date_of_registration: formData.date_of_registration
           ? new Date(formData.date_of_registration).toISOString()
@@ -965,11 +1239,12 @@ export const VehiclesPage = () => {
 
               {/* Tabs for Related Data */}
               <Tabs defaultValue="documents" className="mt-6">
-                <TabsList className="grid grid-cols-4 w-full">
+                <TabsList className="grid grid-cols-5 w-full">
                   <TabsTrigger value="documents">Documents ({vehicleReport.documents.length})</TabsTrigger>
                   <TabsTrigger value="challans">Challans ({vehicleReport.challans.length})</TabsTrigger>
                   <TabsTrigger value="services">Services ({vehicleReport.services.length})</TabsTrigger>
                   <TabsTrigger value="accidents">Accidents ({vehicleReport.accidents.length})</TabsTrigger>
+                  <TabsTrigger value="fastag">FASTag Passes</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="documents" className="mt-4">
@@ -1083,9 +1358,290 @@ export const VehiclesPage = () => {
                     </div>
                   )}
                 </TabsContent>
+                <TabsContent value="fastag" className="mt-4">
+
+                  <div className="flex justify-between mb-4">
+                    <h3 className="text-lg font-semibold">FASTag Passes</h3>
+
+                    <Button
+                      size="sm"
+                      onClick={() => setPassDialogOpen(true)}
+                      className="bg-emerald-700 hover:bg-emerald-800"
+                    >
+                      <Plus size={16} className="mr-2" />
+                      Add Pass
+                    </Button>
+                  </div>
+
+                  {fastagPasses.length === 0 ? (
+
+                    <p className="text-center text-slate-500 py-6">
+                      No FASTag passes found
+                    </p>
+
+                  ) : (
+
+                    <div className="space-y-3">
+
+                      {fastagPasses.map((pass) => {
+
+                        const status = getPassStatus(pass)
+
+                        return (
+
+                          <Card key={pass.id}>
+
+                            <CardContent className="p-4 flex justify-between items-center">
+
+                              <div>
+                                <div className="flex gap-2">
+
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    onClick={() => handleEditPass(pass)}
+                                  >
+                                    <Edit size={14} />
+                                  </Button>
+
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="text-rose-600"
+                                    onClick={() => deletePass(pass.id)}
+                                  >
+                                    <Trash2 size={14} />
+                                  </Button>
+
+                                </div>
+
+                                <p className="font-semibold">{pass.pass_name}</p>
+
+                                <p className="text-sm text-slate-500">
+                                  {pass.toll_plaza || "Toll Pass"}
+                                </p>
+
+                                <p className="text-xs text-slate-400">
+                                  Trips Allowed: {pass.trips_allowed}
+
+                                  Balance Trips: {pass.balance_trips}
+                                </p>
+
+                              </div>
+
+                              <div className="text-right">
+
+                                <Badge
+                                  className={
+                                    status === "Active"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : status === "Expired"
+                                        ? "bg-rose-100 text-rose-700"
+                                        : "bg-amber-100 text-amber-700"
+                                  }
+                                >
+                                  {status}
+                                </Badge>
+
+                                <p className="text-xs text-slate-500 mt-1">
+                                  Expires {new Date(pass.expiry_date).toLocaleDateString()}
+                                </p>
+
+                              </div>
+
+                            </CardContent>
+
+                          </Card>
+
+                        )
+
+                      })}
+
+                    </div>
+
+                  )}
+
+                </TabsContent>
               </Tabs>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+
+      {/* FASTag Pass Dialog */}
+      <Dialog open={passDialogOpen} onOpenChange={setPassDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add FASTag Pass</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={createPass} className="space-y-4">
+
+            <div>
+              <Label>Pass Name</Label>
+              <Input
+                required
+                value={passForm.pass_name}
+                onChange={(e) => setPassForm({ ...passForm, pass_name: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label>Toll Plaza</Label>
+              <Input
+                value={passForm.toll_plaza}
+                onChange={(e) => setPassForm({ ...passForm, toll_plaza: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label>Trips Allowed</Label>
+              <Input
+                type="number"
+                required
+                value={passForm.trips_allowed}
+                onChange={(e) => setPassForm({ ...passForm, trips_allowed: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label>Balance Trips</Label>
+              <Input
+                type="number"
+                value={passForm.balance_trips}
+                onChange={(e) => setPassForm({ ...passForm, balance_trips: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+
+              <div>
+                <Label>Issue Date</Label>
+                <Input
+                  type="date"
+                  required
+                  value={passForm.issue_date}
+                  onChange={(e) => setPassForm({ ...passForm, issue_date: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Expiry Date</Label>
+                <Input
+                  type="date"
+                  required
+                  value={passForm.expiry_date}
+                  onChange={(e) => setPassForm({ ...passForm, expiry_date: e.target.value })}
+                />
+              </div>
+
+            </div>
+            <div>
+              <Label>Status</Label>
+
+              <Select
+                value={passForm.status}
+                onValueChange={(v) => setPassForm({ ...passForm, status: v })}
+              >
+
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+
+                <SelectContent>
+
+                  <SelectItem value="Active">Active</SelectItem>
+
+                  <SelectItem value="Inactive">Inactive</SelectItem>
+
+                  <SelectItem value="After RC Update">After RC Update</SelectItem>
+
+                </SelectContent>
+
+              </Select>
+
+            </div>
+
+            <Button type="submit" className="w-full bg-emerald-700 hover:bg-emerald-800">
+              Create Pass
+            </Button>
+
+          </form>
+
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editPassDialogOpen} onOpenChange={setEditPassDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit FASTag Pass</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={updatePass} className="space-y-4">
+
+            <div>
+              <Label>Pass Name</Label>
+              <Input
+                value={passForm.pass_name}
+                onChange={(e) => setPassForm({ ...passForm, pass_name: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label>Toll Plaza</Label>
+              <Input
+                value={passForm.toll_plaza}
+                onChange={(e) => setPassForm({ ...passForm, toll_plaza: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label>Trips Allowed</Label>
+              <Input
+                type="number"
+                value={passForm.trips_allowed}
+                onChange={(e) => setPassForm({ ...passForm, trips_allowed: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label>Balance Trips</Label>
+              <Input
+                type="number"
+                value={passForm.balance_trips}
+                onChange={(e) => setPassForm({ ...passForm, balance_trips: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+
+              <div>
+                <Label>Issue Date</Label>
+                <Input
+                  type="date"
+                  value={passForm.issue_date}
+                  onChange={(e) => setPassForm({ ...passForm, issue_date: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Expiry Date</Label>
+                <Input
+                  type="date"
+                  value={passForm.expiry_date}
+                  onChange={(e) => setPassForm({ ...passForm, expiry_date: e.target.value })}
+                />
+              </div>
+
+            </div>
+
+            <Button type="submit" className="w-full bg-emerald-700">
+              Update Pass
+            </Button>
+
+          </form>
+
         </DialogContent>
       </Dialog>
 

@@ -250,6 +250,26 @@ export const DocumentsPage = () => {
 
   };
 
+  const resetForm = () => {
+    setFormData({
+      vehicle_id: '',
+      document_type: 'Insurance',
+      custom_document_name: '',
+      policy_number: '',
+      provider: '',
+      phone_number: '',
+      issue_date: '',
+      expiry_date: '',
+      premium: '',
+      coverage: '',
+      status: 'Active'
+    });
+
+    setUploadedFile(null);
+    setPhoneWarning("");
+    setDateValidationError("");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -273,6 +293,7 @@ export const DocumentsPage = () => {
       });
 
       toast.success('Document added successfully (version tracked)');
+      resetForm();
       setDialogOpen(false);
       fetchData();
     } catch (error) {
@@ -324,7 +345,13 @@ export const DocumentsPage = () => {
           <p className="text-slate-600">Versioned document management with expiry tracking</p>
         </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) resetForm();
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="bg-blue-800 hover:bg-blue-900">
               <Plus size={18} className="mr-2" />
@@ -438,11 +465,18 @@ export const DocumentsPage = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Premium (Rs)</Label>
+                  <Label>
+                    {formData.document_type === "Insurance" ? "Premium (Rs)" : "Fee (Rs)"}
+                  </Label>
                   <Input
                     type="number"
                     step="0.01"
                     value={formData.premium}
+                    placeholder={
+                      formData.document_type === "Insurance"
+                        ? "Insurance premium amount"
+                        : "Document fee amount"
+                    }
                     onChange={(e) => setFormData({ ...formData, premium: e.target.value })}
                   />
                 </div>
@@ -590,7 +624,9 @@ export const DocumentsPage = () => {
                         </div>
                         {doc.premium && (
                           <div>
-                            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Premium</p>
+                            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
+                              {doc.document_type === "Insurance" ? "Premium" : "Fee"}
+                            </p>
                             <p className="text-sm font-semibold">Rs {doc.premium.toLocaleString()}</p>
                           </div>
                         )}
@@ -732,7 +768,9 @@ export const DocumentsPage = () => {
                       </div>
                       {version.premium && (
                         <div>
-                          <p className="text-xs text-slate-500">Premium</p>
+                          <p className="text-xs text-slate-500">
+                            {version.document_type === "Insurance" ? "Premium" : "Fee"}
+                          </p>
                           <p>Rs {version.premium.toLocaleString()}</p>
                         </div>
                       )}

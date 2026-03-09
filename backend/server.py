@@ -701,6 +701,111 @@ async def import_vehicles_csv(data: dict, current_user: dict = Depends(get_curre
         "total_processed": len(lines) - 1
     }
 
+@api_router.post("/fastag-passes")
+async def create_fastag_pass(
+    data: FastagPassCreate,
+    current_user: dict = Depends(get_current_user)
+):
+
+    pass_id = str(uuid.uuid4())
+
+    data_dict = data.model_dump()
+
+    if not data_dict.get("balance_trips"):
+        data_dict["balance_trips"] = data_dict["trips_allowed"]
+
+    p = FastagPass(
+        id=pass_id,
+        **data_dict,
+        created_by=current_user["user_id"]
+    )
+
+    pass_dict = p.model_dump()
+
+    pass_dict["created_at"] = pass_dict["created_at"].isoformat()
+    pass_dict["updated_at"] = pass_dict["updated_at"].isoformat()
+
+    if isinstance(pass_dict["issue_date"], datetime):
+        pass_dict["issue_date"] = pass_dict["issue_date"].isoformat()
+
+    if isinstance(pass_dict["expiry_date"], datetime):
+        pass_dict["expiry_date"] = pass_dict["expiry_date"].isoformat()
+
+    await db.fastag_passes.insert_one(pass_dict)
+
+    return serialize_doc(pass_dict)
+
+@api_router.delete("/fastag-passes/{pass_id}")
+async def delete_fastag_pass(
+    pass_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+
+    result = await db.fastag_passes.update_one(
+        {"id": pass_id},
+        {
+            "$set": {
+                "is_deleted": True,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Pass not found")
+
+    return {"message": "FASTag pass deleted"}    
+    
+@api_router.get("/vehicles/{vehicle_id}/fastag-passes")
+async def get_fastag_passes(vehicle_id: str, current_user: dict = Depends(get_current_user)):
+
+    passes = await db.fastag_passes.find(
+        {"vehicle_id": vehicle_id, "is_deleted": False},
+        {"_id": 0}
+    ).to_list(100)
+
+    now = datetime.now(timezone.utc)
+
+    for p in passes:
+        expiry = datetime.fromisoformat(p["expiry_date"])
+        if expiry < now:
+            p["status"] = "Inactive"
+
+    return {"data": passes}
+
+@api_router.put("/fastag-passes/{pass_id}/use-trip")
+async def use_fastag_trip(pass_id: str, current_user: dict = Depends(get_current_user)):
+
+    await db.fastag_passes.update_one(
+    {"id": pass_id},
+    {"$inc": {"balance_trips": -1}}
+)
+
+    return {"message": "Trip used"}    
+
+@api_router.put("/fastag-passes/{pass_id}")
+async def update_fastag_pass(
+    pass_id: str,
+    data: FastagPassCreate,
+    current_user: dict = Depends(get_current_user)
+):
+
+    update = data.model_dump()
+
+    if isinstance(update["issue_date"], datetime):
+        update["issue_date"] = update["issue_date"].isoformat()
+
+    if isinstance(update["expiry_date"], datetime):
+        update["expiry_date"] = update["expiry_date"].isoformat()
+
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    await db.fastag_passes.update_one(
+        {"id": pass_id},
+        {"$set": update}
+    )
+
+    return {"message": "Pass updated"}
 # ==================== VEHICLE DOCUMENT ROUTES (VERSIONED) ====================
 
 @api_router.post("/vehicle-documents")
