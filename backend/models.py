@@ -128,6 +128,8 @@ class PropertyTaxBase(BaseModel):
     status: PaymentStatus
     frequency: TaxFrequency
     receipt_url: Optional[str] = None
+    phone_number: Optional[str] = Field(None, description="Contact phone number for this tax")  # ADD THIS
+
 
     @field_validator('expiry_date')
     @classmethod
@@ -183,6 +185,7 @@ class ElectricityBillBase(BaseModel):
     payment_date: Optional[datetime] = None
     status: PaymentStatus
     bill_url: Optional[str] = None
+    phone_number: Optional[str] = Field(None, description="Contact phone number for this bill")  # ADD THIS
 
     @field_validator('current_reading')
     @classmethod
@@ -244,6 +247,7 @@ class GasBillBase(BaseModel):
     status: PaymentStatus
     vendor: str
     bill_url: Optional[str] = None
+    phone_number: Optional[str] = Field(None, description="Contact phone number for this bill")  # ADD THIS
 
     @field_validator('payment_date')
     @classmethod
@@ -273,6 +277,7 @@ class WaterBillBase(BaseModel):
     payment_date: Optional[datetime] = None
     status: PaymentStatus
     bill_url: Optional[str] = None
+    phone_number: Optional[str] = Field(None, description="Contact phone number for this bill")  # ADD THI
 
     @field_validator('payment_date')
     @classmethod

@@ -290,6 +290,29 @@ async def get_electricity_bill(bill_id: str, current_user: dict = Depends(get_cu
         raise HTTPException(status_code=404, detail="Electricity bill not found")
     return bill
 
+# Add this after the GET /electricity-bills/{bill_id} endpoint and before the DELETE endpoint
+
+@api_router.put("/electricity-bills/{bill_id}")
+async def update_electricity_bill(bill_id: str, bill_data: ElectricityBillCreate, current_user: dict = Depends(get_current_user)):
+    update_data = bill_data.model_dump()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_by"] = current_user["user_id"]
+    update_data["billing_period_start"] = update_data["billing_period_start"].isoformat()
+    update_data["billing_period_end"] = update_data["billing_period_end"].isoformat()
+    update_data["due_date"] = update_data["due_date"].isoformat()
+    if update_data.get("payment_date"):
+        update_data["payment_date"] = update_data["payment_date"].isoformat()
+    
+    result = await db.electricity_bills.update_one(
+        {"id": bill_id, "is_deleted": False}, 
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Electricity bill not found")
+    
+    return {"message": "Electricity bill updated successfully"}    
+
 @api_router.delete("/electricity-bills/{bill_id}")
 async def delete_electricity_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
     result = await db.electricity_bills.update_one(
@@ -342,6 +365,30 @@ async def get_solar_meter(meter_id: str, current_user: dict = Depends(get_curren
     if not meter:
         raise HTTPException(status_code=404, detail="Solar meter record not found")
     return meter
+
+# Add this after the GET /solar-meters/{meter_id} endpoint and before the DELETE endpoint
+
+@api_router.put("/solar-meters/{meter_id}")
+async def update_solar_meter(meter_id: str, meter_data: SolarMeterCreate, current_user: dict = Depends(get_current_user)):
+    update_data = meter_data.model_dump()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_by"] = current_user["user_id"]
+    update_data["billing_period_start"] = update_data["billing_period_start"].isoformat()
+    update_data["billing_period_end"] = update_data["billing_period_end"].isoformat()
+    
+    # Recalculate reconciliation flag
+    expected_billable = update_data["units_generated"] - update_data["exported_to_grid"] + update_data["imported_from_grid"]
+    update_data["reconciliation_flag"] = abs(expected_billable - update_data["billable_units"]) > 1
+    
+    result = await db.solar_meters.update_one(
+        {"id": meter_id, "is_deleted": False}, 
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Solar meter record not found")
+    
+    return {"message": "Solar meter record updated successfully"}    
 
 @api_router.delete("/solar-meters/{meter_id}")
 async def delete_solar_meter(meter_id: str, current_user: dict = Depends(get_current_user)):
@@ -1122,6 +1169,114 @@ async def check_phone_usage(
         return {"used_in": used_in}
 
     return {"used_in": []}
+
+@api_router.post("/check-phone-usage")
+async def check_phone_usage(
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Check if a phone number is already used in any tax/bill for a specific property
+    """
+    property_id = data.get("property_id")
+    phone_number = data.get("phone_number")
+    exclude_id = data.get("exclude_id")
+    exclude_type = data.get("exclude_type")
+    
+    if not property_id or not phone_number:
+        return {"used_in": []}
+    
+    used_in = []
+    
+    # Check Property Taxes (existing code)
+    tax_query = {
+        "property_id": property_id,
+        "phone_number": phone_number,
+        "is_deleted": False
+    }
+    if exclude_id and exclude_type == "property-tax":
+        tax_query["id"] = {"$ne": exclude_id}
+    
+    property_taxes = await db.property_taxes.find(
+        tax_query,
+        {"_id": 0, "id": 1, "tax_type": 1, "custom_tax_name": 1}
+    ).to_list(100)
+    
+    for tax in property_taxes:
+        name = tax.get("custom_tax_name") if tax.get("tax_type") == "Other" else tax.get("tax_type")
+        used_in.append({
+            "type": "property-tax",
+            "name": name,
+            "id": tax["id"]
+        })
+    
+    # Check Electricity Bills (existing code)
+    elec_query = {
+        "property_id": property_id,
+        "phone_number": phone_number,
+        "is_deleted": False
+    }
+    if exclude_id and exclude_type == "electricity":
+        elec_query["id"] = {"$ne": exclude_id}
+    
+    electricity_bills = await db.electricity_bills.find(
+        elec_query,
+        {"_id": 0, "id": 1, "billing_period_start": 1}
+    ).to_list(100)
+    
+    for bill in electricity_bills:
+        period = datetime.fromisoformat(bill["billing_period_start"]).strftime("%b %Y")
+        used_in.append({
+            "type": "electricity",
+            "name": f"Electricity Bill - {period}",
+            "id": bill["id"]
+        })
+    
+    # Check Gas Bills (existing code)
+    gas_query = {
+        "property_id": property_id,
+        "phone_number": phone_number,
+        "is_deleted": False
+    }
+    if exclude_id and exclude_type == "gas":
+        gas_query["id"] = {"$ne": exclude_id}
+    
+    gas_bills = await db.gas_bills.find(
+        gas_query,
+        {"_id": 0, "id": 1, "billing_period_start": 1, "vendor": 1}
+    ).to_list(100)
+    
+    for bill in gas_bills:
+        period = datetime.fromisoformat(bill["billing_period_start"]).strftime("%b %Y")
+        used_in.append({
+            "type": "gas",
+            "name": f"Gas Bill ({bill['vendor']}) - {period}",
+            "id": bill["id"]
+        })
+    
+    # Check Water Bills (NEW CODE)
+    water_query = {
+        "property_id": property_id,
+        "phone_number": phone_number,
+        "is_deleted": False
+    }
+    if exclude_id and exclude_type == "water":
+        water_query["id"] = {"$ne": exclude_id}
+    
+    water_bills = await db.water_bills.find(
+        water_query,
+        {"_id": 0, "id": 1, "billing_period_start": 1}
+    ).to_list(100)
+    
+    for bill in water_bills:
+        period = datetime.fromisoformat(bill["billing_period_start"]).strftime("%b %Y")
+        used_in.append({
+            "type": "water",
+            "name": f"Water Bill - {period}",
+            "id": bill["id"]
+        })
+    
+    return {"used_in": used_in}
 
 # ==================== GPS & TELEMATICS ROUTES ====================
 
