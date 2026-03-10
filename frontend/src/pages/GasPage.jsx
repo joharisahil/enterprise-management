@@ -15,6 +15,287 @@ import PhoneNumberInput from '@/components/ui/PhoneNumberInput';
 const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
 
+// FileUploadSection Component - MOVED OUTSIDE and MEMOIZED
+const FileUploadSection = React.memo(({ 
+  currentUrl, 
+  selectedFile, 
+  filePreview, 
+  onFileSelect, 
+  onClear, 
+  propertyName,
+  vendor,
+  date,
+  uploading,
+  openReceipt
+}) => (
+  <div className="space-y-2">
+    <Label>Bill Document (Optional)</Label>
+
+    {currentUrl && !selectedFile && (
+      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-md border border-slate-200">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-slate-600 truncate max-w-[200px]">
+            {currentUrl.split('/').pop()?.split('?')[0] || 'document'}
+          </span>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => openReceipt(currentUrl, propertyName, vendor, date)}
+          className="text-blue-600 hover:text-blue-700"
+        >
+          {currentUrl.toLowerCase().includes('.pdf') ? 'Download' : 'View'}
+        </Button>
+      </div>
+    )}
+
+    <div className="flex items-center gap-2">
+      <Input
+        id="bill-upload"
+        type="file"
+        accept=".jpg,.jpeg,.png,.webp,.pdf"
+        onChange={onFileSelect}
+        className="hidden"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => document.getElementById('bill-upload').click()}
+        disabled={uploading}
+        className="w-full"
+      >
+        <Upload size={16} className="mr-2" />
+        {uploading ? 'Uploading...' : 'Choose File'}
+      </Button>
+      {(currentUrl || selectedFile) && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onClear}
+          className="text-rose-600 hover:text-rose-700"
+        >
+          <X size={16} />
+        </Button>
+      )}
+    </div>
+
+    {selectedFile && (
+      <div className="mt-2 p-3 bg-blue-50 rounded-md border border-blue-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {selectedFile.type.startsWith('image/') ? (
+              <img src={filePreview} alt="Preview" className="h-12 w-12 object-cover rounded" />
+            ) : (
+              <File size={24} className="text-blue-600" />
+            )}
+            <div>
+              <p className="text-sm font-medium text-slate-900">{selectedFile.name}</p>
+              <p className="text-xs text-slate-600">
+                {(selectedFile.size / 1024).toFixed(2)} KB
+              </p>
+            </div>
+          </div>
+          <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
+            New
+          </Badge>
+        </div>
+      </div>
+    )}
+
+    <p className="text-xs text-slate-500">
+      Supported formats: JPEG, PNG, WEBP, PDF (Max: 3MB)
+    </p>
+  </div>
+));
+
+FileUploadSection.displayName = 'FileUploadSection';
+
+// BillForm Component - MOVED OUTSIDE and MEMOIZED
+const BillForm = React.memo(({ 
+  formData, 
+  setFormData, 
+  properties, 
+  selectedBill,
+  onSubmit, 
+  submitText, 
+  uploading,
+  selectedFile,
+  filePreview,
+  handleFileSelect,
+  clearSelectedFile,
+  openReceipt
+}) => {
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div>
+        <Label>Property *</Label>
+        <Select
+          value={formData.property_id}
+          onValueChange={(value) => setFormData({ ...formData, property_id: value })}
+          required
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select property" />
+          </SelectTrigger>
+          <SelectContent>
+            {properties.map((prop) => (
+              <SelectItem key={prop.id} value={prop.id}>
+                {prop.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Billing Period Start *</Label>
+          <Input
+            type="date"
+            required
+            value={formData.billing_period_start}
+            onChange={(e) => setFormData({ ...formData, billing_period_start: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Billing Period End *</Label>
+          <Input
+            type="date"
+            required
+            value={formData.billing_period_end}
+            onChange={(e) => setFormData({ ...formData, billing_period_end: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div>
+        <Label>Vendor *</Label>
+        <Input
+          required
+          value={formData.vendor}
+          onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
+          placeholder="e.g., IGL, MGL"
+        />
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <Label>Units Consumed *</Label>
+          <Input
+            type="number"
+            step="0.01"
+            required
+            value={formData.units_consumed}
+            onChange={(e) => setFormData({ ...formData, units_consumed: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Rate per Unit (Rs) *</Label>
+          <Input
+            type="number"
+            step="0.01"
+            required
+            value={formData.rate_per_unit}
+            onChange={(e) => setFormData({ ...formData, rate_per_unit: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Fixed Charges (Rs) *</Label>
+          <Input
+            type="number"
+            step="0.01"
+            required
+            value={formData.fixed_charges}
+            onChange={(e) => setFormData({ ...formData, fixed_charges: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <PhoneNumberInput
+        value={formData.phone_number || ''}
+        onChange={(value) => setFormData({ ...formData, phone_number: value })}
+        propertyId={formData.property_id}
+        excludeId={selectedBill?.id}
+        excludeType="gas"
+        label="Phone Number (Optional)"
+        placeholder="Enter 10 digit mobile number"
+      />
+
+      <FileUploadSection
+        currentUrl={formData.bill_url}
+        selectedFile={selectedFile}
+        filePreview={filePreview}
+        onFileSelect={handleFileSelect}
+        onClear={clearSelectedFile}
+        propertyName={properties.find(p => p.id === formData.property_id)?.name || 'Property'}
+        vendor={formData.vendor}
+        date={formData.billing_period_start}
+        uploading={uploading}
+        openReceipt={openReceipt}
+      />
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Total Bill (Rs) *</Label>
+          <Input
+            type="number"
+            step="0.01"
+            required
+            value={formData.total_bill}
+            onChange={(e) => setFormData({ ...formData, total_bill: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Due Date *</Label>
+          <Input
+            type="date"
+            required
+            value={formData.due_date}
+            onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Status *</Label>
+          <Select
+            value={formData.status}
+            onValueChange={(value) => setFormData({ ...formData, status: value })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Paid">Paid</SelectItem>
+              <SelectItem value="Unpaid">Unpaid</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {formData.status === 'Paid' && (
+          <div>
+            <Label>Payment Date *</Label>
+            <Input
+              type="date"
+              required
+              value={formData.payment_date}
+              onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
+            />
+          </div>
+        )}
+      </div>
+
+      <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700" disabled={uploading}>
+        {uploading ? 'Uploading...' : submitText}
+      </Button>
+    </form>
+  );
+});
+
+BillForm.displayName = 'BillForm';
+
 export const GasPage = () => {
   const [properties, setProperties] = useState([]);
   const [bills, setBills] = useState([]);
@@ -44,7 +325,7 @@ export const GasPage = () => {
     status: 'Unpaid',
     vendor: '',
     phone_number: '',
-    bill_url: '' // Add bill_url field
+    bill_url: ''
   });
 
   useEffect(() => {
@@ -314,103 +595,6 @@ export const GasPage = () => {
     return prop ? prop.name : propertyId;
   };
 
-  const FileUploadSection = ({ 
-    currentUrl, 
-    selectedFile, 
-    filePreview, 
-    onFileSelect, 
-    onClear, 
-    propertyName,
-    vendor,
-    date 
-  }) => (
-    <div className="space-y-2">
-      <Label>Bill Document (Optional)</Label>
-
-      {currentUrl && !selectedFile && (
-        <div className="flex items-center justify-between p-3 bg-slate-50 rounded-md border border-slate-200">
-          <div className="flex items-center gap-2">
-            {/* {currentUrl.toLowerCase().includes('.pdf') ? (
-              <File size={20} className="text-red-500" />
-            ) : (
-              <img src={currentUrl} alt="Preview" className="h-10 w-10 object-cover rounded" />
-            )} */}
-            <span className="text-sm text-slate-600 truncate max-w-[200px]">
-              {currentUrl.split('/').pop()?.split('?')[0] || 'document'}
-            </span>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => openReceipt(currentUrl, propertyName, vendor, date)}
-            className="text-blue-600 hover:text-blue-700"
-          >
-            {currentUrl.toLowerCase().includes('.pdf') ? 'Download' : 'View'}
-          </Button>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2">
-        <Input
-          id="bill-upload"
-          type="file"
-          accept=".jpg,.jpeg,.png,.webp,.pdf"
-          onChange={onFileSelect}
-          className="hidden"
-        />
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => document.getElementById('bill-upload').click()}
-          disabled={uploading}
-          className="w-full"
-        >
-          <Upload size={16} className="mr-2" />
-          {uploading ? 'Uploading...' : 'Choose File'}
-        </Button>
-        {(currentUrl || selectedFile) && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={onClear}
-            className="text-rose-600 hover:text-rose-700"
-          >
-            <X size={16} />
-          </Button>
-        )}
-      </div>
-
-      {selectedFile && (
-        <div className="mt-2 p-3 bg-blue-50 rounded-md border border-blue-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {selectedFile.type.startsWith('image/') ? (
-                <img src={filePreview} alt="Preview" className="h-12 w-12 object-cover rounded" />
-              ) : (
-                <File size={24} className="text-blue-600" />
-              )}
-              <div>
-                <p className="text-sm font-medium text-slate-900">{selectedFile.name}</p>
-                <p className="text-xs text-slate-600">
-                  {(selectedFile.size / 1024).toFixed(2)} KB
-                </p>
-              </div>
-            </div>
-            <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
-              New
-            </Badge>
-          </div>
-        </div>
-      )}
-
-      <p className="text-xs text-slate-500">
-        Supported formats: JPEG, PNG, WEBP, PDF (Max: 3MB)
-      </p>
-    </div>
-  );
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -418,170 +602,6 @@ export const GasPage = () => {
       </div>
     );
   }
-
-  const BillForm = ({ onSubmit, submitText }) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <Label>Property *</Label>
-        <Select
-          value={formData.property_id}
-          onValueChange={(value) => setFormData({ ...formData, property_id: value })}
-          required
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select property" />
-          </SelectTrigger>
-          <SelectContent>
-            {properties.map((prop) => (
-              <SelectItem key={prop.id} value={prop.id}>
-                {prop.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Billing Period Start *</Label>
-          <Input
-            type="date"
-            required
-            value={formData.billing_period_start}
-            onChange={(e) => setFormData({ ...formData, billing_period_start: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Billing Period End *</Label>
-          <Input
-            type="date"
-            required
-            value={formData.billing_period_end}
-            onChange={(e) => setFormData({ ...formData, billing_period_end: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div>
-        <Label>Vendor *</Label>
-        <Input
-          required
-          value={formData.vendor}
-          onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
-          placeholder="e.g., IGL, MGL"
-        />
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <Label>Units Consumed *</Label>
-          <Input
-            type="number"
-            step="0.01"
-            required
-            value={formData.units_consumed}
-            onChange={(e) => setFormData({ ...formData, units_consumed: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Rate per Unit (Rs) *</Label>
-          <Input
-            type="number"
-            step="0.01"
-            required
-            value={formData.rate_per_unit}
-            onChange={(e) => setFormData({ ...formData, rate_per_unit: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Fixed Charges (Rs) *</Label>
-          <Input
-            type="number"
-            step="0.01"
-            required
-            value={formData.fixed_charges}
-            onChange={(e) => setFormData({ ...formData, fixed_charges: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <PhoneNumberInput
-        value={formData.phone_number || ''}
-        onChange={(value) => setFormData({ ...formData, phone_number: value })}
-        propertyId={formData.property_id}
-        excludeId={selectedBill?.id}
-        excludeType="gas"
-        label="Phone Number (Optional)"
-        placeholder="Enter 10 digit mobile number"
-      />
-
-      <FileUploadSection
-        currentUrl={formData.bill_url}
-        selectedFile={selectedFile}
-        filePreview={filePreview}
-        onFileSelect={handleFileSelect}
-        onClear={clearSelectedFile}
-        propertyName={properties.find(p => p.id === formData.property_id)?.name || 'Property'}
-        vendor={formData.vendor}
-        date={formData.billing_period_start}
-      />
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Total Bill (Rs) *</Label>
-          <Input
-            type="number"
-            step="0.01"
-            required
-            value={formData.total_bill}
-            onChange={(e) => setFormData({ ...formData, total_bill: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Due Date *</Label>
-          <Input
-            type="date"
-            required
-            value={formData.due_date}
-            onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Status *</Label>
-          <Select
-            value={formData.status}
-            onValueChange={(value) => setFormData({ ...formData, status: value })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Paid">Paid</SelectItem>
-              <SelectItem value="Unpaid">Unpaid</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {formData.status === 'Paid' && (
-          <div>
-            <Label>Payment Date *</Label>
-            <Input
-              type="date"
-              required
-              value={formData.payment_date}
-              onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
-            />
-          </div>
-        )}
-      </div>
-
-      <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700" disabled={uploading}>
-        {uploading ? 'Uploading...' : submitText}
-      </Button>
-    </form>
-  );
 
   return (
     <div className="p-8" data-testid="gas-page">
@@ -604,7 +624,20 @@ export const GasPage = () => {
             <DialogHeader>
               <DialogTitle>Add Gas Bill</DialogTitle>
             </DialogHeader>
-            <BillForm onSubmit={handleSubmit} submitText="Create Gas Bill" />
+            <BillForm 
+              formData={formData}
+              setFormData={setFormData}
+              properties={properties}
+              selectedBill={selectedBill}
+              onSubmit={handleSubmit}
+              submitText="Create Gas Bill"
+              uploading={uploading}
+              selectedFile={selectedFile}
+              filePreview={filePreview}
+              handleFileSelect={handleFileSelect}
+              clearSelectedFile={clearSelectedFile}
+              openReceipt={openReceipt}
+            />
           </DialogContent>
         </Dialog>
       </div>
@@ -615,7 +648,20 @@ export const GasPage = () => {
           <DialogHeader>
             <DialogTitle>Edit Gas Bill</DialogTitle>
           </DialogHeader>
-          <BillForm onSubmit={handleUpdate} submitText="Update Gas Bill" />
+          <BillForm 
+            formData={formData}
+            setFormData={setFormData}
+            properties={properties}
+            selectedBill={selectedBill}
+            onSubmit={handleUpdate}
+            submitText="Update Gas Bill"
+            uploading={uploading}
+            selectedFile={selectedFile}
+            filePreview={filePreview}
+            handleFileSelect={handleFileSelect}
+            clearSelectedFile={clearSelectedFile}
+            openReceipt={openReceipt}
+          />
         </DialogContent>
       </Dialog>
 

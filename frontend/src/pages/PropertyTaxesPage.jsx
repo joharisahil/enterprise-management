@@ -88,7 +88,6 @@ const ExpiryStatusBadge = ({ daysLeft, size = "md" }) => {
 };
 
 // Expiry Progress Bar Component
-// Expiry Progress Bar Component - Updated to show days left
 const ExpiryProgress = ({ expiryDate, issueDate }) => {
   const today = new Date();
   const expiry = new Date(expiryDate);
@@ -136,7 +135,6 @@ const ExpiryProgress = ({ expiryDate, issueDate }) => {
 const ExpirySummaryCard = ({ title, count, icon: Icon, color, onClick, total }) => {
   const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
 
-  // Map color names to Tailwind classes
   const colorClasses = {
     rose: {
       bg: 'bg-rose-50',
@@ -228,6 +226,276 @@ const ExpirySummaryCard = ({ title, count, icon: Icon, color, onClick, total }) 
     </motion.div>
   );
 };
+
+// Tax Form Component - MOVED OUTSIDE and MEMOIZED
+const TaxForm = React.memo(({ 
+  formData, 
+  setFormData, 
+  properties, 
+  selectedTax,
+  onSubmit, 
+  submitText, 
+  uploading,
+  selectedFile,
+  setSelectedFile,
+  filePreview,
+  setFilePreview,
+  handleFileSelect,
+  clearSelectedFile,
+  openReceipt
+}) => {
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div>
+        <Label>Property *</Label>
+        <Select
+          value={formData.property_id}
+          onValueChange={(value) => setFormData({ ...formData, property_id: value })}
+          required
+        >
+          <SelectTrigger data-testid="tax-property-select">
+            <SelectValue placeholder="Select property" />
+          </SelectTrigger>
+          <SelectContent>
+            {properties.map((prop) => (
+              <SelectItem key={prop.id} value={prop.id}>
+                {prop.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Tax Type *</Label>
+          <Select
+            value={formData.tax_type}
+            onValueChange={(value) => setFormData({ ...formData, tax_type: value })}
+          >
+            <SelectTrigger data-testid="tax-type-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {taxTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Frequency *</Label>
+          <Select
+            value={formData.frequency}
+            onValueChange={(value) => setFormData({ ...formData, frequency: value })}
+          >
+            <SelectTrigger data-testid="tax-frequency-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {frequencies.map((freq) => (
+                <SelectItem key={freq} value={freq}>{freq}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {formData.tax_type === 'Other' && (
+        <div>
+          <Label>Custom Tax Name</Label>
+          <Input
+            value={formData.custom_tax_name}
+            onChange={(e) => setFormData({ ...formData, custom_tax_name: e.target.value })}
+            placeholder="e.g., Development Tax"
+          />
+        </div>
+      )}
+
+      <PhoneNumberInput
+        value={formData.phone_number || ''}
+        onChange={(value) => setFormData({ ...formData, phone_number: value })}
+        propertyId={formData.property_id}
+        excludeId={selectedTax?.id}
+        excludeType="property-tax"
+        label="Phone Number (Optional)"
+        placeholder="Enter 10 digit mobile number"
+      />
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Amount (Rs) *</Label>
+          <Input
+            type="number"
+            required
+            data-testid="tax-amount-input"
+            value={formData.amount}
+            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+            placeholder="15000"
+          />
+        </div>
+
+        <div>
+          <Label>Status *</Label>
+          <Select
+            value={formData.status}
+            onValueChange={(value) => setFormData({ ...formData, status: value })}
+          >
+            <SelectTrigger data-testid="tax-status-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {statusOptions.map((status) => (
+                <SelectItem key={status} value={status}>{status}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Issue Date *</Label>
+          <Input
+            type="date"
+            required
+            data-testid="tax-issue-date-input"
+            value={formData.issue_date}
+            onChange={(e) => setFormData({ ...formData, issue_date: e.target.value })}
+          />
+        </div>
+
+        <div>
+          <Label>Expiry Date *</Label>
+          <Input
+            type="date"
+            required
+            data-testid="tax-expiry-date-input"
+            value={formData.expiry_date}
+            onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+          />
+        </div>
+      </div>
+
+      {formData.status === 'Paid' && (
+        <div>
+          <Label>Payment Date *</Label>
+          <Input
+            type="date"
+            required
+            data-testid="tax-payment-date-input"
+            value={formData.payment_date}
+            onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
+          />
+        </div>
+      )}
+
+      {/* Document Upload Section */}
+      <div className="space-y-2">
+        <Label>Receipt Document (Optional)</Label>
+
+        {/* Existing receipt URL display */}
+        {formData.receipt_url && !selectedFile && (
+          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-md border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-600 truncate max-w-[200px]">
+                {formData.receipt_url.split('/').pop()?.split('?')[0] || 'receipt'}
+              </span>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const property = properties.find(p => p.id === formData.property_id);
+                const propertyName = property ? property.name : 'Property';
+                const taxDisplayName = formData.tax_type === 'Other' && formData.custom_tax_name
+                  ? formData.custom_tax_name
+                  : formData.tax_type;
+                openReceipt(formData.receipt_url, propertyName, taxDisplayName);
+              }}
+              className="text-blue-600 hover:text-blue-700"
+            >
+              {formData.receipt_url.toLowerCase().includes('.pdf') ? 'Download' : 'View'}
+            </Button>
+          </div>
+        )}
+
+        {/* File upload input */}
+        <div className="flex items-center gap-2">
+          <Input
+            id="receipt-upload"
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp,.pdf"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => document.getElementById('receipt-upload').click()}
+            disabled={uploading}
+            className="w-full"
+          >
+            <Upload size={16} className="mr-2" />
+            {uploading ? 'Uploading...' : 'Choose File'}
+          </Button>
+          {(formData.receipt_url || selectedFile) && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={clearSelectedFile}
+              className="text-rose-600 hover:text-rose-700"
+            >
+              <X size={16} />
+            </Button>
+          )}
+        </div>
+
+        {/* Selected file preview */}
+        {selectedFile && (
+          <div className="mt-2 p-3 bg-blue-50 rounded-md border border-blue-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {selectedFile.type.startsWith('image/') ? (
+                  <img src={filePreview} alt="Preview" className="h-12 w-12 object-cover rounded" />
+                ) : (
+                  <File size={24} className="text-blue-600" />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-slate-900">{selectedFile.name}</p>
+                  <p className="text-xs text-slate-600">
+                    {(selectedFile.size / 1024).toFixed(2)} KB
+                  </p>
+                </div>
+              </div>
+              <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
+                New
+              </Badge>
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-slate-500">
+          Supported formats: JPEG, PNG, WEBP, PDF (Max: 3MB)
+        </p>
+      </div>
+
+      <Button
+        type="submit"
+        className="w-full bg-blue-800 hover:bg-blue-900"
+        data-testid="submit-tax-button"
+        disabled={uploading}
+      >
+        {uploading ? 'Uploading...' : submitText}
+      </Button>
+    </form>
+  );
+});
+
+TaxForm.displayName = 'TaxForm';
 
 export const PropertyTaxesPage = () => {
   const [taxes, setTaxes] = useState([]);
@@ -551,256 +819,6 @@ export const PropertyTaxesPage = () => {
     );
   }
 
-  const TaxForm = ({ onSubmit, submitText }) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <Label>Property *</Label>
-        <Select
-          value={formData.property_id}
-          onValueChange={(value) => setFormData({ ...formData, property_id: value })}
-          required
-        >
-          <SelectTrigger data-testid="tax-property-select">
-            <SelectValue placeholder="Select property" />
-          </SelectTrigger>
-          <SelectContent>
-            {properties.map((prop) => (
-              <SelectItem key={prop.id} value={prop.id}>
-                {prop.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Tax Type *</Label>
-          <Select
-            value={formData.tax_type}
-            onValueChange={(value) => setFormData({ ...formData, tax_type: value })}
-          >
-            <SelectTrigger data-testid="tax-type-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {taxTypes.map((type) => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <Label>Frequency *</Label>
-          <Select
-            value={formData.frequency}
-            onValueChange={(value) => setFormData({ ...formData, frequency: value })}
-          >
-            <SelectTrigger data-testid="tax-frequency-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {frequencies.map((freq) => (
-                <SelectItem key={freq} value={freq}>{freq}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {formData.tax_type === 'Other' && (
-        <div>
-          <Label>Custom Tax Name</Label>
-          <Input
-            value={formData.custom_tax_name}
-            onChange={(e) => setFormData({ ...formData, custom_tax_name: e.target.value })}
-            placeholder="e.g., Development Tax"
-          />
-        </div>
-      )}
-
-      <PhoneNumberInput
-        value={formData.phone_number || ''}
-        onChange={(value) => setFormData({ ...formData, phone_number: value })}
-        propertyId={formData.property_id}
-        excludeId={selectedTax?.id}
-        excludeType="property-tax"
-        label="Phone Number (Optional)"
-        placeholder="Enter 10 digit mobile number"
-      />
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Amount (Rs) *</Label>
-          <Input
-            type="number"
-            required
-            data-testid="tax-amount-input"
-            value={formData.amount}
-            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-            placeholder="15000"
-          />
-        </div>
-
-        <div>
-          <Label>Status *</Label>
-          <Select
-            value={formData.status}
-            onValueChange={(value) => setFormData({ ...formData, status: value })}
-          >
-            <SelectTrigger data-testid="tax-status-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {statusOptions.map((status) => (
-                <SelectItem key={status} value={status}>{status}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Issue Date *</Label>
-          <Input
-            type="date"
-            required
-            data-testid="tax-issue-date-input"
-            value={formData.issue_date}
-            onChange={(e) => setFormData({ ...formData, issue_date: e.target.value })}
-          />
-        </div>
-
-        <div>
-          <Label>Expiry Date *</Label>
-          <Input
-            type="date"
-            required
-            data-testid="tax-expiry-date-input"
-            value={formData.expiry_date}
-            onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
-          />
-        </div>
-      </div>
-
-      {formData.status === 'Paid' && (
-        <div>
-          <Label>Payment Date *</Label>
-          <Input
-            type="date"
-            required
-            data-testid="tax-payment-date-input"
-            value={formData.payment_date}
-            onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
-          />
-        </div>
-      )}
-
-      {/* Document Upload Section */}
-      <div className="space-y-2">
-        <Label>Receipt Document (Optional)</Label>
-
-        {/* Existing receipt URL display */}
-        {formData.receipt_url && !selectedFile && (
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-md border border-slate-200">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-600 truncate max-w-[200px]">
-                {formData.receipt_url.split('/').pop()?.split('?')[0] || 'receipt'}
-              </span>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const property = properties.find(p => p.id === formData.property_id);
-                const propertyName = property ? property.name : 'Property';
-                const taxDisplayName = formData.tax_type === 'Other' && formData.custom_tax_name
-                  ? formData.custom_tax_name
-                  : formData.tax_type;
-                openReceipt(formData.receipt_url, propertyName, taxDisplayName);
-              }}
-              className="text-blue-600 hover:text-blue-700"
-            >
-              {formData.receipt_url.toLowerCase().includes('.pdf') ? 'Download' : 'View'}
-            </Button>
-          </div>
-        )}
-
-        {/* File upload input */}
-        <div className="flex items-center gap-2">
-          <Input
-            id="receipt-upload"
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp,.pdf"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => document.getElementById('receipt-upload').click()}
-            disabled={uploading}
-            className="w-full"
-          >
-            <Upload size={16} className="mr-2" />
-            {uploading ? 'Uploading...' : 'Choose File'}
-          </Button>
-          {(formData.receipt_url || selectedFile) && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={clearSelectedFile}
-              className="text-rose-600 hover:text-rose-700"
-            >
-              <X size={16} />
-            </Button>
-          )}
-        </div>
-
-        {/* Selected file preview */}
-        {selectedFile && (
-          <div className="mt-2 p-3 bg-blue-50 rounded-md border border-blue-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {selectedFile.type.startsWith('image/') ? (
-                  <img src={filePreview} alt="Preview" className="h-12 w-12 object-cover rounded" />
-                ) : (
-                  <File size={24} className="text-blue-600" />
-                )}
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{selectedFile.name}</p>
-                  <p className="text-xs text-slate-600">
-                    {(selectedFile.size / 1024).toFixed(2)} KB
-                  </p>
-                </div>
-              </div>
-              <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
-                New
-              </Badge>
-            </div>
-          </div>
-        )}
-
-        <p className="text-xs text-slate-500">
-          Supported formats: JPEG, PNG, WEBP, PDF (Max: 3MB)
-        </p>
-      </div>
-
-      <Button
-        type="submit"
-        className="w-full bg-blue-800 hover:bg-blue-900"
-        data-testid="submit-tax-button"
-        disabled={uploading}
-      >
-        {uploading ? 'Uploading...' : submitText}
-      </Button>
-    </form>
-  );
-
   return (
     <div className="p-8 space-y-6" data-testid="property-taxes-page">
       {/* Header */}
@@ -823,7 +841,22 @@ export const PropertyTaxesPage = () => {
             <DialogHeader>
               <DialogTitle>Add Property Tax Record</DialogTitle>
             </DialogHeader>
-            <TaxForm onSubmit={handleSubmit} submitText="Create Tax Record" />
+            <TaxForm 
+              formData={formData}
+              setFormData={setFormData}
+              properties={properties}
+              selectedTax={selectedTax}
+              onSubmit={handleSubmit}
+              submitText="Create Tax Record"
+              uploading={uploading}
+              selectedFile={selectedFile}
+              setSelectedFile={setSelectedFile}
+              filePreview={filePreview}
+              setFilePreview={setFilePreview}
+              handleFileSelect={handleFileSelect}
+              clearSelectedFile={clearSelectedFile}
+              openReceipt={openReceipt}
+            />
           </DialogContent>
         </Dialog>
       </div>
@@ -926,7 +959,22 @@ export const PropertyTaxesPage = () => {
           <DialogHeader>
             <DialogTitle>Edit Property Tax Record</DialogTitle>
           </DialogHeader>
-          <TaxForm onSubmit={handleUpdate} submitText="Update Tax Record" />
+          <TaxForm 
+            formData={formData}
+            setFormData={setFormData}
+            properties={properties}
+            selectedTax={selectedTax}
+            onSubmit={handleUpdate}
+            submitText="Update Tax Record"
+            uploading={uploading}
+            selectedFile={selectedFile}
+            setSelectedFile={setSelectedFile}
+            filePreview={filePreview}
+            setFilePreview={setFilePreview}
+            handleFileSelect={handleFileSelect}
+            clearSelectedFile={clearSelectedFile}
+            openReceipt={openReceipt}
+          />
         </DialogContent>
       </Dialog>
 
