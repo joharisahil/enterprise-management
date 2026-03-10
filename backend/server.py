@@ -10,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 import uuid
 from typing import List, Optional
 import asyncio
+import httpx
 
 from models import *
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, check_role
@@ -962,8 +963,6 @@ async def upload_document(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))   
-# ==================== CHALLAN ROUTES ====================
-
 # ==================== CHALLAN ROUTES ====================
 
 @api_router.post("/challans")
@@ -2019,6 +2018,44 @@ async def get_fuel_efficiency(
             stats["cost_per_km"] = 0
     
     return {"data": list(vehicle_stats.values())}
+
+# ==================== KEEP-ALIVE ENDPOINT FOR UPTIMEROBOT ====================
+
+@api_router.get("/ping")
+async def ping():
+    """
+    Simple ping endpoint for UptimeRobot to keep the server alive.
+    This endpoint:
+    - Responds quickly (no database queries)
+    - Returns minimal data
+    - Wakes up the server when called
+    """
+    return {
+        "status": "alive",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "Enterprise ERP Backend"
+    }
+
+# Optional but recommended - health check with database verification
+@api_router.get("/health")
+async def health_check():
+    """
+    Health check endpoint that verifies database connection.
+    Use this for more thorough monitoring.
+    """
+    try:
+        # Quick database check
+        await db.command("ping")
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"disconnected: {str(e)}"
+    
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "database": db_status,
+        "service": "Enterprise ERP Backend"
+    }    
 
 # Include router
 app.include_router(api_router)
