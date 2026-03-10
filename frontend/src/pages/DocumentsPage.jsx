@@ -6,21 +6,25 @@ import {
   FileText, Plus, Clock, AlertCircle, Edit, Trash2, Eye, Phone, Download, Info,
   Calendar, AlertOctagon, AlertTriangle, CheckCircle, Filter, X, Gauge,
   TrendingUp, TrendingDown, Activity, Bell, Shield, CalendarDays,
-  Clock3, Clock4, Clock9, Sparkles, Star, Flame, Upload
+  Clock3, Clock4, Clock9, Sparkles, Star, Flame, Upload, FileSpreadsheet
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const documentTypes = ['Insurance', 'PUC', 'Fitness', 'RC', 'Permit', 'Custom'];
 
@@ -72,7 +76,6 @@ const ExpiryStatusBadge = ({ daysLeft, size = "md" }) => {
 };
 
 // Expiry Progress Bar Component
-// Expiry Progress Bar Component - Updated to show days left
 const ExpiryProgress = ({ expiryDate, issueDate }) => {
   const today = new Date();
   const expiry = new Date(expiryDate);
@@ -120,7 +123,6 @@ const ExpiryProgress = ({ expiryDate, issueDate }) => {
 const ExpirySummaryCard = ({ title, count, icon: Icon, color, onClick, total }) => {
   const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
 
-  // Map color names to Tailwind classes
   const colorClasses = {
     rose: {
       bg: 'bg-rose-50',
@@ -449,6 +451,7 @@ export const DocumentsPage = () => {
   const [autoFillMessage, setAutoFillMessage] = useState("");
   const [previousVersion, setPreviousVersion] = useState(null);
   const [isAutoFilling, setIsAutoFilling] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [expiryStats, setExpiryStats] = useState({
     expired: 0,
     critical: 0,
@@ -1012,6 +1015,95 @@ export const DocumentsPage = () => {
     return Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
   };
 
+  const handleExportExcel = async (exportType = 'all') => {
+    try {
+      setExporting(true);
+      
+      let url = '';
+      let filename = '';
+      
+      if (exportType === 'filtered') {
+        // Export current filtered view
+        const vehicleMap = {};
+        vehicles.forEach(v => {
+          vehicleMap[v.id] = {
+            registration_number: v.registration_number,
+            brand: v.brand,
+            model: v.model
+          };
+        });
+        
+        const response = await api.post('/export/vehicle-documents/current-view/excel', {
+          documents: filteredDocuments,
+          vehicle_map: vehicleMap
+        }, {
+          responseType: 'blob'
+        });
+        
+        filename = `filtered_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
+        
+        // Handle download
+        const blob = new Blob([response.data], { 
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        });
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+        
+      } else if (exportType === 'vehicle' && selectedVehicle !== 'all') {
+        // Export specific vehicle
+        url = `/export/vehicle-documents/excel?vehicle_id=${selectedVehicle}`;
+        const response = await api.get(url, { responseType: 'blob' });
+        
+        const vehicle = vehicles.find(v => v.id === selectedVehicle);
+        const vehicleReg = vehicle ? vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, '_') : 'vehicle';
+        filename = `${vehicleReg}_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
+        
+        const blob = new Blob([response.data], { 
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        });
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+        
+      } else {
+        // Export all documents
+        url = '/export/vehicle-documents/excel';
+        const response = await api.get(url, { responseType: 'blob' });
+        filename = `all_vehicles_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
+        
+        const blob = new Blob([response.data], { 
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        });
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+      }
+      
+      toast.success('Excel file downloaded successfully');
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to export documents');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const filteredDocuments = getFilteredDocuments();
 
   if (loading) {
@@ -1024,7 +1116,7 @@ export const DocumentsPage = () => {
 
   return (
     <div className="p-8 space-y-6" data-testid="documents-page">
-      {/* Header */}
+      {/* Header with Export Button */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-slate-900 tracking-tight mb-2" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
@@ -1033,49 +1125,93 @@ export const DocumentsPage = () => {
           <p className="text-slate-600">Track and manage vehicle documents with expiry monitoring</p>
         </div>
 
-        <Dialog
-          open={dialogOpen}
-          onOpenChange={(open) => {
-            setDialogOpen(open);
-            if (!open) resetForm();
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button className="bg-blue-800 hover:bg-blue-900">
-              <Plus size={18} className="mr-2" />
-              Add Document
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Add Vehicle Document</DialogTitle>
-              <p className="text-sm text-slate-500">Previous versions will be preserved automatically</p>
-            </DialogHeader>
-            <DocumentForm
-              formData={formData}
-              vehicles={vehicles}
-              autoFillMessage={autoFillMessage}
-              dateOverlapWarning={dateOverlapWarning}
-              dateValidationError={dateValidationError}
-              phoneWarning={phoneWarning}
-              uploadedFile={uploadedFile}
-              uploading={uploading}
-              isAutoFilling={isAutoFilling}
-              onVehicleChange={handleVehicleChange}
-              onDocumentTypeChange={handleDocumentTypeChange}
-              onInputChange={handleInputChange}
-              onIssueDateChange={handleIssueDateChange}
-              onExpiryDateChange={handleExpiryDateChange}
-              onDocumentUpload={handleDocumentUpload}
-              onPhoneChange={handlePhoneChange}
-              onSubmit={handleSubmit}
-              submitText="Add Document (Auto-Versioned)"
-            />
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-3">
+          {/* Export Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="outline" 
+                className="border-slate-300"
+                disabled={exporting || documents.length === 0}
+              >
+                <FileSpreadsheet size={18} className="mr-2 text-emerald-600" />
+                {exporting ? 'Exporting...' : 'Export Excel'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem 
+                onClick={() => handleExportExcel('all')}
+                disabled={exporting}
+                className="cursor-pointer"
+              >
+                <Download size={14} className="mr-2" />
+                All Documents
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => handleExportExcel('filtered')}
+                disabled={exporting || filteredDocuments.length === 0}
+                className="cursor-pointer"
+              >
+                <Download size={14} className="mr-2" />
+                Current Filtered View ({filteredDocuments.length})
+              </DropdownMenuItem>
+              {selectedVehicle !== 'all' && (
+                <DropdownMenuItem 
+                  onClick={() => handleExportExcel('vehicle')}
+                  disabled={exporting}
+                  className="cursor-pointer"
+                >
+                  <Download size={14} className="mr-2" />
+                  This Vehicle Only
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Dialog
+            open={dialogOpen}
+            onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) resetForm();
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button className="bg-blue-800 hover:bg-blue-900">
+                <Plus size={18} className="mr-2" />
+                Add Document
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add Vehicle Document</DialogTitle>
+                <p className="text-sm text-slate-500">Previous versions will be preserved automatically</p>
+              </DialogHeader>
+              <DocumentForm
+                formData={formData}
+                vehicles={vehicles}
+                autoFillMessage={autoFillMessage}
+                dateOverlapWarning={dateOverlapWarning}
+                dateValidationError={dateValidationError}
+                phoneWarning={phoneWarning}
+                uploadedFile={uploadedFile}
+                uploading={uploading}
+                isAutoFilling={isAutoFilling}
+                onVehicleChange={handleVehicleChange}
+                onDocumentTypeChange={handleDocumentTypeChange}
+                onInputChange={handleInputChange}
+                onIssueDateChange={handleIssueDateChange}
+                onExpiryDateChange={handleExpiryDateChange}
+                onDocumentUpload={handleDocumentUpload}
+                onPhoneChange={handlePhoneChange}
+                onSubmit={handleSubmit}
+                submitText="Add Document (Auto-Versioned)"
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
-      {/* Expiry Summary Dashboard - Matching Property Page style */}
+      {/* Expiry Summary Dashboard */}
       <div className="grid grid-cols-6 gap-4">
         <ExpirySummaryCard
           title="Expired"
@@ -1127,7 +1263,7 @@ export const DocumentsPage = () => {
         />
       </div>
 
-      {/* Filters Section - Matching Property Page style */}
+      {/* Filters Section */}
       <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 text-slate-600">
           <Filter size={18} />
@@ -1159,6 +1295,18 @@ export const DocumentsPage = () => {
             Clear Filter
           </Button>
         )}
+
+        {/* Quick Export Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleExportExcel('filtered')}
+          disabled={exporting || filteredDocuments.length === 0}
+          className="ml-auto border-slate-300"
+        >
+          <FileSpreadsheet size={16} className="mr-1 text-emerald-600" />
+          Export Current View
+        </Button>
       </div>
 
       {/* Edit Dialog */}
@@ -1191,7 +1339,7 @@ export const DocumentsPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog - Matching Property Page style */}
+      {/* View Dialog */}
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1307,7 +1455,7 @@ export const DocumentsPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Documents List - Matching Property Page style */}
+      {/* Documents List */}
       <AnimatePresence>
         <div className="space-y-4">
           {filteredDocuments.map((doc) => {
@@ -1444,7 +1592,7 @@ export const DocumentsPage = () => {
                         )}
                       </div>
 
-                      {/* Action buttons - Matching Property Page style */}
+                      {/* Action buttons */}
                       <div className="flex gap-1 ml-4">
                         <TooltipProvider>
                           <Tooltip>
@@ -1506,7 +1654,7 @@ export const DocumentsPage = () => {
         </div>
       </AnimatePresence>
 
-      {/* Empty state - Matching Property Page style */}
+      {/* Empty state */}
       {filteredDocuments.length === 0 && (
         <motion.div
           initial={{ opacity: 0 }}

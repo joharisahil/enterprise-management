@@ -11,6 +11,9 @@ import uuid
 from typing import List, Optional
 import asyncio
 import httpx
+import pandas as pd
+import io
+from fastapi.responses import StreamingResponse
 
 from models import *
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, check_role
@@ -963,7 +966,262 @@ async def upload_document(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))   
-# ==================== CHALLAN ROUTES ====================
+
+
+@api_router.get("/export/vehicle-documents/excel")
+async def export_vehicle_documents_excel(
+    vehicle_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Export vehicle documents to a professional Excel file
+    """
+    # Build query
+    query = {"is_deleted": False}
+    if vehicle_id:
+        query["vehicle_id"] = vehicle_id
+    
+    # Get all documents
+    documents = await db.vehicle_documents.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    
+    if not documents:
+        raise HTTPException(status_code=404, detail="No documents found to export")
+    
+    # Get vehicle information for reference
+    vehicle_ids = list(set(doc["vehicle_id"] for doc in documents))
+    vehicles = await db.vehicles.find(
+        {"id": {"$in": vehicle_ids}},
+        {"_id": 0, "id": 1, "registration_number": 1, "brand": 1, "model": 1}
+    ).to_list(100)
+    
+    vehicle_map = {v["id"]: v for v in vehicles}
+    
+    # Prepare data for Excel
+    excel_data = []
+    for doc in documents:
+        vehicle = vehicle_map.get(doc["vehicle_id"], {})
+        
+        # Calculate days until expiry
+        days_left = None
+        if doc.get("expiry_date"):
+            try:
+                expiry = datetime.fromisoformat(doc["expiry_date"]) if isinstance(doc["expiry_date"], str) else doc["expiry_date"]
+                days_left = (expiry - datetime.now(timezone.utc)).days
+            except:
+                days_left = None
+        
+        # Determine status
+        if days_left is not None:
+            if days_left <= 0:
+                expiry_status = "Expired"
+            elif days_left <= 3:
+                expiry_status = "Critical"
+            elif days_left <= 7:
+                expiry_status = "Urgent"
+            elif days_left <= 15:
+                expiry_status = "Warning"
+            elif days_left <= 30:
+                expiry_status = "Soon"
+            else:
+                expiry_status = "Safe"
+        else:
+            expiry_status = "Unknown"
+        
+        excel_data.append({
+            "Registration Number": vehicle.get("registration_number", "Unknown"),
+            "Vehicle Model": f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip(),
+            "Document Type": doc.get("document_type", ""),
+            "Custom Name": doc.get("custom_document_name", ""),
+            "Policy Number": doc.get("policy_number", ""),
+            "Provider": doc.get("provider", ""),
+            "Phone Number": doc.get("phone_number", ""),
+            "Issue Date": doc.get("issue_date", ""),
+            "Expiry Date": doc.get("expiry_date", ""),
+            "Days Left": days_left if days_left is not None else "N/A",
+            "Status": doc.get("status", ""),
+            "Expiry Status": expiry_status,
+            "Version": doc.get("version", 1),
+            "Is Current": "Yes" if doc.get("is_current", False) else "No",
+            "Premium/Fee (Rs)": doc.get("premium", ""),
+            "Coverage": doc.get("coverage", ""),
+            "Created At": doc.get("created_at", ""),
+            "Updated At": doc.get("updated_at", ""),
+        })
+    
+    # Create DataFrame
+    df = pd.DataFrame(excel_data)
+    
+    # Create Excel file in memory using openpyxl
+    output = io.BytesIO()
+    
+    # Use openpyxl engine (already installed)
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Vehicle Documents', index=False)
+        
+        # Get workbook and worksheet
+        workbook = writer.book
+        worksheet = writer.sheets['Vehicle Documents']
+        
+        # Auto-adjust column widths
+        for column in worksheet.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        # Add summary sheet
+        summary_data = {
+            'Metric': [
+                'Total Documents',
+                'Active Documents',
+                'Expired Documents',
+                'Critical (≤3 days)',
+                'Urgent (≤7 days)',
+                'Warning (≤15 days)',
+                'Soon (≤30 days)',
+                'Safe (>30 days)',
+                'Vehicles Covered',
+                'Export Date'
+            ],
+            'Value': [
+                len(documents),
+                len([d for d in documents if d.get('status') == 'Active']),
+                len([d for d in documents if d.get('status') == 'Expired']),
+                len([d for d in documents if 'days_left' in locals() and 1 <= days_left <= 3]),
+                len([d for d in documents if 'days_left' in locals() and 4 <= days_left <= 7]),
+                len([d for d in documents if 'days_left' in locals() and 8 <= days_left <= 15]),
+                len([d for d in documents if 'days_left' in locals() and 16 <= days_left <= 30]),
+                len([d for d in documents if 'days_left' in locals() and days_left > 30]),
+                len(vehicle_ids),
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ]
+        }
+        
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        
+        # Auto-adjust summary sheet columns
+        summary_sheet = writer.sheets['Summary']
+        summary_sheet.column_dimensions['A'].width = 25
+        summary_sheet.column_dimensions['B'].width = 20
+    
+    output.seek(0)
+    
+    # Generate filename
+    if vehicle_id:
+        vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "registration_number": 1})
+        vehicle_reg = vehicle["registration_number"].replace(" ", "_") if vehicle else "vehicle"
+        filename = f"{vehicle_reg}_documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    else:
+        filename = f"all_vehicles_documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@api_router.post("/export/vehicle-documents/current-view/excel")
+async def export_current_view_excel(
+    filter_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Export the current filtered view of documents to Excel
+    """
+    # This endpoint will receive the current filtered documents from frontend
+    documents = filter_data.get("documents", [])
+    vehicle_map = filter_data.get("vehicle_map", {})
+    
+    if not documents:
+        raise HTTPException(status_code=404, detail="No documents to export")
+    
+    # Prepare data for Excel
+    excel_data = []
+    for doc in documents:
+        vehicle = vehicle_map.get(doc.get("vehicle_id"), {})
+        
+        # Calculate days until expiry
+        days_left = None
+        if doc.get("expiry_date"):
+            try:
+                expiry = datetime.fromisoformat(doc["expiry_date"]) if isinstance(doc["expiry_date"], str) else doc["expiry_date"]
+                days_left = (expiry - datetime.now(timezone.utc)).days
+            except:
+                days_left = None
+        
+        # Determine status
+        if days_left is not None:
+            if days_left <= 0:
+                expiry_status = "Expired"
+            elif days_left <= 3:
+                expiry_status = "Critical"
+            elif days_left <= 7:
+                expiry_status = "Urgent"
+            elif days_left <= 15:
+                expiry_status = "Warning"
+            elif days_left <= 30:
+                expiry_status = "Soon"
+            else:
+                expiry_status = "Safe"
+        else:
+            expiry_status = "Unknown"
+        
+        excel_data.append({
+            "Registration Number": vehicle.get("registration_number", "Unknown"),
+            "Vehicle Model": f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip(),
+            "Document Type": doc.get("document_type", ""),
+            "Custom Name": doc.get("custom_document_name", ""),
+            "Policy Number": doc.get("policy_number", ""),
+            "Provider": doc.get("provider", ""),
+            "Phone Number": doc.get("phone_number", ""),
+            "Issue Date": doc.get("issue_date", ""),
+            "Expiry Date": doc.get("expiry_date", ""),
+            "Days Left": days_left if days_left is not None else "N/A",
+            "Status": doc.get("status", ""),
+            "Expiry Status": expiry_status,
+            "Version": doc.get("version", 1),
+            "Is Current": "Yes" if doc.get("is_current", False) else "No",
+            "Premium/Fee (Rs)": doc.get("premium", ""),
+            "Coverage": doc.get("coverage", ""),
+            "Created At": doc.get("created_at", ""),
+        })
+    
+    # Create DataFrame and Excel file
+    df = pd.DataFrame(excel_data)
+    output = io.BytesIO()
+    
+    # Use openpyxl engine
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Vehicle Documents', index=False)
+        
+        # Auto-adjust column widths
+        worksheet = writer.sheets['Vehicle Documents']
+        for column in worksheet.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=documents_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"}
+    )# ==================== CHALLAN ROUTES ====================
 
 @api_router.post("/challans")
 async def create_challan(challan_data: ChallanCreate, current_user: dict = Depends(get_current_user)):
@@ -1126,6 +1384,240 @@ async def upload_challan(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/export/challans/excel")
+async def export_challans_excel(
+    vehicle_id: Optional[str] = None,
+    driver_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Export challans to a professional Excel file with filtering options
+    """
+    # Build query
+    query = {"is_deleted": False}
+    if vehicle_id:
+        query["vehicle_id"] = vehicle_id
+    if driver_id:
+        query["driver_id"] = driver_id
+    if status:
+        query["status"] = status
+    
+    # Get all challans
+    challans = await db.challans.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
+    
+    if not challans:
+        raise HTTPException(status_code=404, detail="No challans found to export")
+    
+    # Get vehicle information for reference
+    vehicle_ids = list(set(c["vehicle_id"] for c in challans))
+    vehicles = await db.vehicles.find(
+        {"id": {"$in": vehicle_ids}},
+        {"_id": 0, "id": 1, "registration_number": 1, "brand": 1, "model": 1}
+    ).to_list(100)
+    
+    vehicle_map = {v["id"]: v for v in vehicles}
+    
+    # Get driver information for reference
+    driver_ids = list(set(c.get("driver_id") for c in challans if c.get("driver_id")))
+    drivers = await db.drivers.find(
+        {"id": {"$in": driver_ids}},
+        {"_id": 0, "id": 1, "full_name": 1}
+    ).to_list(100)
+    
+    driver_map = {d["id"]: d for d in drivers}
+    
+    # Prepare data for Excel
+    excel_data = []
+    for challan in challans:
+        vehicle = vehicle_map.get(challan["vehicle_id"], {})
+        driver = driver_map.get(challan.get("driver_id"), {}) if challan.get("driver_id") else None
+        
+        # Parse dates
+        challan_date = datetime.fromisoformat(challan["date"]) if isinstance(challan["date"], str) else challan["date"]
+        payment_date = None
+        if challan.get("payment_date"):
+            payment_date = datetime.fromisoformat(challan["payment_date"]) if isinstance(challan["payment_date"], str) else challan["payment_date"]
+        
+        excel_data.append({
+            "Challan Number": challan.get("challan_number", ""),
+            "Registration Number": vehicle.get("registration_number", "Unknown"),
+            "Vehicle Model": f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip(),
+            "Driver Name": driver.get("full_name", "N/A") if driver else "N/A",
+            "Violation Type": challan.get("violation_type", ""),
+            "Amount (Rs)": challan.get("amount", 0),
+            "Date": challan_date.strftime("%Y-%m-%d") if challan_date else "",
+            "Location": challan.get("location", ""),
+            "Status": challan.get("status", ""),
+            "Payment Date": payment_date.strftime("%Y-%m-%d") if payment_date else "",
+            "Phone Number": challan.get("phone_number", ""),
+            "Has Proof": "Yes" if challan.get("proof_url") else "No",
+            "Created At": challan.get("created_at", ""),
+        })
+    
+    # Create DataFrame
+    df = pd.DataFrame(excel_data)
+    
+    # Create Excel file in memory
+    output = io.BytesIO()
+    
+    # Use openpyxl engine
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Challans', index=False)
+        
+        # Get workbook and worksheet
+        workbook = writer.book
+        worksheet = writer.sheets['Challans']
+        
+        # Auto-adjust column widths
+        for column in worksheet.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        # Add summary sheet
+        total_amount = sum(c.get("amount", 0) for c in challans)
+        paid_amount = sum(c.get("amount", 0) for c in challans if c.get("status") == "Paid")
+        unpaid_amount = sum(c.get("amount", 0) for c in challans if c.get("status") == "Unpaid")
+        
+        summary_data = {
+            'Metric': [
+                'Total Challans',
+                'Paid Challans',
+                'Unpaid Challans',
+                'Total Amount (Rs)',
+                'Paid Amount (Rs)',
+                'Unpaid Amount (Rs)',
+                'Average Fine (Rs)',
+                'Vehicles Involved',
+                'Drivers Involved',
+                'Export Date'
+            ],
+            'Value': [
+                len(challans),
+                len([c for c in challans if c.get("status") == "Paid"]),
+                len([c for c in challans if c.get("status") == "Unpaid"]),
+                f"₹{total_amount:,.2f}",
+                f"₹{paid_amount:,.2f}",
+                f"₹{unpaid_amount:,.2f}",
+                f"₹{total_amount/len(challans):,.2f}" if challans else "₹0.00",
+                len(vehicle_ids),
+                len([d for d in driver_ids if d]),
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ]
+        }
+        
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        
+        # Auto-adjust summary sheet columns
+        summary_sheet = writer.sheets['Summary']
+        summary_sheet.column_dimensions['A'].width = 25
+        summary_sheet.column_dimensions['B'].width = 20
+    
+    output.seek(0)
+    
+    # Generate filename based on filters
+    filename_parts = ["challans"]
+    if vehicle_id:
+        vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "registration_number": 1})
+        if vehicle:
+            filename_parts.append(vehicle["registration_number"].replace(" ", "_"))
+    if driver_id:
+        driver = await db.drivers.find_one({"id": driver_id}, {"_id": 0, "full_name": 1})
+        if driver:
+            filename_parts.append(driver["full_name"].replace(" ", "_"))
+    if status:
+        filename_parts.append(status.lower())
+    
+    filename_parts.append(datetime.now().strftime('%Y%m%d_%H%M%S'))
+    filename = "_".join(filename_parts) + ".xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@api_router.post("/export/challans/current-view/excel")
+async def export_challans_current_view_excel(
+    filter_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Export the current filtered view of challans to Excel
+    """
+    challans = filter_data.get("challans", [])
+    vehicle_map = filter_data.get("vehicle_map", {})
+    driver_map = filter_data.get("driver_map", {})
+    
+    if not challans:
+        raise HTTPException(status_code=404, detail="No challans to export")
+    
+    # Prepare data for Excel
+    excel_data = []
+    for challan in challans:
+        vehicle = vehicle_map.get(challan.get("vehicle_id"), {})
+        driver = driver_map.get(challan.get("driver_id"), {}) if challan.get("driver_id") else None
+        
+        # Parse dates
+        challan_date = datetime.fromisoformat(challan["date"]) if isinstance(challan["date"], str) else challan["date"]
+        payment_date = None
+        if challan.get("payment_date"):
+            payment_date = datetime.fromisoformat(challan["payment_date"]) if isinstance(challan["payment_date"], str) else challan["payment_date"]
+        
+        excel_data.append({
+            "Challan Number": challan.get("challan_number", ""),
+            "Registration Number": vehicle.get("registration_number", "Unknown"),
+            "Vehicle Model": f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip(),
+            "Driver Name": driver.get("full_name", "N/A") if driver else "N/A",
+            "Violation Type": challan.get("violation_type", ""),
+            "Amount (Rs)": challan.get("amount", 0),
+            "Date": challan_date.strftime("%Y-%m-%d") if challan_date else "",
+            "Location": challan.get("location", ""),
+            "Status": challan.get("status", ""),
+            "Payment Date": payment_date.strftime("%Y-%m-%d") if payment_date else "",
+            "Phone Number": challan.get("phone_number", ""),
+            "Has Proof": "Yes" if challan.get("proof_url") else "No",
+        })
+    
+    # Create DataFrame
+    df = pd.DataFrame(excel_data)
+    output = io.BytesIO()
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Challans', index=False)
+        
+        # Auto-adjust column widths
+        worksheet = writer.sheets['Challans']
+        for column in worksheet.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=challans_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"}
+    )
+
 # ==================== SERVICE RECORD ROUTES ====================
 
 @api_router.post("/service-records")
