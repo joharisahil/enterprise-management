@@ -1015,94 +1015,110 @@ export const DocumentsPage = () => {
     return Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
   };
 
-  const handleExportExcel = async (exportType = 'all') => {
-    try {
-      setExporting(true);
-      
-      let url = '';
-      let filename = '';
-      
-      if (exportType === 'filtered') {
-        // Export current filtered view
-        const vehicleMap = {};
-        vehicles.forEach(v => {
-          vehicleMap[v.id] = {
-            registration_number: v.registration_number,
-            brand: v.brand,
-            model: v.model
-          };
-        });
-        
-        const response = await api.post('/export/vehicle-documents/current-view/excel', {
-          documents: filteredDocuments,
-          vehicle_map: vehicleMap
-        }, {
-          responseType: 'blob'
-        });
-        
-        filename = `filtered_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
-        
-        // Handle download
-        const blob = new Blob([response.data], { 
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-        });
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(downloadUrl);
-        
-      } else if (exportType === 'vehicle' && selectedVehicle !== 'all') {
-        // Export specific vehicle
-        url = `/export/vehicle-documents/excel?vehicle_id=${selectedVehicle}`;
-        const response = await api.get(url, { responseType: 'blob' });
-        
-        const vehicle = vehicles.find(v => v.id === selectedVehicle);
-        const vehicleReg = vehicle ? vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, '_') : 'vehicle';
-        filename = `${vehicleReg}_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
-        
-        const blob = new Blob([response.data], { 
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-        });
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(downloadUrl);
-        
-      } else {
-        // Export all documents
-        url = '/export/vehicle-documents/excel';
-        const response = await api.get(url, { responseType: 'blob' });
-        filename = `all_vehicles_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
-        
-        const blob = new Blob([response.data], { 
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-        });
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(downloadUrl);
+const handleExportExcel = async (exportType = 'all') => {
+  try {
+    setExporting(true);
+    
+    let response;
+    let filename = '';
+    
+    if (exportType === 'filtered') {
+      // Export current filtered view
+      if (!filteredDocuments || filteredDocuments.length === 0) {
+        toast.error('No documents to export');
+        setExporting(false);
+        return;
       }
+
+      const vehicleMap = {};
+      vehicles.forEach(v => {
+        vehicleMap[v.id] = {
+          registration_number: v.registration_number,
+          brand: v.brand,
+          model: v.model
+        };
+      });
       
-      toast.success('Excel file downloaded successfully');
-    } catch (error) {
-      console.error('Export error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to export documents');
-    } finally {
-      setExporting(false);
+      response = await api.post('/export/vehicle-documents/current-view/excel', {
+        documents: filteredDocuments,
+        vehicle_map: vehicleMap
+      }, {
+        responseType: 'blob'
+      });
+      
+      filename = `filtered_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+    } else if (exportType === 'vehicle' && selectedVehicle !== 'all') {
+      // Export specific vehicle
+      const params = new URLSearchParams();
+      params.append('vehicle_id', selectedVehicle);
+      
+      response = await api.get(`/export/vehicle-documents/excel?${params.toString()}`, { 
+        responseType: 'blob' 
+      });
+      
+      const vehicle = vehicles.find(v => v.id === selectedVehicle);
+      const vehicleReg = vehicle ? vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, '_') : 'vehicle';
+      filename = `${vehicleReg}_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+    } else {
+      // Export all documents
+      response = await api.get('/export/vehicle-documents/excel', { 
+        responseType: 'blob' 
+      });
+      filename = `all_vehicles_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
     }
-  };
+    
+    // Check if response is valid
+    if (!response || !response.data) {
+      throw new Error('No data received from server');
+    }
+    
+    // Handle download
+    const blob = new Blob([response.data], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    });
+    
+    // Create download link
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    setTimeout(() => {
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    }, 100);
+    
+    toast.success('Excel file downloaded successfully');
+  } catch (error) {
+    console.error('Export error:', error);
+    
+    // Try to get error message from response
+    let errorMessage = 'Failed to export documents';
+    if (error.response) {
+      if (error.response.data instanceof Blob) {
+        // Try to read error from blob
+        const text = await error.response.data.text();
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.detail || errorMessage;
+        } catch {
+          errorMessage = text || errorMessage;
+        }
+      } else {
+        errorMessage = error.response.data?.detail || errorMessage;
+      }
+    }
+    
+    toast.error(errorMessage);
+  } finally {
+    setExporting(false);
+  }
+};
 
   const filteredDocuments = getFilteredDocuments();
 

@@ -21,15 +21,42 @@ from telematics import get_telematics_provider, TelematicsService
 from automation import AutomationService
 import cloudinary
 import cloudinary.uploader
+from surepass import SurepassService
+import json
 
-# Helper function to convert datetime objects to ISO strings
+# Helper function to convert datetime objects to readable format
+# Helper function to convert datetime objects to readable format
 def serialize_doc(doc):
-    """Convert datetime objects in a dict to ISO format strings for JSON serialization"""
+    """Convert datetime objects in a dict to readable format for JSON serialization"""
     if isinstance(doc, dict):
         # Remove MongoDB's _id field if present
-        result = {k: v for k, v in doc.items() if k != '_id'}
-        # Convert datetime objects to ISO strings
-        return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in result.items()}
+        result = {}
+        for k, v in doc.items():
+            if k == '_id':
+                # Skip ObjectId entirely or convert to string
+                continue
+            if isinstance(v, datetime):
+                # Format as YYYY-MM-DD for display
+                result[k] = v.strftime('%Y-%m-%d')
+            elif isinstance(v, dict):
+                result[k] = serialize_doc(v)
+            elif hasattr(v, '__dict__') or (hasattr(v, 'items') and callable(v.items)):
+                # Handle other objects that might cause issues
+                try:
+                    result[k] = str(v)
+                except:
+                    result[k] = None
+            else:
+                result[k] = v
+        return result
+    elif isinstance(doc, datetime):
+        return doc.strftime('%Y-%m-%d')
+    elif hasattr(doc, '__dict__') or (hasattr(doc, 'items') and callable(doc.items)):
+        # Handle other objects
+        try:
+            return str(doc)
+        except:
+            return None
     return doc
 
 ROOT_DIR = Path(__file__).parent
@@ -86,6 +113,7 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+surepass_service = SurepassService()
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register")
@@ -569,9 +597,16 @@ async def get_vehicle_full_report(vehicle_id: str, current_user: dict = Depends(
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
     
-    # Get all related data in parallel
+    # Get all related data
     documents = await db.vehicle_documents.find(
-        {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
+        {
+            "vehicle_id": vehicle_id,
+            "$or": [
+                {"is_deleted": {"$exists": False}},
+                {"is_deleted": False}
+            ]
+        }, 
+        {"_id": 0}
     ).sort("created_at", -1).to_list(100)
     
     challans = await db.challans.find(
@@ -857,38 +892,782 @@ async def update_fastag_pass(
     )
 
     return {"message": "Pass updated"}
-# ==================== VEHICLE DOCUMENT ROUTES (VERSIONED) ====================
 
-@api_router.post("/vehicle-documents")
-async def create_vehicle_document(doc_data: VehicleDocumentCreate, current_user: dict = Depends(get_current_user)):
-    # Check if there's an existing current document of the same type for this vehicle
-    existing = await db.vehicle_documents.find_one({
-        "vehicle_id": doc_data.vehicle_id,
-        "document_type": doc_data.document_type,
-        "is_current": True,
+@api_router.post("/surepass/fetch-vehicle")
+async def fetch_vehicle_from_surepass(
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Fetch vehicle details from Surepass API
+    First checks if vehicle exists and if documents need update
+    """
+    registration_number = data.get("registration_number", "").upper().strip()
+    force_refresh = data.get("force_refresh", False)
+    
+    if not registration_number:
+        raise HTTPException(status_code=400, detail="Registration number is required")
+    
+    # FIX: Use case-insensitive regex search to find existing vehicle
+    existing_vehicle = await db.vehicles.find_one({
+        "registration_number": {"$regex": f"^{registration_number}$", "$options": "i"},
         "is_deleted": False
     })
     
-    doc_id = str(uuid.uuid4())
-    doc = VehicleDocument(id=doc_id, **doc_data.model_dump(), created_by=current_user["user_id"])
+    logger.info(f"Checking for vehicle {registration_number}: {'Found' if existing_vehicle else 'Not found'}")
+    
+    # If vehicle exists and not forcing refresh, check if documents need update
+    if existing_vehicle and not force_refresh:
+        # Check document status
+        insurance_status = surepass_service.check_document_status(
+            existing_vehicle.get("insurance_expiry")
+        )
+        puc_status = surepass_service.check_document_status(
+            existing_vehicle.get("puc_expiry")
+        )
+        
+        # If both documents are valid (>30 days), no need to fetch
+        if not insurance_status["needs_update"] and not puc_status["needs_update"]:
+            return {
+                "exists": True,
+                "needs_update": False,
+                "vehicle": serialize_doc(existing_vehicle),
+                "document_status": {
+                    "insurance": insurance_status,
+                    "puc": puc_status
+                },
+                "message": "Vehicle already exists with valid documents. No update needed."
+            }
+        
+        # If documents need update, proceed with API call
+        existing_id = existing_vehicle["id"]
+        logger.info(f"Vehicle exists but needs update. ID: {existing_id}")
+    else:
+        existing_id = None
+        if existing_vehicle and force_refresh:
+            existing_id = existing_vehicle["id"]
+            logger.info(f"Force refresh for existing vehicle. ID: {existing_id}")
+    
+    # Call Surepass API
+    result = await surepass_service.fetch_vehicle_details(registration_number)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to fetch vehicle details"))
+    
+    # Parse the data
+    parsed_data = surepass_service.parse_vehicle_data(result)
+    
+    # Log the API call
+    log_entry = {
+        "id": str(uuid.uuid4()),
+        "registration_number": registration_number,
+        "request_timestamp": datetime.now(timezone.utc).isoformat(),
+        "response_data": result.get("raw_response", {}),
+        "insurance_expiry": parsed_data.get("insurance_expiry").isoformat() if parsed_data.get("insurance_expiry") else None,
+        "puc_expiry": parsed_data.get("puc_expiry").isoformat() if parsed_data.get("puc_expiry") else None,
+        "fit_up_to": parsed_data.get("fit_up_to").isoformat() if parsed_data.get("fit_up_to") else None,
+        "tax_upto": parsed_data.get("tax_upto").isoformat() if parsed_data.get("tax_upto") else None,
+        "is_successful": True,
+        "created_by": current_user["user_id"]
+    }
+    await db.rc_verification_logs.insert_one(log_entry)
+    
+    # Return based on whether vehicle exists
+    if existing_id:
+        return {
+            "exists": True,
+            "needs_update": True,
+            "vehicle_data": parsed_data,
+            "vehicle_id": existing_id,
+            "message": "Vehicle exists but documents need update. Please review and save."
+        }
+    
+    # New vehicle
+    return {
+        "exists": False,
+        "needs_update": True,
+        "vehicle_data": parsed_data,
+        "message": "Vehicle details fetched successfully. Please review and save."
+    }
+
+@api_router.post("/vehicles/{vehicle_id}/sync-documents")
+async def sync_vehicle_documents(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Sync documents for an existing vehicle - ONLY if documents are expired
+    """
+    # Find the vehicle
+    vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    registration_number = vehicle["registration_number"]
+    
+    # Check if any documents are expired or need update
+    current_docs = await db.vehicle_documents.find({
+        "vehicle_id": vehicle_id,
+        "is_current": True,
+        "is_deleted": False
+    }).to_list(10)
+    
+    needs_sync = False
+    for doc in current_docs:
+        if doc["document_type"] in ["Insurance", "PUC"]:
+            expiry = doc.get("expiry_date")
+            if expiry:
+                if isinstance(expiry, str):
+                    expiry_date = datetime.fromisoformat(expiry.replace('Z', '+00:00'))
+                else:
+                    expiry_date = expiry
+                
+                # If expired or expiring within 7 days
+                if expiry_date < datetime.now(timezone.utc):
+                    needs_sync = True
+                    logger.info(f"Document {doc['document_type']} is expired, syncing...")
+                    break
+                elif (expiry_date - datetime.now(timezone.utc)).days <= 7:
+                    needs_sync = True
+                    logger.info(f"Document {doc['document_type']} expires in {(expiry_date - datetime.now(timezone.utc)).days} days, syncing...")
+                    break
+    
+    if not needs_sync:
+        return {
+            "success": True,
+            "vehicle_id": vehicle_id,
+            "registration_number": registration_number,
+            "documents_created": [],
+            "message": "All documents are valid. No sync needed."
+        }
+    
+    # Fetch latest data from Surepass
+    result = await surepass_service.fetch_vehicle_details(registration_number)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to fetch vehicle details"))
+    
+    # Parse the data
+    parsed_data = surepass_service.parse_vehicle_data(result)
+    
+    # Helper function for date parsing
+    def parse_date(date_value):
+        if not date_value:
+            return None
+        if isinstance(date_value, datetime):
+            return date_value.isoformat()
+        if isinstance(date_value, str):
+            try:
+                dt = datetime.fromisoformat(date_value.replace('Z', '+00:00'))
+                return dt.isoformat()
+            except (ValueError, AttributeError):
+                return date_value
+        return date_value
+    
+    documents_updated = []
+    
+    # Update Insurance Document if expired
+    if parsed_data.get("insurance_expiry") and parsed_data.get("insurance_company"):
+        # Check if insurance document exists and is expired
+        existing_insurance = await db.vehicle_documents.find_one({
+            "vehicle_id": vehicle_id,
+            "document_type": "Insurance",
+            "is_current": True,
+            "is_deleted": False
+        })
+        
+        # Determine document status
+        insurance_status = "Active"
+        insurance_expiry = parsed_data.get("insurance_expiry")
+        if insurance_expiry:
+            try:
+                if isinstance(insurance_expiry, str):
+                    expiry_date = datetime.fromisoformat(insurance_expiry.replace('Z', '+00:00'))
+                else:
+                    expiry_date = insurance_expiry
+                
+                if expiry_date < datetime.now(timezone.utc):
+                    insurance_status = "Expired"
+            except:
+                pass
+        
+        insurance_data = {
+            "vehicle_id": vehicle_id,
+            "document_type": "Insurance",
+            "policy_number": parsed_data.get("insurance_policy_number", f"INS-{registration_number}"),
+            "provider": parsed_data.get("insurance_company", "Unknown"),
+            "issue_date": parse_date(parsed_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
+            "expiry_date": parse_date(parsed_data.get("insurance_expiry")),
+            "status": insurance_status,
+            "version": (existing_insurance.get("version", 0) + 1) if existing_insurance else 1,
+            "is_current": True,
+            "source": "surepass",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": current_user["user_id"]
+        }
+        
+        if existing_insurance:
+            # Mark old as not current
+            await db.vehicle_documents.update_many(
+                {"vehicle_id": vehicle_id, "document_type": "Insurance", "is_current": True},
+                {"$set": {"is_current": False}}
+            )
+            
+            insurance_data["previous_version_id"] = existing_insurance["id"]
+        
+        insurance_data["id"] = str(uuid.uuid4())
+        await db.vehicle_documents.insert_one(insurance_data)
+        documents_updated.append("Insurance")
+        logger.info(f"Updated Insurance document for vehicle {registration_number}")
+    
+    # Update PUC Document if expired
+    if parsed_data.get("puc_expiry") and parsed_data.get("pucc_number"):
+        existing_puc = await db.vehicle_documents.find_one({
+            "vehicle_id": vehicle_id,
+            "document_type": "PUC",
+            "is_current": True,
+            "is_deleted": False
+        })
+        
+        # Determine document status
+        puc_status = "Active"
+        puc_expiry = parsed_data.get("puc_expiry")
+        if puc_expiry:
+            try:
+                if isinstance(puc_expiry, str):
+                    expiry_date = datetime.fromisoformat(puc_expiry.replace('Z', '+00:00'))
+                else:
+                    expiry_date = puc_expiry
+                
+                if expiry_date < datetime.now(timezone.utc):
+                    puc_status = "Expired"
+            except:
+                pass
+        
+        puc_data = {
+            "vehicle_id": vehicle_id,
+            "document_type": "PUC",
+            "policy_number": parsed_data.get("pucc_number", f"PUC-{registration_number}"),
+            "provider": parsed_data.get("registered_at", "RTO"),
+            "issue_date": parse_date(parsed_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
+            "expiry_date": parse_date(parsed_data.get("puc_expiry")),
+            "status": puc_status,
+            "version": (existing_puc.get("version", 0) + 1) if existing_puc else 1,
+            "is_current": True,
+            "source": "surepass",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": current_user["user_id"]
+        }
+        
+        if existing_puc:
+            # Mark old as not current
+            await db.vehicle_documents.update_many(
+                {"vehicle_id": vehicle_id, "document_type": "PUC", "is_current": True},
+                {"$set": {"is_current": False}}
+            )
+            
+            puc_data["previous_version_id"] = existing_puc["id"]
+        
+        puc_data["id"] = str(uuid.uuid4())
+        await db.vehicle_documents.insert_one(puc_data)
+        documents_updated.append("PUC")
+        logger.info(f"Updated PUC document for vehicle {registration_number}")
+    
+    # Update vehicle's last_synced timestamp
+    await db.vehicles.update_one(
+        {"id": vehicle_id},
+        {"$set": {"last_synced": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {
+        "success": True,
+        "vehicle_id": vehicle_id,
+        "registration_number": registration_number,
+        "documents_created": documents_updated,
+        "message": f"Updated {len(documents_updated)} documents: {', '.join(documents_updated) if documents_updated else 'No updates needed'}"
+    }
+
+@api_router.post("/vehicles/from-surepass")
+async def create_vehicle_from_surepass(
+    vehicle_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Create or update vehicle from Surepass data
+    ALWAYS creates insurance and PUC documents regardless of expiry status
+    """
+    registration_number = vehicle_data.get("registration_number")
+    
+    logger.info(f"=== CREATING VEHICLE FROM SUREPASS: {registration_number} ===")
+    logger.info(f"Vehicle data received: {json.dumps(vehicle_data, default=str, indent=2)}")
+    
+    # Check if vehicle already exists
+    existing = await db.vehicles.find_one({
+        "registration_number": registration_number,
+        "is_deleted": False
+    })
+    
+    logger.info(f"Vehicle exists: {bool(existing)}")
+    
+    # Prepare vehicle document
+    vehicle_id = existing["id"] if existing else str(uuid.uuid4())
+    logger.info(f"Vehicle ID: {vehicle_id}")
+    
+    # Helper function to handle date parsing
+    def parse_date(date_value):
+        """Convert date string or datetime to ISO format string"""
+        if not date_value:
+            return None
+        if isinstance(date_value, datetime):
+            return date_value.isoformat()
+        if isinstance(date_value, str):
+            try:
+                # Handle format like "2027-01-24T00:00:00"
+                if 'T' in date_value:
+                    dt = datetime.fromisoformat(date_value)
+                    return dt.isoformat()
+                # Handle simple date format
+                else:
+                    dt = datetime.fromisoformat(date_value)
+                    return dt.isoformat()
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"Date parsing error for {date_value}: {e}")
+                return date_value
+        return date_value
+    
+    # Map Surepass fields to our Vehicle model
+    vehicle_dict = {
+        "id": vehicle_id,
+        "registration_number": registration_number,
+        "type": vehicle_data.get("type", "Car"),
+        "brand": vehicle_data.get("brand", ""),
+        "model": vehicle_data.get("model", ""),
+        "year": int(vehicle_data.get("year")) if vehicle_data.get("year") else None,
+        "chassis_number": vehicle_data.get("chassis_number"),
+        "engine_number": vehicle_data.get("engine_number"),
+        "color": vehicle_data.get("color"),
+        "fuel_type": vehicle_data.get("fuel_type", "Diesel"),
+        "seating_capacity": int(vehicle_data.get("seating_capacity")) if vehicle_data.get("seating_capacity") else None,
+        "owner_name": vehicle_data.get("owner_name"),
+        "date_of_registration": parse_date(vehicle_data.get("date_of_registration")),
+        "insurance_expiry": parse_date(vehicle_data.get("insurance_expiry")),
+        "puc_expiry": parse_date(vehicle_data.get("puc_expiry")),
+        "fit_up_to": parse_date(vehicle_data.get("fit_up_to")),
+        "tax_upto": parse_date(vehicle_data.get("tax_upto")),
+        "insurance_company": vehicle_data.get("insurance_company"),
+        "insurance_policy_number": vehicle_data.get("insurance_policy_number"),
+        "pucc_number": vehicle_data.get("pucc_number"),
+        "registered_at": vehicle_data.get("registered_at"),
+        "source": "surepass",
+        "last_synced": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": current_user["user_id"],
+        "is_deleted": False
+    }
+    
+    # Add manual fields if they exist
+    if vehicle_data.get("site_name"):
+        vehicle_dict["site_name"] = vehicle_data["site_name"]
+    if vehicle_data.get("remark"):
+        vehicle_dict["remark"] = vehicle_data["remark"]
+    if vehicle_data.get("file_status") is not None:
+        vehicle_dict["file_status"] = vehicle_data["file_status"]
+    
+    logger.info(f"Vehicle dict prepared: {json.dumps(vehicle_dict, default=str, indent=2)}")
     
     if existing:
-        # Mark old document as not current and link it
-        await db.vehicle_documents.update_one(
-            {"id": existing["id"]},
-            {"$set": {"is_current": False, "status": "Renewed"}}
+        await db.vehicles.update_one(
+            {"id": vehicle_id},
+            {"$set": vehicle_dict}
         )
-        doc.previous_version_id = existing["id"]
-        doc.version = existing.get("version", 1) + 1
+        message = "Vehicle updated successfully from Surepass"
+        logger.info(f"Updated vehicle {registration_number}")
+    else:
+        vehicle_dict["created_at"] = datetime.now(timezone.utc).isoformat()
+        vehicle_dict["created_by"] = current_user["user_id"]
+        await db.vehicles.insert_one(vehicle_dict)
+        message = "Vehicle created successfully from Surepass"
+        logger.info(f"Created vehicle {registration_number}")
     
-    doc_dict = doc.model_dump()
-    doc_dict["created_at"] = doc_dict["created_at"].isoformat()
-    doc_dict["updated_at"] = doc_dict["updated_at"].isoformat()
-    doc_dict["issue_date"] = doc_dict["issue_date"].isoformat()
-    doc_dict["expiry_date"] = doc_dict["expiry_date"].isoformat()
+    # ============ ALWAYS CREATE INSURANCE DOCUMENT ============
+    if vehicle_data.get("insurance_expiry"):
+        logger.info(f"Creating Insurance document for {registration_number}")
+        
+        # Parse expiry date for status determination
+        insurance_status = "Active"
+        insurance_expiry = vehicle_data.get("insurance_expiry")
+        try:
+            if isinstance(insurance_expiry, str):
+                # Handle format like "2027-01-24T00:00:00"
+                if 'T' in insurance_expiry:
+                    expiry_date = datetime.fromisoformat(insurance_expiry)
+                else:
+                    expiry_date = datetime.fromisoformat(insurance_expiry)
+            else:
+                expiry_date = insurance_expiry
+            
+            # Make timezone-aware if naive
+            if expiry_date.tzinfo is None:
+                expiry_date = expiry_date.replace(tzinfo=timezone.utc)
+            
+            if expiry_date < datetime.now(timezone.utc):
+                insurance_status = "Expired"
+        except Exception as e:
+            logger.error(f"Error parsing insurance expiry: {e}")
+            expiry_date = None
+        
+        insurance_data = {
+    "id": str(uuid.uuid4()),
+    "vehicle_id": vehicle_id,
+    "document_type": "Insurance",
+    "policy_number": vehicle_data.get("insurance_policy_number", f"INS-{registration_number}"),
+    "provider": vehicle_data.get("insurance_company", "Unknown"),
+    "issue_date": parse_date(vehicle_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
+    "expiry_date": parse_date(vehicle_data.get("insurance_expiry")),
+    "status": insurance_status,
+    "version": 1,
+    "is_current": True,
+    "source": "surepass",
+    "created_at": datetime.now(timezone.utc).isoformat(),
+    "updated_at": datetime.now(timezone.utc).isoformat(),
+    "is_deleted": False  # Add this line
+}
+
+        
+        logger.info(f"Insurance data prepared: {json.dumps(insurance_data, default=str)}")
+        
+        # Check if insurance document already exists and update it
+        existing_insurance = await db.vehicle_documents.find_one({
+            "vehicle_id": vehicle_id,
+            "document_type": "Insurance",
+            "is_current": True
+        })
+        
+        if existing_insurance:
+            # Mark old as not current
+            await db.vehicle_documents.update_many(
+                {"vehicle_id": vehicle_id, "document_type": "Insurance", "is_current": True},
+                {"$set": {"is_current": False}}
+            )
+            insurance_data["previous_version_id"] = existing_insurance["id"]
+            insurance_data["version"] = existing_insurance.get("version", 0) + 1
+        
+        result = await db.vehicle_documents.insert_one(insurance_data)
+        logger.info(f"Created Insurance document with ID: {insurance_data['id']}, insert result: {result.inserted_id}")
+    else:
+        logger.info(f"No insurance expiry data found for {registration_number}")
     
-    await db.vehicle_documents.insert_one(doc_dict)
-    return serialize_doc(doc_dict)
+    # ============ ALWAYS CREATE PUC DOCUMENT ============
+    if vehicle_data.get("puc_expiry"):
+        logger.info(f"Creating PUC document for {registration_number}")
+        
+        # Parse expiry date for status determination
+        puc_status = "Active"
+        puc_expiry = vehicle_data.get("puc_expiry")
+        try:
+            if isinstance(puc_expiry, str):
+                # Handle format like "2026-04-27T00:00:00"
+                if 'T' in puc_expiry:
+                    expiry_date = datetime.fromisoformat(puc_expiry)
+                else:
+                    expiry_date = datetime.fromisoformat(puc_expiry)
+            else:
+                expiry_date = puc_expiry
+            
+            # Make timezone-aware if naive
+            if expiry_date.tzinfo is None:
+                expiry_date = expiry_date.replace(tzinfo=timezone.utc)
+            
+            if expiry_date < datetime.now(timezone.utc):
+                puc_status = "Expired"
+        except Exception as e:
+            logger.error(f"Error parsing PUC expiry: {e}")
+            expiry_date = None
+        
+        puc_data = {
+    "id": str(uuid.uuid4()),
+    "vehicle_id": vehicle_id,
+    "document_type": "PUC",
+    "policy_number": vehicle_data.get("pucc_number", f"PUC-{registration_number}"),
+    "provider": vehicle_data.get("registered_at", "RTO"),
+    "issue_date": parse_date(vehicle_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
+    "expiry_date": parse_date(vehicle_data.get("puc_expiry")),
+    "status": puc_status,
+    "version": 1,
+    "is_current": True,
+    "source": "surepass",
+    "created_at": datetime.now(timezone.utc).isoformat(),
+    "updated_at": datetime.now(timezone.utc).isoformat(),
+    "is_deleted": False  # Add this line
+}
+        
+        logger.info(f"PUC data prepared: {json.dumps(puc_data, default=str)}")
+        
+        # Check if PUC document already exists and update it
+        existing_puc = await db.vehicle_documents.find_one({
+            "vehicle_id": vehicle_id,
+            "document_type": "PUC",
+            "is_current": True
+        })
+        
+        if existing_puc:
+            # Mark old as not current
+            await db.vehicle_documents.update_many(
+                {"vehicle_id": vehicle_id, "document_type": "PUC", "is_current": True},
+                {"$set": {"is_current": False}}
+            )
+            puc_data["previous_version_id"] = existing_puc["id"]
+            puc_data["version"] = existing_puc.get("version", 0) + 1
+        
+        result = await db.vehicle_documents.insert_one(puc_data)
+        logger.info(f"Created PUC document with ID: {puc_data['id']}, insert result: {result.inserted_id}")
+    else:
+        logger.info(f"No PUC expiry data found for {registration_number}")
+    
+    logger.info(f"=== FINISHED CREATING VEHICLE {registration_number} ===")
+    
+    return {
+        "success": True,
+        "vehicle_id": vehicle_id,
+        "message": message
+    }
+
+@api_router.get("/debug/vehicle-documents/{vehicle_id}")
+async def debug_vehicle_documents(vehicle_id: str, current_user: dict = Depends(get_current_user)):
+    """Debug endpoint to check documents for a vehicle"""
+    # Find the vehicle first by ID or registration number
+    vehicle = await db.vehicles.find_one({
+        "$or": [
+            {"id": vehicle_id},
+            {"registration_number": vehicle_id.upper()}
+        ],
+        "is_deleted": False
+    })
+    
+    if not vehicle:
+        return {"error": "Vehicle not found", "searched_for": vehicle_id}
+    
+    # Get all documents for this vehicle (including deleted ones for debugging)
+    documents = await db.vehicle_documents.find(
+        {"vehicle_id": vehicle["id"]},
+        {"_id": 0}
+    ).to_list(100)
+    
+    # Also check if there's any issue with the document fields
+    doc_fields = []
+    for doc in documents:
+        doc_fields.append({
+            "id": doc.get("id"),
+            "document_type": doc.get("document_type"),
+            "is_current": doc.get("is_current"),
+            "is_deleted": doc.get("is_deleted", False)
+        })
+    
+    return {
+        "vehicle": {
+            "id": vehicle["id"],
+            "registration_number": vehicle["registration_number"]
+        },
+        "document_count": len(documents),
+        "documents": documents,
+        "document_fields_summary": doc_fields
+    }
+
+@api_router.get("/vehicles/{vehicle_id}/document-status")
+async def check_vehicle_document_status(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Check if vehicle documents need update based on expiry
+    """
+    vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    # Get current documents
+    documents = await db.vehicle_documents.find({
+        "vehicle_id": vehicle_id,
+        "is_current": True,
+        "is_deleted": False
+    }).to_list(10)
+    
+    document_status = {}
+    needs_update = False
+    
+    for doc in documents:
+        if doc["document_type"] in ["Insurance", "PUC"]:
+            expiry = doc.get("expiry_date")
+            if expiry:
+                if isinstance(expiry, str):
+                    expiry = datetime.fromisoformat(expiry)
+                
+                status_check = surepass_service.check_document_status(expiry)
+                document_status[doc["document_type"].lower()] = status_check
+                
+                if status_check["needs_update"]:
+                    needs_update = True
+    
+    return {
+        "vehicle_id": vehicle_id,
+        "registration_number": vehicle["registration_number"],
+        "needs_update": needs_update,
+        "document_status": document_status,
+        "last_synced": vehicle.get("last_synced")
+    }
+
+@api_router.post("/vehicles/batch-check-documents")
+async def batch_check_documents(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Background job to check all vehicles for document expiry
+    Returns vehicles that need update
+    """
+    vehicles = await db.vehicles.find({"is_deleted": False}).to_list(1000)
+    
+    needs_update = []
+    
+    for vehicle in vehicles:
+        # Get current documents
+        docs = await db.vehicle_documents.find({
+            "vehicle_id": vehicle["id"],
+            "is_current": True,
+            "document_type": {"$in": ["Insurance", "PUC"]},
+            "is_deleted": False
+        }).to_list(5)
+        
+        vehicle_needs_update = False
+        
+        for doc in docs:
+            if doc.get("expiry_date"):
+                if isinstance(doc["expiry_date"], str):
+                    expiry = datetime.fromisoformat(doc["expiry_date"])
+                else:
+                    expiry = doc["expiry_date"]
+                
+                days_left = (expiry - datetime.now(timezone.utc)).days
+                
+                if days_left <= 30:  # Needs update if <=30 days left
+                    vehicle_needs_update = True
+                    break
+        
+        if vehicle_needs_update:
+            needs_update.append({
+                "id": vehicle["id"],
+                "registration_number": vehicle["registration_number"],
+                "last_synced": vehicle.get("last_synced")
+            })
+    
+    return {
+        "total_vehicles": len(vehicles),
+        "needs_update_count": len(needs_update),
+        "vehicles_needing_update": needs_update
+    }
+
+@api_router.post("/surepass/fetch-challans")
+async def fetch_challans_from_surepass(
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Fetch challan details for a vehicle from Surepass API
+    """
+    registration_number = data.get("registration_number", "").upper().strip()
+    
+    if not registration_number:
+        raise HTTPException(status_code=400, detail="Registration number is required")
+    
+    # Find the vehicle
+    vehicle = await db.vehicles.find_one({
+        "registration_number": {"$regex": f"^{registration_number}$", "$options": "i"},
+        "is_deleted": False
+    })
+    
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    logger.info(f"Fetching challans for vehicle {registration_number}")
+    
+    # Call Surepass API
+    result = await surepass_service.fetch_vehicle_challans(registration_number)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to fetch challan details"))
+    
+    challan_details = result.get("data", [])
+    
+    if not challan_details:
+        return {
+            "success": True,
+            "vehicle_id": vehicle["id"],
+            "registration_number": registration_number,
+            "challans_found": 0,
+            "challans_imported": 0,
+            "challans": [],
+            "message": "No challans found for this vehicle"
+        }
+    
+    # Parse and filter existing challans
+    imported = 0
+    new_challans = []
+    
+    for challan_data in challan_details:
+        # Parse the challan data
+        parsed_challan = surepass_service.parse_challan_data(challan_data, vehicle["id"])
+        
+        # Check if challan already exists
+        existing = await db.challans.find_one({
+            "challan_number": parsed_challan["challan_number"],
+            "vehicle_id": vehicle["id"],
+            "is_deleted": False
+        })
+        
+        if not existing:
+            # Create new challan
+            challan_id = str(uuid.uuid4())
+            challan_dict = {
+                "id": challan_id,
+                **parsed_challan,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": current_user["user_id"],
+                "is_deleted": False
+            }
+            
+            # Insert into database - don't store the result with ObjectId
+            await db.challans.insert_one(challan_dict)
+            imported += 1
+            
+            # Remove any potential _id field before adding to response
+            challan_dict.pop('_id', None)
+            new_challans.append(challan_dict)
+    
+    # Log the API call - make sure to handle ObjectId here too
+    log_entry = {
+        "id": str(uuid.uuid4()),
+        "registration_number": registration_number,
+        "request_timestamp": datetime.now(timezone.utc).isoformat(),
+        "response_data": result.get("raw_response", {}),
+        "challans_found": len(challan_details),
+        "challans_imported": imported,
+        "is_successful": True,
+        "created_by": current_user["user_id"]
+    }
+    await db.rc_verification_logs.insert_one(log_entry)
+    
+    return {
+        "success": True,
+        "vehicle_id": vehicle["id"],
+        "registration_number": registration_number,
+        "challans_found": len(challan_details),
+        "challans_imported": imported,
+        "challans": new_challans,
+        "message": f"Imported {imported} new challans out of {len(challan_details)} found"
+    }
+# ==================== VEHICLE DOCUMENT ROUTES (VERSIONED) ====================
 
 @api_router.get("/vehicle-documents")
 async def get_vehicle_documents(
@@ -898,16 +1677,34 @@ async def get_vehicle_documents(
     limit: int = 100,
     current_user: dict = Depends(get_current_user)
 ):
+    """
+    Get vehicle documents with optional filters
+    """
     query = {"is_deleted": False}
+    
     if vehicle_id:
         query["vehicle_id"] = vehicle_id
+    
+    # Only filter by is_current if current_only is True
     if current_only:
         query["is_current"] = True
     
-    docs = await db.vehicle_documents.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    count = await db.vehicle_documents.count_documents(query)
-    return {"data": docs, "total": count}
-
+    logger.info(f"Vehicle documents query: {query}")
+    
+    docs = await db.vehicle_documents.find(
+        query, 
+        {"_id": 0}
+    ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    
+    logger.info(f"Found {len(docs)} documents")
+    
+    # Ensure dates are properly formatted for frontend
+    for doc in docs:
+        if doc.get("expiry_date"):
+            # Keep as ISO string, frontend will parse
+            pass
+    
+    return {"data": docs, "total": len(docs)}
 @api_router.get("/vehicle-documents/{document_id}/history")
 async def get_document_history(document_id: str, current_user: dict = Depends(get_current_user)):
     # Get current document
@@ -976,157 +1773,203 @@ async def export_vehicle_documents_excel(
     """
     Export vehicle documents to a professional Excel file
     """
-    # Build query
-    query = {"is_deleted": False}
-    if vehicle_id:
-        query["vehicle_id"] = vehicle_id
-    
-    # Get all documents
-    documents = await db.vehicle_documents.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    
-    if not documents:
-        raise HTTPException(status_code=404, detail="No documents found to export")
-    
-    # Get vehicle information for reference
-    vehicle_ids = list(set(doc["vehicle_id"] for doc in documents))
-    vehicles = await db.vehicles.find(
-        {"id": {"$in": vehicle_ids}},
-        {"_id": 0, "id": 1, "registration_number": 1, "brand": 1, "model": 1}
-    ).to_list(100)
-    
-    vehicle_map = {v["id"]: v for v in vehicles}
-    
-    # Prepare data for Excel
-    excel_data = []
-    for doc in documents:
-        vehicle = vehicle_map.get(doc["vehicle_id"], {})
+    try:
+        # Build query
+        query = {"is_deleted": False}
+        if vehicle_id:
+            query["vehicle_id"] = vehicle_id
         
-        # Calculate days until expiry
-        days_left = None
-        if doc.get("expiry_date"):
-            try:
-                expiry = datetime.fromisoformat(doc["expiry_date"]) if isinstance(doc["expiry_date"], str) else doc["expiry_date"]
-                days_left = (expiry - datetime.now(timezone.utc)).days
-            except:
-                days_left = None
+        # Get all documents
+        documents = await db.vehicle_documents.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
         
-        # Determine status
-        if days_left is not None:
-            if days_left <= 0:
-                expiry_status = "Expired"
-            elif days_left <= 3:
-                expiry_status = "Critical"
-            elif days_left <= 7:
-                expiry_status = "Urgent"
-            elif days_left <= 15:
-                expiry_status = "Warning"
-            elif days_left <= 30:
-                expiry_status = "Soon"
-            else:
-                expiry_status = "Safe"
-        else:
+        if not documents:
+            raise HTTPException(status_code=404, detail="No documents found to export")
+        
+        # Get vehicle information for reference
+        vehicle_ids = list(set(doc["vehicle_id"] for doc in documents if doc.get("vehicle_id")))
+        vehicles = []
+        if vehicle_ids:
+            vehicles = await db.vehicles.find(
+                {"id": {"$in": vehicle_ids}},
+                {"_id": 0, "id": 1, "registration_number": 1, "brand": 1, "model": 1}
+            ).to_list(100)
+        
+        vehicle_map = {v["id"]: v for v in vehicles}
+        
+        # Prepare data for Excel
+        excel_data = []
+        for doc in documents:
+            vehicle = vehicle_map.get(doc.get("vehicle_id"), {})
+            
+            # Calculate days until expiry
+            days_left = None
             expiry_status = "Unknown"
-        
-        excel_data.append({
-            "Registration Number": vehicle.get("registration_number", "Unknown"),
-            "Vehicle Model": f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip(),
-            "Document Type": doc.get("document_type", ""),
-            "Custom Name": doc.get("custom_document_name", ""),
-            "Policy Number": doc.get("policy_number", ""),
-            "Provider": doc.get("provider", ""),
-            "Phone Number": doc.get("phone_number", ""),
-            "Issue Date": doc.get("issue_date", ""),
-            "Expiry Date": doc.get("expiry_date", ""),
-            "Days Left": days_left if days_left is not None else "N/A",
-            "Status": doc.get("status", ""),
-            "Expiry Status": expiry_status,
-            "Version": doc.get("version", 1),
-            "Is Current": "Yes" if doc.get("is_current", False) else "No",
-            "Premium/Fee (Rs)": doc.get("premium", ""),
-            "Coverage": doc.get("coverage", ""),
-            "Created At": doc.get("created_at", ""),
-            "Updated At": doc.get("updated_at", ""),
-        })
-    
-    # Create DataFrame
-    df = pd.DataFrame(excel_data)
-    
-    # Create Excel file in memory using openpyxl
-    output = io.BytesIO()
-    
-    # Use openpyxl engine (already installed)
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='Vehicle Documents', index=False)
-        
-        # Get workbook and worksheet
-        workbook = writer.book
-        worksheet = writer.sheets['Vehicle Documents']
-        
-        # Auto-adjust column widths
-        for column in worksheet.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
+            if doc.get("expiry_date"):
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
+                    expiry = datetime.fromisoformat(doc["expiry_date"]) if isinstance(doc["expiry_date"], str) else doc["expiry_date"]
+                    days_left = (expiry - datetime.now(timezone.utc)).days
+                    
+                    if days_left <= 0:
+                        expiry_status = "Expired"
+                    elif days_left <= 3:
+                        expiry_status = "Critical"
+                    elif days_left <= 7:
+                        expiry_status = "Urgent"
+                    elif days_left <= 15:
+                        expiry_status = "Warning"
+                    elif days_left <= 30:
+                        expiry_status = "Soon"
+                    else:
+                        expiry_status = "Safe"
+                except Exception as e:
+                    logger.error(f"Error calculating days left: {e}")
+            
+            # Format dates safely
+            issue_date = ""
+            if doc.get("issue_date"):
+                try:
+                    if isinstance(doc["issue_date"], str):
+                        issue_date = datetime.fromisoformat(doc["issue_date"].replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                    else:
+                        issue_date = doc["issue_date"].strftime('%Y-%m-%d')
                 except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            worksheet.column_dimensions[column_letter].width = adjusted_width
+                    issue_date = str(doc["issue_date"])
+            
+            expiry_date = ""
+            if doc.get("expiry_date"):
+                try:
+                    if isinstance(doc["expiry_date"], str):
+                        expiry_date = datetime.fromisoformat(doc["expiry_date"].replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                    else:
+                        expiry_date = doc["expiry_date"].strftime('%Y-%m-%d')
+                except:
+                    expiry_date = str(doc["expiry_date"])
+            
+            created_at = ""
+            if doc.get("created_at"):
+                try:
+                    if isinstance(doc["created_at"], str):
+                        created_at = datetime.fromisoformat(doc["created_at"].replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        created_at = doc["created_at"].strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    created_at = str(doc["created_at"])
+            
+            updated_at = ""
+            if doc.get("updated_at"):
+                try:
+                    if isinstance(doc["updated_at"], str):
+                        updated_at = datetime.fromisoformat(doc["updated_at"].replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        updated_at = doc["updated_at"].strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    updated_at = str(doc["updated_at"])
+            
+            excel_data.append({
+                "Registration Number": vehicle.get("registration_number", "Unknown"),
+                "Vehicle Model": f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip(),
+                "Document Type": doc.get("document_type", ""),
+                "Custom Name": doc.get("custom_document_name", ""),
+                "Policy Number": doc.get("policy_number", ""),
+                "Provider": doc.get("provider", ""),
+                "Phone Number": doc.get("phone_number", ""),
+                "Issue Date": issue_date,
+                "Expiry Date": expiry_date,
+                "Days Left": str(days_left) if days_left is not None else "N/A",
+                "Status": doc.get("status", ""),
+                "Expiry Status": expiry_status,
+                "Version": str(doc.get("version", 1)),
+                "Is Current": "Yes" if doc.get("is_current", False) else "No",
+                "Premium/Fee (Rs)": str(doc.get("premium", "")) if doc.get("premium") else "",
+                "Coverage": doc.get("coverage", ""),
+                "Created At": created_at,
+                "Updated At": updated_at,
+            })
         
-        # Add summary sheet
-        summary_data = {
-            'Metric': [
-                'Total Documents',
-                'Active Documents',
-                'Expired Documents',
-                'Critical (≤3 days)',
-                'Urgent (≤7 days)',
-                'Warning (≤15 days)',
-                'Soon (≤30 days)',
-                'Safe (>30 days)',
-                'Vehicles Covered',
-                'Export Date'
-            ],
-            'Value': [
-                len(documents),
-                len([d for d in documents if d.get('status') == 'Active']),
-                len([d for d in documents if d.get('status') == 'Expired']),
-                len([d for d in documents if 'days_left' in locals() and 1 <= days_left <= 3]),
-                len([d for d in documents if 'days_left' in locals() and 4 <= days_left <= 7]),
-                len([d for d in documents if 'days_left' in locals() and 8 <= days_left <= 15]),
-                len([d for d in documents if 'days_left' in locals() and 16 <= days_left <= 30]),
-                len([d for d in documents if 'days_left' in locals() and days_left > 30]),
-                len(vehicle_ids),
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            ]
-        }
+        # Create DataFrame
+        df = pd.DataFrame(excel_data)
         
-        summary_df = pd.DataFrame(summary_data)
-        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        # Create Excel file in memory using openpyxl
+        output = io.BytesIO()
         
-        # Auto-adjust summary sheet columns
-        summary_sheet = writer.sheets['Summary']
-        summary_sheet.column_dimensions['A'].width = 25
-        summary_sheet.column_dimensions['B'].width = 20
-    
-    output.seek(0)
-    
-    # Generate filename
-    if vehicle_id:
-        vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "registration_number": 1})
-        vehicle_reg = vehicle["registration_number"].replace(" ", "_") if vehicle else "vehicle"
-        filename = f"{vehicle_reg}_documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    else:
-        filename = f"all_vehicles_documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
-
+        # Use openpyxl engine
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Vehicle Documents', index=False)
+            
+            # Get workbook and worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Vehicle Documents']
+            
+            # Auto-adjust column widths
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+            
+            # Add summary sheet
+            summary_data = {
+                'Metric': [
+                    'Total Documents',
+                    'Active Documents',
+                    'Expired Documents',
+                    'Critical (≤3 days)',
+                    'Urgent (≤7 days)',
+                    'Warning (≤15 days)',
+                    'Soon (≤30 days)',
+                    'Safe (>30 days)',
+                    'Vehicles Covered',
+                    'Export Date'
+                ],
+                'Value': [
+                    str(len(documents)),
+                    str(len([d for d in documents if d.get('status') == 'Active'])),
+                    str(len([d for d in documents if d.get('status') == 'Expired'])),
+                    str(len([d for d in excel_data if d.get('Expiry Status') == 'Critical'])),
+                    str(len([d for d in excel_data if d.get('Expiry Status') == 'Urgent'])),
+                    str(len([d for d in excel_data if d.get('Expiry Status') == 'Warning'])),
+                    str(len([d for d in excel_data if d.get('Expiry Status') == 'Soon'])),
+                    str(len([d for d in excel_data if d.get('Expiry Status') == 'Safe'])),
+                    str(len(vehicle_ids)),
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                ]
+            }
+            
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_excel(writer, sheet_name='Summary', index=False)
+            
+            # Auto-adjust summary sheet columns
+            summary_sheet = writer.sheets['Summary']
+            summary_sheet.column_dimensions['A'].width = 25
+            summary_sheet.column_dimensions['B'].width = 20
+        
+        output.seek(0)
+        
+        # Generate filename
+        if vehicle_id:
+            vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "registration_number": 1})
+            vehicle_reg = vehicle["registration_number"].replace(" ", "_") if vehicle else "vehicle"
+            filename = f"{vehicle_reg}_documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        else:
+            filename = f"all_vehicles_documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting vehicle documents: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to export documents: {str(e)}")
+        
 @api_router.post("/export/vehicle-documents/current-view/excel")
 async def export_current_view_excel(
     filter_data: dict,
@@ -1135,94 +1978,128 @@ async def export_current_view_excel(
     """
     Export the current filtered view of documents to Excel
     """
-    # This endpoint will receive the current filtered documents from frontend
-    documents = filter_data.get("documents", [])
-    vehicle_map = filter_data.get("vehicle_map", {})
-    
-    if not documents:
-        raise HTTPException(status_code=404, detail="No documents to export")
-    
-    # Prepare data for Excel
-    excel_data = []
-    for doc in documents:
-        vehicle = vehicle_map.get(doc.get("vehicle_id"), {})
+    try:
+        documents = filter_data.get("documents", [])
+        vehicle_map = filter_data.get("vehicle_map", {})
         
-        # Calculate days until expiry
-        days_left = None
-        if doc.get("expiry_date"):
-            try:
-                expiry = datetime.fromisoformat(doc["expiry_date"]) if isinstance(doc["expiry_date"], str) else doc["expiry_date"]
-                days_left = (expiry - datetime.now(timezone.utc)).days
-            except:
-                days_left = None
+        if not documents:
+            raise HTTPException(status_code=404, detail="No documents to export")
         
-        # Determine status
-        if days_left is not None:
-            if days_left <= 0:
-                expiry_status = "Expired"
-            elif days_left <= 3:
-                expiry_status = "Critical"
-            elif days_left <= 7:
-                expiry_status = "Urgent"
-            elif days_left <= 15:
-                expiry_status = "Warning"
-            elif days_left <= 30:
-                expiry_status = "Soon"
-            else:
-                expiry_status = "Safe"
-        else:
+        # Prepare data for Excel
+        excel_data = []
+        for doc in documents:
+            vehicle = vehicle_map.get(doc.get("vehicle_id"), {})
+            
+            # Calculate days until expiry
+            days_left = None
             expiry_status = "Unknown"
-        
-        excel_data.append({
-            "Registration Number": vehicle.get("registration_number", "Unknown"),
-            "Vehicle Model": f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip(),
-            "Document Type": doc.get("document_type", ""),
-            "Custom Name": doc.get("custom_document_name", ""),
-            "Policy Number": doc.get("policy_number", ""),
-            "Provider": doc.get("provider", ""),
-            "Phone Number": doc.get("phone_number", ""),
-            "Issue Date": doc.get("issue_date", ""),
-            "Expiry Date": doc.get("expiry_date", ""),
-            "Days Left": days_left if days_left is not None else "N/A",
-            "Status": doc.get("status", ""),
-            "Expiry Status": expiry_status,
-            "Version": doc.get("version", 1),
-            "Is Current": "Yes" if doc.get("is_current", False) else "No",
-            "Premium/Fee (Rs)": doc.get("premium", ""),
-            "Coverage": doc.get("coverage", ""),
-            "Created At": doc.get("created_at", ""),
-        })
-    
-    # Create DataFrame and Excel file
-    df = pd.DataFrame(excel_data)
-    output = io.BytesIO()
-    
-    # Use openpyxl engine
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='Vehicle Documents', index=False)
-        
-        # Auto-adjust column widths
-        worksheet = writer.sheets['Vehicle Documents']
-        for column in worksheet.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
+            if doc.get("expiry_date"):
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
+                    expiry = datetime.fromisoformat(doc["expiry_date"]) if isinstance(doc["expiry_date"], str) else doc["expiry_date"]
+                    days_left = (expiry - datetime.now(timezone.utc)).days
+                    
+                    if days_left <= 0:
+                        expiry_status = "Expired"
+                    elif days_left <= 3:
+                        expiry_status = "Critical"
+                    elif days_left <= 7:
+                        expiry_status = "Urgent"
+                    elif days_left <= 15:
+                        expiry_status = "Warning"
+                    elif days_left <= 30:
+                        expiry_status = "Soon"
+                    else:
+                        expiry_status = "Safe"
                 except:
                     pass
-            adjusted_width = min(max_length + 2, 50)
-            worksheet.column_dimensions[column_letter].width = adjusted_width
-    
-    output.seek(0)
-    
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=documents_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"}
-    )# ==================== CHALLAN ROUTES ====================
+            
+            # Format dates safely
+            issue_date = ""
+            if doc.get("issue_date"):
+                try:
+                    if isinstance(doc["issue_date"], str):
+                        issue_date = datetime.fromisoformat(doc["issue_date"].replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                    else:
+                        issue_date = doc["issue_date"].strftime('%Y-%m-%d')
+                except:
+                    issue_date = str(doc["issue_date"])
+            
+            expiry_date = ""
+            if doc.get("expiry_date"):
+                try:
+                    if isinstance(doc["expiry_date"], str):
+                        expiry_date = datetime.fromisoformat(doc["expiry_date"].replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                    else:
+                        expiry_date = doc["expiry_date"].strftime('%Y-%m-%d')
+                except:
+                    expiry_date = str(doc["expiry_date"])
+            
+            created_at = ""
+            if doc.get("created_at"):
+                try:
+                    if isinstance(doc["created_at"], str):
+                        created_at = datetime.fromisoformat(doc["created_at"].replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        created_at = doc["created_at"].strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    created_at = str(doc["created_at"])
+            
+            excel_data.append({
+                "Registration Number": vehicle.get("registration_number", "Unknown"),
+                "Vehicle Model": f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip(),
+                "Document Type": doc.get("document_type", ""),
+                "Custom Name": doc.get("custom_document_name", ""),
+                "Policy Number": doc.get("policy_number", ""),
+                "Provider": doc.get("provider", ""),
+                "Phone Number": doc.get("phone_number", ""),
+                "Issue Date": issue_date,
+                "Expiry Date": expiry_date,
+                "Days Left": str(days_left) if days_left is not None else "N/A",
+                "Status": doc.get("status", ""),
+                "Expiry Status": expiry_status,
+                "Version": str(doc.get("version", 1)),
+                "Is Current": "Yes" if doc.get("is_current", False) else "No",
+                "Premium/Fee (Rs)": str(doc.get("premium", "")) if doc.get("premium") else "",
+                "Coverage": doc.get("coverage", ""),
+                "Created At": created_at,
+            })
+        
+        # Create DataFrame and Excel file
+        df = pd.DataFrame(excel_data)
+        output = io.BytesIO()
+        
+        # Use openpyxl engine
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Vehicle Documents', index=False)
+            
+            # Auto-adjust column widths
+            worksheet = writer.sheets['Vehicle Documents']
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        output.seek(0)
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=documents_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting current view: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to export documents: {str(e)}")
 
+        
 @api_router.post("/challans")
 async def create_challan(challan_data: ChallanCreate, current_user: dict = Depends(get_current_user)):
     challan_id = str(uuid.uuid4())

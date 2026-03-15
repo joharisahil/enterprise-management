@@ -325,6 +325,15 @@ class VehicleBase(BaseModel):
     fastag_password: Optional[str] = None
     fastag_sold: Optional[bool] = False
     fastag_sold_date: Optional[datetime] = None
+    insurance_expiry: Optional[datetime] = None
+    puc_expiry: Optional[datetime] = None
+    fit_up_to: Optional[datetime] = None
+    insurance_company: Optional[str] = None
+    insurance_policy_number: Optional[str] = None
+    pucc_number: Optional[str] = None
+    registered_at: Optional[str] = None
+    source: Optional[str] = Field(None, description="manual or surepass")
+    last_synced: Optional[datetime] = None
 
 class VehicleCreate(VehicleBase):
     pass
@@ -561,3 +570,38 @@ class FastagPassCreate(FastagPassBase):
 class FastagPass(FastagPassBase, TimestampModel):
     model_config = ConfigDict(extra="ignore")
     id: str    
+
+# Add after your existing models
+
+class RCVerificationLog(BaseModel):
+    """Track RC verification API calls"""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    registration_number: str
+    request_timestamp: datetime
+    response_data: dict
+    insurance_expiry: Optional[datetime] = None
+    puc_expiry: Optional[datetime] = None
+    fit_up_to: Optional[datetime] = None
+    tax_upto: Optional[datetime] = None
+    is_successful: bool = True
+    error_message: Optional[str] = None
+    created_by: Optional[str] = None
+    
+class DocumentStatus(str, Enum):
+    VALID = "Valid"
+    EXPIRING_SOON = "Expiring Soon"
+    EXPIRED = "Expired"
+    NOT_AVAILABLE = "Not Available"
+
+class VehicleDocumentStatus(BaseModel):
+    """Track document status for vehicles"""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    vehicle_id: str
+    document_type: str  # insurance, puc, registration, tax
+    expiry_date: Optional[datetime] = None
+    status: DocumentStatus
+    last_checked: datetime
+    needs_update: bool = False  # Flag to trigger API call
+    source: str  # "manual" or "surepass"
