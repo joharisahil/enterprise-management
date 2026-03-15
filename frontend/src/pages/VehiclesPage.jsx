@@ -979,7 +979,7 @@ const VehicleCard = ({ vehicle, onView, onEdit, onDelete }) => {
                   <Edit size={14} className="mr-2" /> Edit
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onDelete(vehicle.id)} className="text-rose-600">
+                <DropdownMenuItem onClick={() => onDelete(vehicle)} className="text-rose-600">
                   <Trash2 size={14} className="mr-2" /> Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
