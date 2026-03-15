@@ -1085,6 +1085,18 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
   const [activeTab, setActiveTab] = useState('overview');
   const [fetchingChallans, setFetchingChallans] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (vehicle && open) {
+      setIsLoading(true);
+      // Small timeout to ensure UI updates
+      const timer = setTimeout(() => {
+        setIsLoading(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [vehicle, open]);  
 
   const getDaysLeft = (expiryDate) => {
     if (!expiryDate) return null;
@@ -1734,6 +1746,42 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
   };
 
   if (!vehicle) return null;
+
+   // Show loading skeleton while data is loading
+  if (!vehicle || isLoading) {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent className="w-full sm:max-w-4xl p-0 overflow-y-auto">
+          <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-slate-100 rounded-xl animate-pulse">
+                <div className="w-8 h-8 bg-slate-200 rounded"></div>
+              </div>
+              <div>
+                <div className="h-8 w-48 bg-slate-200 rounded animate-pulse mb-2"></div>
+                <div className="h-4 w-32 bg-slate-200 rounded animate-pulse"></div>
+              </div>
+            </div>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-4 gap-4 mb-6">
+              {[1,2,3,4].map(i => (
+                <Card key={i} className="border-slate-200">
+                  <CardContent className="p-4">
+                    <div className="h-16 bg-slate-100 rounded animate-pulse"></div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <div className="space-y-4">
+              <div className="h-10 w-64 bg-slate-200 rounded animate-pulse"></div>
+              <div className="h-32 bg-slate-100 rounded animate-pulse"></div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    );
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -2398,34 +2446,48 @@ export const VehiclesPage = () => {
     }
   };
 
-  const fetchFastagPasses = async (vehicleId) => {
-    try {
-      const res = await api.get(`/vehicles/${vehicleId}/fastag-passes`);
-      setFastagPasses(res.data.data);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load FASTag passes");
-    }
-  };
+const fetchFastagPasses = async (vehicleId) => {
+  try {
+    const res = await api.get(`/vehicles/${vehicleId}/fastag-passes`);
+    setFastagPasses(res.data.data);
+    return res.data;
+  } catch (err) {
+    console.error(err);
+    toast.error("Failed to load FASTag passes");
+    throw err;
+  }
+};
 
-  const fetchVehicleReport = async (vehicleId) => {
-    try {
-      const response = await api.get(`/vehicles/${vehicleId}/full-report`);
-      setVehicleReport(response.data);
-    } catch (error) {
-      console.error("Report error:", error);
-      toast.error("Failed to load vehicle report");
-    }
-  };
+const fetchVehicleReport = async (vehicleId) => {
+  try {
+    const response = await api.get(`/vehicles/${vehicleId}/full-report`);
+    setVehicleReport(response.data);
+    return response.data;
+  } catch (error) {
+    console.error("Report error:", error);
+    toast.error("Failed to load vehicle report");
+    throw error;
+  }
+};
 
-  const handleView = async (vehicle) => {
-    setSelectedVehicle(vehicle);
-    setViewDialogOpen(true);
-    await Promise.all([
+const handleView = async (vehicle) => {
+  setVehicleReport(null);
+  setFastagPasses([]);
+  
+  setSelectedVehicle(vehicle);
+  
+  setViewDialogOpen(true);
+  
+  try {
+    const [reportResponse, passesResponse] = await Promise.all([
       fetchVehicleReport(vehicle.id),
       fetchFastagPasses(vehicle.id)
     ]);
-  };
+  } catch (error) {
+    console.error("Error fetching vehicle data:", error);
+    toast.error("Failed to load vehicle details");
+  }
+};
 
   const handleEdit = async (vehicle) => {
     try {
@@ -2710,8 +2772,6 @@ export const VehiclesPage = () => {
       toast.error(err.response?.data?.detail || 'Failed to sync documents');
     }
   };
-
-// 👇 REPLACE YOUR EXISTING handleFetchChallans WITH THESE TWO FUNCTIONS
 
 const handleFetchChallansClick = () => {
   if (!selectedVehicle) return;
