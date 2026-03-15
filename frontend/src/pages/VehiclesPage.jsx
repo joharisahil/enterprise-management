@@ -44,6 +44,16 @@ import {
 } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const vehicleTypes = ['Car', 'Truck', 'Van', 'Bike', 'Bus', 'JCB', 'Tractor', 'Crane'];
 const fuelTypes = ['Petrol', 'Diesel', 'Electric', 'CNG', 'Hybrid'];
@@ -1109,619 +1119,619 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
     }
   };
 
-const generatePDF = async () => {
-  if (!vehicle || !vehicleReport) return;
-  
-  setGeneratingPDF(true);
-  
-  try {
-    // Dynamically import jsPDF and jspdf-autotable
-    const { default: jsPDF } = await import('jspdf');
-    const { default: autoTable } = await import('jspdf-autotable');
-    
-    // Create new PDF document
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
-    
-    // Colors
-    const primaryColor = [16, 185, 129]; // Emerald-500
-    const secondaryColor = [100, 116, 139]; // Slate-500
-    const dangerColor = [225, 29, 72]; // Rose-600
-    const warningColor = [245, 158, 11]; // Amber-500
-    const infoColor = [59, 130, 246]; // Blue-500
-    const successColor = [34, 197, 94]; // Green-500
-    
-    // Helper function to check if date is expired
-    const isExpired = (date) => {
-      if (!date) return false;
-      return new Date(date) < new Date();
-    };
-    
-    // Helper function to get days left
-    const getDaysLeftText = (date) => {
-      if (!date) return 'N/A';
-      const days = getDaysLeft(date);
-      if (days === null) return 'N/A';
-      if (days < 0) return 'Expired';
-      return `${days} days left`;
-    };
-    
-    // Helper function to format currency - FIXED VERSION
-    const formatCurrency = (amount) => {
-      if (!amount && amount !== 0) return 'Rs. 0';
-      
-      // Convert to number if it's a string
-      const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-      
-      if (isNaN(numAmount)) return 'Rs. 0';
-      
-      // Format without special characters that cause PDF rendering issues
-      const formattedNumber = numAmount.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-      
-      return `Rs. ${formattedNumber}`;
-    };
-    
-    // Title
-    doc.setFontSize(20);
-    doc.setTextColor(40, 40, 40);
-    doc.text('Vehicle Full Report', 14, 20);
-    
-    // Vehicle Registration Number
-    doc.setFontSize(16);
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text(vehicle.registration_number, 14, 30);
-    
-    // Report generation date
-    doc.setFontSize(8);
-    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 36);
-    
-    // Line separator
-    doc.setDrawColor(200, 200, 200);
-    doc.line(14, 38, 196, 38);
-    
-    let yPos = 45;
-    
-    // ==================== VEHICLE DETAILS SECTION ====================
-    doc.setFontSize(14);
-    doc.setTextColor(40, 40, 40);
-    doc.text('Vehicle Details', 14, yPos);
-    yPos += 6;
-    
-    const vehicleDetails = [
-      ['Registration Number', vehicle.registration_number],
-      ['Owner Name', vehicle.owner_name || 'N/A'],
-      ['Brand/Model', `${vehicle.brand} ${vehicle.model}`],
-      ['Year', vehicle.year || 'N/A'],
-      ['Type', vehicle.type],
-      ['Fuel Type', vehicle.fuel_type],
-      ['Color', vehicle.color || 'N/A'],
-      ['Chassis Number', vehicle.chassis_number || 'N/A'],
-      ['Engine Number', vehicle.engine_number || 'N/A'],
-      ['Seating Capacity', vehicle.seating_capacity || 'N/A'],
-      ['Average Mileage', vehicle.average_kmpl ? `${vehicle.average_kmpl} km/l` : 'N/A'],
-      ['Tank Capacity', vehicle.tank_capacity_liters ? `${vehicle.tank_capacity_liters} L` : 'N/A'],
-      ['Site Name', vehicle.site_name || 'N/A'],
-      ['Source', vehicle.source || 'Manual'],
-      ['File Status', vehicle.file_status ? 'Complete' : 'Incomplete']
-    ];
-    
-    autoTable(doc, {
-      startY: yPos,
-      head: [['Field', 'Value']],
-      body: vehicleDetails,
-      theme: 'striped',
-      headStyles: { fillColor: primaryColor },
-      columnStyles: {
-        0: { cellWidth: 60 },
-        1: { cellWidth: 120 }
-      },
-      margin: { left: 14, right: 14 }
-    });
-    
-    yPos = doc.lastAutoTable.finalY + 10;
-    
-    // ==================== DOCUMENTS SECTION ====================
-    if (vehicleReport?.documents && vehicleReport.documents.length > 0) {
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-      
+  const generatePDF = async () => {
+    if (!vehicle || !vehicleReport) return;
+
+    setGeneratingPDF(true);
+
+    try {
+      // Dynamically import jsPDF and jspdf-autotable
+      const { default: jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      // Create new PDF document
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // Colors
+      const primaryColor = [16, 185, 129]; // Emerald-500
+      const secondaryColor = [100, 116, 139]; // Slate-500
+      const dangerColor = [225, 29, 72]; // Rose-600
+      const warningColor = [245, 158, 11]; // Amber-500
+      const infoColor = [59, 130, 246]; // Blue-500
+      const successColor = [34, 197, 94]; // Green-500
+
+      // Helper function to check if date is expired
+      const isExpired = (date) => {
+        if (!date) return false;
+        return new Date(date) < new Date();
+      };
+
+      // Helper function to get days left
+      const getDaysLeftText = (date) => {
+        if (!date) return 'N/A';
+        const days = getDaysLeft(date);
+        if (days === null) return 'N/A';
+        if (days < 0) return 'Expired';
+        return `${days} days left`;
+      };
+
+      // Helper function to format currency - FIXED VERSION
+      const formatCurrency = (amount) => {
+        if (!amount && amount !== 0) return 'Rs. 0';
+
+        // Convert to number if it's a string
+        const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+
+        if (isNaN(numAmount)) return 'Rs. 0';
+
+        // Format without special characters that cause PDF rendering issues
+        const formattedNumber = numAmount.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+        return `Rs. ${formattedNumber}`;
+      };
+
+      // Title
+      doc.setFontSize(20);
+      doc.setTextColor(40, 40, 40);
+      doc.text('Vehicle Full Report', 14, 20);
+
+      // Vehicle Registration Number
+      doc.setFontSize(16);
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.text(vehicle.registration_number, 14, 30);
+
+      // Report generation date
+      doc.setFontSize(8);
+      doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 36);
+
+      // Line separator
+      doc.setDrawColor(200, 200, 200);
+      doc.line(14, 38, 196, 38);
+
+      let yPos = 45;
+
+      // ==================== VEHICLE DETAILS SECTION ====================
       doc.setFontSize(14);
       doc.setTextColor(40, 40, 40);
-      doc.text('Documents', 14, yPos);
+      doc.text('Vehicle Details', 14, yPos);
       yPos += 6;
-      
-      const documentsData = vehicleReport.documents.map(doc => {
-        const daysLeft = getDaysLeft(doc.expiry_date);
-        const status = daysLeft === 'Expired' ? 'Expired' : 
-                      (typeof daysLeft === 'number' && daysLeft < 30 ? 'Expiring Soon' : 'Active');
-        
-        return [
-          doc.document_type === 'Custom' ? (doc.custom_document_name || 'Custom') : doc.document_type,
-          doc.provider || 'N/A',
-          doc.policy_number || 'N/A',
-          doc.issue_date ? new Date(doc.issue_date).toLocaleDateString() : 'N/A',
-          doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString() : 'N/A',
-          status,
-          doc.premium ? formatCurrency(doc.premium) : 'N/A'
-        ];
-      });
-      
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Document Type', 'Provider', 'Policy/Number', 'Issue Date', 'Expiry Date', 'Status', 'Premium']],
-        body: documentsData,
-        theme: 'striped',
-        headStyles: { fillColor: primaryColor },
-        columnStyles: {
-          0: { cellWidth: 35 },
-          1: { cellWidth: 35 },
-          2: { cellWidth: 35 },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 25 },
-          5: { cellWidth: 25 },
-          6: { cellWidth: 20 }
-        },
-        margin: { left: 14, right: 14 },
-        didDrawCell: (data) => {
-          if (data.section === 'body' && data.column.index === 5) {
-            const cellText = data.cell.text[0];
-            if (cellText === 'Expired') {
-              doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
-            } else if (cellText === 'Expiring Soon') {
-              doc.setTextColor(warningColor[0], warningColor[1], warningColor[2]);
-            } else {
-              doc.setTextColor(successColor[0], successColor[1], successColor[2]);
-            }
-          }
-        }
-      });
-      
-      yPos = doc.lastAutoTable.finalY + 10;
-    }
-    
-    // ==================== CHALLANS SECTION ====================
-    if (vehicleReport?.challans && vehicleReport.challans.length > 0) {
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-      
-      doc.setFontSize(14);
-      doc.setTextColor(40, 40, 40);
-      doc.text('Challans / Traffic Violations', 14, yPos);
-      yPos += 6;
-      
-      const challansData = vehicleReport.challans.map(challan => {
-        return [
-          challan.challan_number || 'N/A',
-          new Date(challan.date).toLocaleDateString(),
-          challan.violation_type || 'N/A',
-          formatCurrency(challan.amount),
-          challan.status || 'N/A',
-          challan.location || 'N/A',
-          challan.payment_date ? new Date(challan.payment_date).toLocaleDateString() : '-'
-        ];
-      });
-      
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Challan No.', 'Date', 'Violation Type', 'Amount', 'Status', 'Location', 'Payment Date']],
-        body: challansData,
-        theme: 'striped',
-        headStyles: { fillColor: primaryColor },
-        columnStyles: {
-          0: { cellWidth: 30 },
-          1: { cellWidth: 20 },
-          2: { cellWidth: 35 },
-          3: { cellWidth: 20 },
-          4: { cellWidth: 20 },
-          5: { cellWidth: 30 },
-          6: { cellWidth: 25 }
-        },
-        margin: { left: 14, right: 14 },
-        didDrawCell: (data) => {
-          if (data.section === 'body' && data.column.index === 4) {
-            const cellText = data.cell.text[0];
-            if (cellText === 'Unpaid') {
-              doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
-            } else if (cellText === 'Paid') {
-              doc.setTextColor(successColor[0], successColor[1], successColor[2]);
-            }
-          }
-        }
-      });
-      
-      // Add challan summary
-      yPos = doc.lastAutoTable.finalY + 10;
-      
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-      
-      const totalChallanAmount = vehicleReport.challans.reduce((sum, c) => sum + (c.amount || 0), 0);
-      const paidChallans = vehicleReport.challans.filter(c => c.status === 'Paid').length;
-      const unpaidChallans = vehicleReport.challans.filter(c => c.status === 'Unpaid').length;
-      const unpaidAmount = vehicleReport.challans
-        .filter(c => c.status === 'Unpaid')
-        .reduce((sum, c) => sum + (c.amount || 0), 0);
-      
-      const challanSummary = [
-        ['Total Challans', vehicleReport.challans.length.toString()],
-        ['Paid Challans', paidChallans.toString()],
-        ['Unpaid Challans', unpaidChallans.toString()],
-        ['Total Amount', formatCurrency(totalChallanAmount)],
-        ['Unpaid Amount', formatCurrency(unpaidAmount)]
+
+      const vehicleDetails = [
+        ['Registration Number', vehicle.registration_number],
+        ['Owner Name', vehicle.owner_name || 'N/A'],
+        ['Brand/Model', `${vehicle.brand} ${vehicle.model}`],
+        ['Year', vehicle.year || 'N/A'],
+        ['Type', vehicle.type],
+        ['Fuel Type', vehicle.fuel_type],
+        ['Color', vehicle.color || 'N/A'],
+        ['Chassis Number', vehicle.chassis_number || 'N/A'],
+        ['Engine Number', vehicle.engine_number || 'N/A'],
+        ['Seating Capacity', vehicle.seating_capacity || 'N/A'],
+        ['Average Mileage', vehicle.average_kmpl ? `${vehicle.average_kmpl} km/l` : 'N/A'],
+        ['Tank Capacity', vehicle.tank_capacity_liters ? `${vehicle.tank_capacity_liters} L` : 'N/A'],
+        ['Site Name', vehicle.site_name || 'N/A'],
+        ['Source', vehicle.source || 'Manual'],
+        ['File Status', vehicle.file_status ? 'Complete' : 'Incomplete']
       ];
-      
+
       autoTable(doc, {
         startY: yPos,
-        head: [['Challan Summary', 'Value']],
-        body: challanSummary,
+        head: [['Field', 'Value']],
+        body: vehicleDetails,
         theme: 'striped',
-        headStyles: { fillColor: infoColor },
+        headStyles: { fillColor: primaryColor },
         columnStyles: {
           0: { cellWidth: 60 },
           1: { cellWidth: 120 }
         },
         margin: { left: 14, right: 14 }
       });
-      
+
       yPos = doc.lastAutoTable.finalY + 10;
-    }
-    
-    // ==================== SERVICE RECORDS SECTION ====================
-    if (vehicleReport?.services && vehicleReport.services.length > 0) {
+
+      // ==================== DOCUMENTS SECTION ====================
+      if (vehicleReport?.documents && vehicleReport.documents.length > 0) {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setTextColor(40, 40, 40);
+        doc.text('Documents', 14, yPos);
+        yPos += 6;
+
+        const documentsData = vehicleReport.documents.map(doc => {
+          const daysLeft = getDaysLeft(doc.expiry_date);
+          const status = daysLeft === 'Expired' ? 'Expired' :
+            (typeof daysLeft === 'number' && daysLeft < 30 ? 'Expiring Soon' : 'Active');
+
+          return [
+            doc.document_type === 'Custom' ? (doc.custom_document_name || 'Custom') : doc.document_type,
+            doc.provider || 'N/A',
+            doc.policy_number || 'N/A',
+            doc.issue_date ? new Date(doc.issue_date).toLocaleDateString() : 'N/A',
+            doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString() : 'N/A',
+            status,
+            doc.premium ? formatCurrency(doc.premium) : 'N/A'
+          ];
+        });
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Document Type', 'Provider', 'Policy/Number', 'Issue Date', 'Expiry Date', 'Status', 'Premium']],
+          body: documentsData,
+          theme: 'striped',
+          headStyles: { fillColor: primaryColor },
+          columnStyles: {
+            0: { cellWidth: 35 },
+            1: { cellWidth: 35 },
+            2: { cellWidth: 35 },
+            3: { cellWidth: 25 },
+            4: { cellWidth: 25 },
+            5: { cellWidth: 25 },
+            6: { cellWidth: 20 }
+          },
+          margin: { left: 14, right: 14 },
+          didDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 5) {
+              const cellText = data.cell.text[0];
+              if (cellText === 'Expired') {
+                doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
+              } else if (cellText === 'Expiring Soon') {
+                doc.setTextColor(warningColor[0], warningColor[1], warningColor[2]);
+              } else {
+                doc.setTextColor(successColor[0], successColor[1], successColor[2]);
+              }
+            }
+          }
+        });
+
+        yPos = doc.lastAutoTable.finalY + 10;
+      }
+
+      // ==================== CHALLANS SECTION ====================
+      if (vehicleReport?.challans && vehicleReport.challans.length > 0) {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setTextColor(40, 40, 40);
+        doc.text('Challans / Traffic Violations', 14, yPos);
+        yPos += 6;
+
+        const challansData = vehicleReport.challans.map(challan => {
+          return [
+            challan.challan_number || 'N/A',
+            new Date(challan.date).toLocaleDateString(),
+            challan.violation_type || 'N/A',
+            formatCurrency(challan.amount),
+            challan.status || 'N/A',
+            challan.location || 'N/A',
+            challan.payment_date ? new Date(challan.payment_date).toLocaleDateString() : '-'
+          ];
+        });
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Challan No.', 'Date', 'Violation Type', 'Amount', 'Status', 'Location', 'Payment Date']],
+          body: challansData,
+          theme: 'striped',
+          headStyles: { fillColor: primaryColor },
+          columnStyles: {
+            0: { cellWidth: 30 },
+            1: { cellWidth: 20 },
+            2: { cellWidth: 35 },
+            3: { cellWidth: 20 },
+            4: { cellWidth: 20 },
+            5: { cellWidth: 30 },
+            6: { cellWidth: 25 }
+          },
+          margin: { left: 14, right: 14 },
+          didDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 4) {
+              const cellText = data.cell.text[0];
+              if (cellText === 'Unpaid') {
+                doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
+              } else if (cellText === 'Paid') {
+                doc.setTextColor(successColor[0], successColor[1], successColor[2]);
+              }
+            }
+          }
+        });
+
+        // Add challan summary
+        yPos = doc.lastAutoTable.finalY + 10;
+
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        const totalChallanAmount = vehicleReport.challans.reduce((sum, c) => sum + (c.amount || 0), 0);
+        const paidChallans = vehicleReport.challans.filter(c => c.status === 'Paid').length;
+        const unpaidChallans = vehicleReport.challans.filter(c => c.status === 'Unpaid').length;
+        const unpaidAmount = vehicleReport.challans
+          .filter(c => c.status === 'Unpaid')
+          .reduce((sum, c) => sum + (c.amount || 0), 0);
+
+        const challanSummary = [
+          ['Total Challans', vehicleReport.challans.length.toString()],
+          ['Paid Challans', paidChallans.toString()],
+          ['Unpaid Challans', unpaidChallans.toString()],
+          ['Total Amount', formatCurrency(totalChallanAmount)],
+          ['Unpaid Amount', formatCurrency(unpaidAmount)]
+        ];
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Challan Summary', 'Value']],
+          body: challanSummary,
+          theme: 'striped',
+          headStyles: { fillColor: infoColor },
+          columnStyles: {
+            0: { cellWidth: 60 },
+            1: { cellWidth: 120 }
+          },
+          margin: { left: 14, right: 14 }
+        });
+
+        yPos = doc.lastAutoTable.finalY + 10;
+      }
+
+      // ==================== SERVICE RECORDS SECTION ====================
+      if (vehicleReport?.services && vehicleReport.services.length > 0) {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setTextColor(40, 40, 40);
+        doc.text('Service Records', 14, yPos);
+        yPos += 6;
+
+        const servicesData = vehicleReport.services.map(service => {
+          return [
+            new Date(service.service_date || service.date).toLocaleDateString(),
+            service.service_type || 'N/A',
+            service.odometer_reading ? `${service.odometer_reading} km` : 'N/A',
+            service.vendor || 'N/A',
+            formatCurrency(service.total_cost || service.cost || 0),
+            service.next_service_due_date ? new Date(service.next_service_due_date).toLocaleDateString() : 'N/A'
+          ];
+        });
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Date', 'Service Type', 'Odometer', 'Vendor', 'Cost', 'Next Due']],
+          body: servicesData,
+          theme: 'striped',
+          headStyles: { fillColor: primaryColor },
+          columnStyles: {
+            0: { cellWidth: 25 },
+            1: { cellWidth: 30 },
+            2: { cellWidth: 25 },
+            3: { cellWidth: 35 },
+            4: { cellWidth: 25 },
+            5: { cellWidth: 30 }
+          },
+          margin: { left: 14, right: 14 }
+        });
+
+        yPos = doc.lastAutoTable.finalY + 10;
+      }
+
+      // ==================== FASTAG PASSES SECTION ====================
+      if (fastagPasses && fastagPasses.length > 0) {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setTextColor(40, 40, 40);
+        doc.text('FASTag Passes', 14, yPos);
+        yPos += 6;
+
+        const fastagData = fastagPasses.map(pass => {
+          return [
+            pass.pass_name || 'N/A',
+            pass.toll_plaza || 'N/A',
+            `${pass.balance_trips || 0}/${pass.trips_allowed || 0}`,
+            new Date(pass.issue_date).toLocaleDateString(),
+            new Date(pass.expiry_date).toLocaleDateString(),
+            pass.status || 'N/A'
+          ];
+        });
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Pass Name', 'Toll Plaza', 'Trips', 'Issue Date', 'Expiry Date', 'Status']],
+          body: fastagData,
+          theme: 'striped',
+          headStyles: { fillColor: primaryColor },
+          columnStyles: {
+            0: { cellWidth: 30 },
+            1: { cellWidth: 35 },
+            2: { cellWidth: 20 },
+            3: { cellWidth: 25 },
+            4: { cellWidth: 25 },
+            5: { cellWidth: 25 }
+          },
+          margin: { left: 14, right: 14 },
+          didDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 5) {
+              const cellText = data.cell.text[0];
+              if (cellText === 'Expired') {
+                doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
+              } else if (cellText === 'Active') {
+                doc.setTextColor(successColor[0], successColor[1], successColor[2]);
+              }
+            }
+          }
+        });
+
+        yPos = doc.lastAutoTable.finalY + 10;
+      }
+
+      // ==================== ACCIDENTS SECTION ====================
+      if (vehicleReport?.accidents && vehicleReport.accidents.length > 0) {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setTextColor(40, 40, 40);
+        doc.text('Accident Records', 14, yPos);
+        yPos += 6;
+
+        const accidentsData = vehicleReport.accidents.map(accident => {
+          return [
+            new Date(accident.accident_date || accident.date).toLocaleDateString(),
+            accident.location || 'N/A',
+            accident.description || 'N/A',
+            accident.claim_status || 'N/A',
+            formatCurrency(accident.damage_estimate || accident.repair_cost || 0)
+          ];
+        });
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Date', 'Location', 'Description', 'Claim Status', 'Damage Cost']],
+          body: accidentsData,
+          theme: 'striped',
+          headStyles: { fillColor: dangerColor },
+          columnStyles: {
+            0: { cellWidth: 25 },
+            1: { cellWidth: 35 },
+            2: { cellWidth: 50 },
+            3: { cellWidth: 30 },
+            4: { cellWidth: 30 }
+          },
+          margin: { left: 14, right: 14 }
+        });
+
+        yPos = doc.lastAutoTable.finalY + 10;
+      }
+
+      // ==================== DOCUMENT EXPIRY DATES SECTION (Quick Reference) ====================
       if (yPos > 250) {
         doc.addPage();
         yPos = 20;
       }
-      
+
       doc.setFontSize(14);
       doc.setTextColor(40, 40, 40);
-      doc.text('Service Records', 14, yPos);
+      doc.text('Document Expiry Dates - Quick Reference', 14, yPos);
       yPos += 6;
-      
-      const servicesData = vehicleReport.services.map(service => {
-        return [
-          new Date(service.service_date || service.date).toLocaleDateString(),
-          service.service_type || 'N/A',
-          service.odometer_reading ? `${service.odometer_reading} km` : 'N/A',
-          service.vendor || 'N/A',
-          formatCurrency(service.total_cost || service.cost || 0),
-          service.next_service_due_date ? new Date(service.next_service_due_date).toLocaleDateString() : 'N/A'
-        ];
-      });
-      
+
+      const documentExpiryData = [
+        ['Insurance',
+          vehicle.insurance_expiry ? new Date(vehicle.insurance_expiry).toLocaleDateString() : 'N/A',
+          vehicle.insurance_company || 'N/A',
+          getDaysLeftText(vehicle.insurance_expiry)],
+        ['PUC',
+          vehicle.puc_expiry ? new Date(vehicle.puc_expiry).toLocaleDateString() : 'N/A',
+          'RTO',
+          getDaysLeftText(vehicle.puc_expiry)],
+        ['Fitness',
+          vehicle.fit_up_to ? new Date(vehicle.fit_up_to).toLocaleDateString() : 'N/A',
+          'RTO',
+          getDaysLeftText(vehicle.fit_up_to)],
+        ['Tax',
+          vehicle.tax_upto ? new Date(vehicle.tax_upto).toLocaleDateString() : 'N/A',
+          'Transport Department',
+          getDaysLeftText(vehicle.tax_upto)]
+      ];
+
       autoTable(doc, {
         startY: yPos,
-        head: [['Date', 'Service Type', 'Odometer', 'Vendor', 'Cost', 'Next Due']],
-        body: servicesData,
+        head: [['Document', 'Expiry Date', 'Provider', 'Status']],
+        body: documentExpiryData,
         theme: 'striped',
         headStyles: { fillColor: primaryColor },
         columnStyles: {
-          0: { cellWidth: 25 },
-          1: { cellWidth: 30 },
-          2: { cellWidth: 25 },
-          3: { cellWidth: 35 },
-          4: { cellWidth: 25 },
-          5: { cellWidth: 30 }
-        },
-        margin: { left: 14, right: 14 }
-      });
-      
-      yPos = doc.lastAutoTable.finalY + 10;
-    }
-    
-    // ==================== FASTAG PASSES SECTION ====================
-    if (fastagPasses && fastagPasses.length > 0) {
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-      
-      doc.setFontSize(14);
-      doc.setTextColor(40, 40, 40);
-      doc.text('FASTag Passes', 14, yPos);
-      yPos += 6;
-      
-      const fastagData = fastagPasses.map(pass => {
-        return [
-          pass.pass_name || 'N/A',
-          pass.toll_plaza || 'N/A',
-          `${pass.balance_trips || 0}/${pass.trips_allowed || 0}`,
-          new Date(pass.issue_date).toLocaleDateString(),
-          new Date(pass.expiry_date).toLocaleDateString(),
-          pass.status || 'N/A'
-        ];
-      });
-      
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Pass Name', 'Toll Plaza', 'Trips', 'Issue Date', 'Expiry Date', 'Status']],
-        body: fastagData,
-        theme: 'striped',
-        headStyles: { fillColor: primaryColor },
-        columnStyles: {
-          0: { cellWidth: 30 },
+          0: { cellWidth: 40 },
           1: { cellWidth: 35 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 25 },
-          5: { cellWidth: 25 }
+          2: { cellWidth: 60 },
+          3: { cellWidth: 45 }
         },
         margin: { left: 14, right: 14 },
         didDrawCell: (data) => {
-          if (data.section === 'body' && data.column.index === 5) {
+          if (data.section === 'body' && data.column.index === 3) {
             const cellText = data.cell.text[0];
-            if (cellText === 'Expired') {
+            if (cellText.includes('Expired')) {
               doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
-            } else if (cellText === 'Active') {
-              doc.setTextColor(successColor[0], successColor[1], successColor[2]);
+            } else if (cellText.includes('days left') && parseInt(cellText) < 30) {
+              doc.setTextColor(warningColor[0], warningColor[1], warningColor[2]);
             }
           }
         }
       });
-      
+
       yPos = doc.lastAutoTable.finalY + 10;
-    }
-    
-    // ==================== ACCIDENTS SECTION ====================
-    if (vehicleReport?.accidents && vehicleReport.accidents.length > 0) {
+
+      // ==================== REGISTRATION DETAILS SECTION ====================
       if (yPos > 250) {
         doc.addPage();
         yPos = 20;
       }
-      
+
       doc.setFontSize(14);
       doc.setTextColor(40, 40, 40);
-      doc.text('Accident Records', 14, yPos);
+      doc.text('Registration Details', 14, yPos);
       yPos += 6;
-      
-      const accidentsData = vehicleReport.accidents.map(accident => {
-        return [
-          new Date(accident.accident_date || accident.date).toLocaleDateString(),
-          accident.location || 'N/A',
-          accident.description || 'N/A',
-          accident.claim_status || 'N/A',
-          formatCurrency(accident.damage_estimate || accident.repair_cost || 0)
-        ];
-      });
-      
+
+      const registrationDetails = [
+        ['Date of Registration', vehicle.date_of_registration ? new Date(vehicle.date_of_registration).toLocaleDateString() : 'N/A'],
+        ['Registered At', vehicle.registered_at || 'N/A'],
+        ['Insurance Company', vehicle.insurance_company || 'N/A'],
+        ['Insurance Policy No.', vehicle.insurance_policy_number || 'N/A'],
+        ['PUC Number', vehicle.pucc_number || 'N/A']
+      ];
+
       autoTable(doc, {
         startY: yPos,
-        head: [['Date', 'Location', 'Description', 'Claim Status', 'Damage Cost']],
-        body: accidentsData,
+        head: [['Field', 'Value']],
+        body: registrationDetails,
         theme: 'striped',
-        headStyles: { fillColor: dangerColor },
+        headStyles: { fillColor: primaryColor },
         columnStyles: {
-          0: { cellWidth: 25 },
-          1: { cellWidth: 35 },
-          2: { cellWidth: 50 },
-          3: { cellWidth: 30 },
-          4: { cellWidth: 30 }
+          0: { cellWidth: 60 },
+          1: { cellWidth: 120 }
         },
         margin: { left: 14, right: 14 }
       });
-      
+
       yPos = doc.lastAutoTable.finalY + 10;
-    }
-    
-    // ==================== DOCUMENT EXPIRY DATES SECTION (Quick Reference) ====================
-    if (yPos > 250) {
-      doc.addPage();
-      yPos = 20;
-    }
-    
-    doc.setFontSize(14);
-    doc.setTextColor(40, 40, 40);
-    doc.text('Document Expiry Dates - Quick Reference', 14, yPos);
-    yPos += 6;
-    
-    const documentExpiryData = [
-      ['Insurance', 
-       vehicle.insurance_expiry ? new Date(vehicle.insurance_expiry).toLocaleDateString() : 'N/A',
-       vehicle.insurance_company || 'N/A',
-       getDaysLeftText(vehicle.insurance_expiry)],
-      ['PUC', 
-       vehicle.puc_expiry ? new Date(vehicle.puc_expiry).toLocaleDateString() : 'N/A',
-       'RTO',
-       getDaysLeftText(vehicle.puc_expiry)],
-      ['Fitness', 
-       vehicle.fit_up_to ? new Date(vehicle.fit_up_to).toLocaleDateString() : 'N/A',
-       'RTO',
-       getDaysLeftText(vehicle.fit_up_to)],
-      ['Tax', 
-       vehicle.tax_upto ? new Date(vehicle.tax_upto).toLocaleDateString() : 'N/A',
-       'Transport Department',
-       getDaysLeftText(vehicle.tax_upto)]
-    ];
-    
-    autoTable(doc, {
-      startY: yPos,
-      head: [['Document', 'Expiry Date', 'Provider', 'Status']],
-      body: documentExpiryData,
-      theme: 'striped',
-      headStyles: { fillColor: primaryColor },
-      columnStyles: {
-        0: { cellWidth: 40 },
-        1: { cellWidth: 35 },
-        2: { cellWidth: 60 },
-        3: { cellWidth: 45 }
-      },
-      margin: { left: 14, right: 14 },
-      didDrawCell: (data) => {
-        if (data.section === 'body' && data.column.index === 3) {
-          const cellText = data.cell.text[0];
-          if (cellText.includes('Expired')) {
-            doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
-          } else if (cellText.includes('days left') && parseInt(cellText) < 30) {
-            doc.setTextColor(warningColor[0], warningColor[1], warningColor[2]);
-          }
-        }
-      }
-    });
-    
-    yPos = doc.lastAutoTable.finalY + 10;
-    
-    // ==================== REGISTRATION DETAILS SECTION ====================
-    if (yPos > 250) {
-      doc.addPage();
-      yPos = 20;
-    }
-    
-    doc.setFontSize(14);
-    doc.setTextColor(40, 40, 40);
-    doc.text('Registration Details', 14, yPos);
-    yPos += 6;
-    
-    const registrationDetails = [
-      ['Date of Registration', vehicle.date_of_registration ? new Date(vehicle.date_of_registration).toLocaleDateString() : 'N/A'],
-      ['Registered At', vehicle.registered_at || 'N/A'],
-      ['Insurance Company', vehicle.insurance_company || 'N/A'],
-      ['Insurance Policy No.', vehicle.insurance_policy_number || 'N/A'],
-      ['PUC Number', vehicle.pucc_number || 'N/A']
-    ];
-    
-    autoTable(doc, {
-      startY: yPos,
-      head: [['Field', 'Value']],
-      body: registrationDetails,
-      theme: 'striped',
-      headStyles: { fillColor: primaryColor },
-      columnStyles: {
-        0: { cellWidth: 60 },
-        1: { cellWidth: 120 }
-      },
-      margin: { left: 14, right: 14 }
-    });
-    
-    yPos = doc.lastAutoTable.finalY + 10;
-    
-    // ==================== FASTAG DETAILS SECTION ====================
-    if (yPos > 250) {
-      doc.addPage();
-      yPos = 20;
-    }
-    
-    doc.setFontSize(14);
-    doc.setTextColor(40, 40, 40);
-    doc.text('FASTag Details', 14, yPos);
-    yPos += 6;
-    
-    const fastagDetails = [
-      ['FASTag Company', vehicle.fastag_company || 'N/A'],
-      ['FASTag Balance', vehicle.fastag_balance ? formatCurrency(vehicle.fastag_balance) : 'N/A'],
-      ['FASTag User ID', vehicle.fastag_user_id || 'N/A'],
-      ['FASTag Status', vehicle.fastag_sold ? 'Sold' : (vehicle.fastag_company ? 'Active' : 'Not Added')],
-      ['FASTag Sold Date', vehicle.fastag_sold_date ? new Date(vehicle.fastag_sold_date).toLocaleDateString() : 'N/A']
-    ];
-    
-    autoTable(doc, {
-      startY: yPos,
-      head: [['Field', 'Value']],
-      body: fastagDetails,
-      theme: 'striped',
-      headStyles: { fillColor: primaryColor },
-      columnStyles: {
-        0: { cellWidth: 60 },
-        1: { cellWidth: 120 }
-      },
-      margin: { left: 14, right: 14 }
-    });
-    
-    yPos = doc.lastAutoTable.finalY + 10;
-    
-    // ==================== SUMMARY STATISTICS SECTION ====================
-    if (yPos > 250) {
-      doc.addPage();
-      yPos = 20;
-    }
-    
-    doc.setFontSize(14);
-    doc.setTextColor(40, 40, 40);
-    doc.text('Summary Statistics', 14, yPos);
-    yPos += 6;
-    
-    const summaryData = [
-      ['Total Documents', vehicleReport?.summary?.total_documents?.toString() || '0'],
-      ['Active Documents', vehicleReport?.summary?.active_documents?.toString() || '0'],
-      ['Expired Documents', vehicleReport?.summary?.expired_documents?.toString() || '0'],
-      ['Total Challans', vehicleReport?.summary?.total_challans?.toString() || '0'],
-      ['Unpaid Challans', vehicleReport?.summary?.unpaid_challans?.toString() || '0'],
-      ['Total Challan Amount', vehicleReport?.summary?.total_challan_amount ? formatCurrency(vehicleReport.summary.total_challan_amount) : 'Rs. 0'],
-      ['Total Services', vehicleReport?.summary?.total_services?.toString() || '0'],
-      ['Total Service Cost', vehicleReport?.summary?.total_service_cost ? formatCurrency(vehicleReport.summary.total_service_cost) : 'Rs. 0'],
-      ['Total Accidents', vehicleReport?.summary?.total_accidents?.toString() || '0']
-    ];
-    
-    autoTable(doc, {
-      startY: yPos,
-      head: [['Metric', 'Value']],
-      body: summaryData,
-      theme: 'striped',
-      headStyles: { fillColor: primaryColor },
-      columnStyles: {
-        0: { cellWidth: 60 },
-        1: { cellWidth: 120 }
-      },
-      margin: { left: 14, right: 14 }
-    });
-    
-    yPos = doc.lastAutoTable.finalY + 10;
-    
-    // ==================== REMARK SECTION ====================
-    if (vehicle.remark) {
+
+      // ==================== FASTAG DETAILS SECTION ====================
       if (yPos > 250) {
         doc.addPage();
         yPos = 20;
       }
-      
+
       doc.setFontSize(14);
       doc.setTextColor(40, 40, 40);
-      doc.text('Remarks', 14, yPos);
+      doc.text('FASTag Details', 14, yPos);
       yPos += 6;
-      
-      doc.setFontSize(10);
-      doc.setTextColor(60, 60, 60);
-      
-      // Split long remarks into multiple lines
-      const splitRemark = doc.splitTextToSize(vehicle.remark, 170);
-      doc.text(splitRemark, 14, yPos);
+
+      const fastagDetails = [
+        ['FASTag Company', vehicle.fastag_company || 'N/A'],
+        ['FASTag Balance', vehicle.fastag_balance ? formatCurrency(vehicle.fastag_balance) : 'N/A'],
+        ['FASTag User ID', vehicle.fastag_user_id || 'N/A'],
+        ['FASTag Status', vehicle.fastag_sold ? 'Sold' : (vehicle.fastag_company ? 'Active' : 'Not Added')],
+        ['FASTag Sold Date', vehicle.fastag_sold_date ? new Date(vehicle.fastag_sold_date).toLocaleDateString() : 'N/A']
+      ];
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Field', 'Value']],
+        body: fastagDetails,
+        theme: 'striped',
+        headStyles: { fillColor: primaryColor },
+        columnStyles: {
+          0: { cellWidth: 60 },
+          1: { cellWidth: 120 }
+        },
+        margin: { left: 14, right: 14 }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 10;
+
+      // ==================== SUMMARY STATISTICS SECTION ====================
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(14);
+      doc.setTextColor(40, 40, 40);
+      doc.text('Summary Statistics', 14, yPos);
+      yPos += 6;
+
+      const summaryData = [
+        ['Total Documents', vehicleReport?.summary?.total_documents?.toString() || '0'],
+        ['Active Documents', vehicleReport?.summary?.active_documents?.toString() || '0'],
+        ['Expired Documents', vehicleReport?.summary?.expired_documents?.toString() || '0'],
+        ['Total Challans', vehicleReport?.summary?.total_challans?.toString() || '0'],
+        ['Unpaid Challans', vehicleReport?.summary?.unpaid_challans?.toString() || '0'],
+        ['Total Challan Amount', vehicleReport?.summary?.total_challan_amount ? formatCurrency(vehicleReport.summary.total_challan_amount) : 'Rs. 0'],
+        ['Total Services', vehicleReport?.summary?.total_services?.toString() || '0'],
+        ['Total Service Cost', vehicleReport?.summary?.total_service_cost ? formatCurrency(vehicleReport.summary.total_service_cost) : 'Rs. 0'],
+        ['Total Accidents', vehicleReport?.summary?.total_accidents?.toString() || '0']
+      ];
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Metric', 'Value']],
+        body: summaryData,
+        theme: 'striped',
+        headStyles: { fillColor: primaryColor },
+        columnStyles: {
+          0: { cellWidth: 60 },
+          1: { cellWidth: 120 }
+        },
+        margin: { left: 14, right: 14 }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 10;
+
+      // ==================== REMARK SECTION ====================
+      if (vehicle.remark) {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setTextColor(40, 40, 40);
+        doc.text('Remarks', 14, yPos);
+        yPos += 6;
+
+        doc.setFontSize(10);
+        doc.setTextColor(60, 60, 60);
+
+        // Split long remarks into multiple lines
+        const splitRemark = doc.splitTextToSize(vehicle.remark, 170);
+        doc.text(splitRemark, 14, yPos);
+      }
+
+      // ==================== FOOTER ====================
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(
+          `Page ${i} of ${pageCount}`,
+          doc.internal.pageSize.width / 2,
+          doc.internal.pageSize.height - 10,
+          { align: 'center' }
+        );
+      }
+
+      // Save the PDF
+      doc.save(`${vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, '_')}_full_report_${new Date().toISOString().split('T')[0]}.pdf`);
+
+      toast.success('PDF report generated successfully');
+
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      toast.error('Failed to generate PDF report');
+    } finally {
+      setGeneratingPDF(false);
     }
-    
-    // ==================== FOOTER ====================
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text(
-        `Page ${i} of ${pageCount}`,
-        doc.internal.pageSize.width / 2,
-        doc.internal.pageSize.height - 10,
-        { align: 'center' }
-      );
-    }
-    
-    // Save the PDF
-    doc.save(`${vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, '_')}_full_report_${new Date().toISOString().split('T')[0]}.pdf`);
-    
-    toast.success('PDF report generated successfully');
-    
-  } catch (error) {
-    console.error('PDF generation error:', error);
-    toast.error('Failed to generate PDF report');
-  } finally {
-    setGeneratingPDF(false);
-  }
-};
+  };
 
   if (!vehicle) return null;
 
@@ -1744,7 +1754,7 @@ const generatePDF = async () => {
             {vehicle.source === 'surepass' && (
               <Badge className="bg-blue-100 text-blue-700 border-blue-200">Surepass</Badge>
             )}
-            
+
             {/* Download PDF Button */}
             <TooltipProvider>
               <Tooltip>
@@ -1774,7 +1784,7 @@ const generatePDF = async () => {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            
+
             {/* Fetch Challans Button - Only show for Surepass vehicles */}
             {vehicle.source === 'surepass' && (
               <TooltipProvider>
@@ -1806,7 +1816,7 @@ const generatePDF = async () => {
                 </Tooltip>
               </TooltipProvider>
             )}
-            
+
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -2353,6 +2363,15 @@ export const VehiclesPage = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [checkingDocuments, setCheckingDocuments] = useState(false);
 
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [vehicleToDelete, setVehicleToDelete] = useState(null);
+
+  const [deletePassDialogOpen, setDeletePassDialogOpen] = useState(false);
+  const [passToDelete, setPassToDelete] = useState(null);
+
+  const [fetchChallansDialogOpen, setFetchChallansDialogOpen] = useState(false);
+  const [fetchingChallans, setFetchingChallans] = useState(false);
+
   const [passForm, setPassForm] = useState({
     pass_name: "",
     trips_allowed: "",
@@ -2582,17 +2601,27 @@ export const VehiclesPage = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this vehicle?')) return;
+  const handleDeleteClick = (vehicle) => {
+    setVehicleToDelete(vehicle);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!vehicleToDelete) return;
+
     try {
-      await api.delete(`/vehicles/${id}`);
-      toast.success('Vehicle deleted');
+      await api.delete(`/vehicles/${vehicleToDelete.id}`);
+      toast.success('Vehicle deleted successfully');
       fetchVehicles();
     } catch (error) {
       console.error("API Error:", error);
       toast.error('Failed to delete vehicle');
+    } finally {
+      setDeleteDialogOpen(false);
+      setVehicleToDelete(null);
     }
   };
+
 
   const handleExport = async () => {
     try {
@@ -2682,31 +2711,39 @@ export const VehiclesPage = () => {
     }
   };
 
-  const handleFetchChallans = async () => {
+// 👇 REPLACE YOUR EXISTING handleFetchChallans WITH THESE TWO FUNCTIONS
+
+const handleFetchChallansClick = () => {
+  if (!selectedVehicle) return;
+  setFetchChallansDialogOpen(true);
+};
+
+const handleConfirmFetchChallans = async () => {
   if (!selectedVehicle) return;
   
-  if (!window.confirm('Fetch challans from Surepass for this vehicle? This will import any new challans found.')) return;
+  setFetchingChallans(true);
+  setFetchChallansDialogOpen(false);
   
   try {
     const response = await api.post('/surepass/fetch-challans', {
       registration_number: selectedVehicle.registration_number
     });
-    
+
     if (response.data.challans_imported > 0) {
       toast.success(`✅ Imported ${response.data.challans_imported} new challans`);
-      
+
       // Show summary of what was imported if 5 or fewer challans
       if (response.data.challans_imported <= 5 && response.data.challans.length > 0) {
-        const message = response.data.challans.map(c => 
+        const message = response.data.challans.map(c =>
           `• ${c.challan_number}: ₹${c.amount} (${c.status})`
         ).join('\n');
-        
+
         toast.info(`Imported challans:\n${message}`, {
           duration: 5000,
           style: { whiteSpace: 'pre-line' }
         });
       }
-      
+
       // Refresh the vehicle report to show updated challans
       setViewDialogOpen(false);
       setTimeout(() => {
@@ -2717,10 +2754,12 @@ export const VehiclesPage = () => {
     } else {
       toast.info('✅ No challans found for this vehicle');
     }
-    
+
   } catch (err) {
     console.error('Fetch challans error:', err);
     toast.error(err.response?.data?.detail || 'Failed to fetch challans');
+  } finally {
+    setFetchingChallans(false);
   }
 };
 
@@ -3073,7 +3112,7 @@ export const VehiclesPage = () => {
               vehicle={vehicle}
               onView={handleView}
               onEdit={handleEdit}
-              onDelete={handleDelete}
+              onDelete={handleDeleteClick}
             />
           ))}
         </div>
@@ -3167,7 +3206,7 @@ export const VehiclesPage = () => {
                             size="sm"
                             variant="ghost"
                             className="h-8 w-8 p-0 text-rose-600"
-                            onClick={() => handleDelete(vehicle.id)}
+                            onClick={() => handleDeleteClick(vehicle)}
                           >
                             <Trash2 size={14} />
                           </Button>
@@ -3243,7 +3282,7 @@ export const VehiclesPage = () => {
         onEditPass={handleEditPass}
         onDeletePass={deletePass}
         onRefresh={handleRefreshFromSurepass}
-        onFetchChallans={handleFetchChallans} 
+        onFetchChallans={handleFetchChallansClick}
       />
 
       {/* FASTag Pass Dialog */}
@@ -3389,6 +3428,94 @@ export const VehiclesPage = () => {
           </form>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-rose-600 flex items-center gap-2">
+              <AlertTriangle size={20} />
+              Delete Vehicle
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>Are you sure you want to delete this vehicle?</p>
+              {vehicleToDelete && (
+                <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <p className="font-mono font-medium">{vehicleToDelete.registration_number}</p>
+                  <p className="text-sm text-slate-600">{vehicleToDelete.brand} {vehicleToDelete.model}</p>
+                  {vehicleToDelete.owner_name && (
+                    <p className="text-xs text-slate-500 mt-1">Owner: {vehicleToDelete.owner_name}</p>
+                  )}
+                </div>
+              )}
+              <p className="text-sm text-rose-600 font-medium mt-2">
+                This action cannot be undone. All associated data (documents, challans, services, etc.) will be permanently deleted.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setVehicleToDelete(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
+            >
+              Delete Vehicle
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+         <AlertDialog open={fetchChallansDialogOpen} onOpenChange={setFetchChallansDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-amber-600 flex items-center gap-2">
+              <AlertTriangle size={20} />
+              Fetch Challans from Surepass
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>Are you sure you want to fetch challans for this vehicle?</p>
+              
+              {selectedVehicle && (
+                <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <p className="font-mono font-medium">{selectedVehicle.registration_number}</p>
+                  <p className="text-sm text-slate-600">{selectedVehicle.brand} {selectedVehicle.model}</p>
+                </div>
+              )}
+              
+              <div className="mt-2 text-sm">
+                <p className="font-medium text-slate-700">This will:</p>
+                <ul className="list-disc pl-5 mt-1 space-y-1 text-slate-600">
+                  <li>Fetch all challans for this vehicle from Surepass</li>
+                  <li>Import any new challans not already in the system</li>
+                  <li>Existing challans will be preserved</li>
+                </ul>
+              </div>
+              
+              <p className="text-sm text-amber-600 font-medium mt-2">
+                This action may take a few moments to complete.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setFetchChallansDialogOpen(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmFetchChallans}
+              className="bg-amber-600 hover:bg-amber-700 focus:ring-amber-600"
+              disabled={fetchingChallans}
+            >
+              {fetchingChallans ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Fetching...
+                </>
+              ) : (
+                'Fetch Challans'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
