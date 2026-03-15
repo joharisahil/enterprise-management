@@ -1081,9 +1081,8 @@ const VehicleCard = ({ vehicle, onView, onEdit, onDelete }) => {
 
 // ==================== VEHICLE DETAIL SHEET COMPONENT ====================
 
-const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastagPasses, onAddPass, onEditPass, onDeletePass, onRefresh, onFetchChallans }) => {
+const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastagPasses, onAddPass, onEditPass, onDeletePass, onRefresh, onFetchChallans, fetchingChallans }) => {
   const [activeTab, setActiveTab] = useState('overview');
-  const [fetchingChallans, setFetchingChallans] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -1834,36 +1833,36 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
             </TooltipProvider>
 
             {/* Fetch Challans Button - Only show for Surepass vehicles */}
-            {vehicle.source === 'surepass' && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="ml-2 text-amber-600 border-amber-200 hover:bg-amber-50"
-                      onClick={handleFetchChallans}
-                      disabled={fetchingChallans}
-                    >
-                      {fetchingChallans ? (
-                        <>
-                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-600 mr-1"></div>
-                          Fetching...
-                        </>
-                      ) : (
-                        <>
-                          <AlertTriangle size={14} className="mr-1" />
-                          Fetch Challans
-                        </>
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Fetch and import challans from Surepass</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
+{vehicle.source === 'surepass' && (
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-2 text-amber-600 border-amber-200 hover:bg-amber-50"
+          onClick={onFetchChallans}
+          disabled={fetchingChallans}
+        >
+          {fetchingChallans ? (
+            <>
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-600 mr-1"></div>
+              Fetching...
+            </>
+          ) : (
+            <>
+              <AlertTriangle size={14} className="mr-1" />
+              Fetch Challans
+            </>
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>Fetch and import challans from Surepass</p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+)}
 
             <TooltipProvider>
               <Tooltip>
@@ -2776,13 +2775,14 @@ const handleView = async (vehicle) => {
 const handleFetchChallansClick = () => {
   if (!selectedVehicle) return;
   setFetchChallansDialogOpen(true);
+  setFetchingChallans(false);
 };
 
 const handleConfirmFetchChallans = async () => {
   if (!selectedVehicle) return;
   
   setFetchingChallans(true);
-  setFetchChallansDialogOpen(false);
+  // Don't close the dialog yet - keep it open while loading
   
   try {
     const response = await api.post('/surepass/fetch-challans', {
@@ -2815,9 +2815,14 @@ const handleConfirmFetchChallans = async () => {
       toast.info('✅ No challans found for this vehicle');
     }
 
+    // Close the dialog only after successful completion
+    setFetchChallansDialogOpen(false);
+
   } catch (err) {
     console.error('Fetch challans error:', err);
     toast.error(err.response?.data?.detail || 'Failed to fetch challans');
+    // Keep dialog open on error? Or close it? Let's keep it open so user can try again
+    // setFetchChallansDialogOpen(false);
   } finally {
     setFetchingChallans(false);
   }
@@ -3343,6 +3348,7 @@ const handleConfirmFetchChallans = async () => {
         onDeletePass={deletePass}
         onRefresh={handleRefreshFromSurepass}
         onFetchChallans={handleFetchChallansClick}
+        fetchingChallans={fetchingChallans}
       />
 
       {/* FASTag Pass Dialog */}
@@ -3524,58 +3530,70 @@ const handleConfirmFetchChallans = async () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-         <AlertDialog open={fetchChallansDialogOpen} onOpenChange={setFetchChallansDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-amber-600 flex items-center gap-2">
-              <AlertTriangle size={20} />
-              Fetch Challans from Surepass
-            </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <p>Are you sure you want to fetch challans for this vehicle?</p>
-              
-              {selectedVehicle && (
-                <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                  <p className="font-mono font-medium">{selectedVehicle.registration_number}</p>
-                  <p className="text-sm text-slate-600">{selectedVehicle.brand} {selectedVehicle.model}</p>
-                </div>
-              )}
-              
-              <div className="mt-2 text-sm">
-                <p className="font-medium text-slate-700">This will:</p>
-                <ul className="list-disc pl-5 mt-1 space-y-1 text-slate-600">
-                  <li>Fetch all challans for this vehicle from Surepass</li>
-                  <li>Import any new challans not already in the system</li>
-                  <li>Existing challans will be preserved</li>
-                </ul>
+<AlertDialog open={fetchChallansDialogOpen} onOpenChange={(open) => {
+  // Only allow closing if not fetching
+  if (!fetchingChallans) {
+    setFetchChallansDialogOpen(open);
+  }
+}}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle className="text-amber-600 flex items-center gap-2">
+        <AlertTriangle size={20} />
+        Fetch Challans from Surepass
+      </AlertDialogTitle>
+      <AlertDialogDescription className="space-y-3">
+        {fetchingChallans ? (
+          <div className="py-8 flex flex-col items-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mb-4"></div>
+            <p className="text-lg font-medium text-slate-700">Fetching Challans...</p>
+            <p className="text-sm text-slate-500">Please wait while we retrieve challan data from Surepass</p>
+          </div>
+        ) : (
+          <>
+            <p>Are you sure you want to fetch challans for this vehicle?</p>
+            
+            {selectedVehicle && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <p className="font-mono font-medium">{selectedVehicle.registration_number}</p>
+                <p className="text-sm text-slate-600">{selectedVehicle.brand} {selectedVehicle.model}</p>
               </div>
-              
-              <p className="text-sm text-amber-600 font-medium mt-2">
-                This action may take a few moments to complete.
-              </p>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setFetchChallansDialogOpen(false)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmFetchChallans}
-              className="bg-amber-600 hover:bg-amber-700 focus:ring-amber-600"
-              disabled={fetchingChallans}
-            >
-              {fetchingChallans ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Fetching...
-                </>
-              ) : (
-                'Fetch Challans'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            )}
+            
+            <div className="mt-2 text-sm">
+              <p className="font-medium text-slate-700">This will:</p>
+              <ul className="list-disc pl-5 mt-1 space-y-1 text-slate-600">
+                <li>Fetch all challans for this vehicle from Surepass</li>
+                <li>Import any new challans not already in the system</li>
+                <li>Existing challans will be preserved</li>
+              </ul>
+            </div>
+            
+            <p className="text-sm text-amber-600 font-medium mt-2">
+              This action may take a few moments to complete.
+            </p>
+          </>
+        )}
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel 
+        onClick={() => setFetchChallansDialogOpen(false)}
+        disabled={fetchingChallans}
+      >
+        Cancel
+      </AlertDialogCancel>
+      {!fetchingChallans && (
+        <AlertDialogAction
+          onClick={handleConfirmFetchChallans}
+          className="bg-amber-600 hover:bg-amber-700 focus:ring-amber-600"
+        >
+          Fetch Challans
+        </AlertDialogAction>
+      )}
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
     </div>
   );
 };
