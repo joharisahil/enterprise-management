@@ -106,10 +106,10 @@ const ExpiryProgress = ({ expiryDate, issueDate }) => {
       <div className="flex justify-between text-xs text-slate-600">
         <span>Expires in</span>
         <span className={`font-medium ${daysLeft <= 0 ? 'text-rose-600' :
-            daysLeft <= 3 ? 'text-red-600' :
-              daysLeft <= 7 ? 'text-orange-600' :
-                daysLeft <= 15 ? 'text-amber-600' :
-                  daysLeft <= 30 ? 'text-yellow-600' : 'text-emerald-600'
+          daysLeft <= 3 ? 'text-red-600' :
+            daysLeft <= 7 ? 'text-orange-600' :
+              daysLeft <= 15 ? 'text-amber-600' :
+                daysLeft <= 30 ? 'text-yellow-600' : 'text-emerald-600'
           }`}>
           {getStatusText()}
         </span>
@@ -912,22 +912,61 @@ export const DocumentsPage = () => {
       return;
     }
 
+    if (!uploadedFile) {
+      toast.error("Please upload a document file");
+      return;
+    }
+
     try {
-      await api.put(`/vehicle-documents/${selectedDocument.id}`, {
-        ...formData,
-        file_url: uploadedFile,
+      // Prepare the data
+      const updateData = {
+        vehicle_id: formData.vehicle_id,
+        document_type: formData.document_type,
+        custom_document_name: formData.custom_document_name,
+        policy_number: formData.policy_number,
+        provider: formData.provider,
+        phone_number: formData.phone_number,
         issue_date: new Date(formData.issue_date).toISOString(),
         expiry_date: new Date(formData.expiry_date).toISOString(),
-        premium: formData.premium ? parseFloat(formData.premium) : null
-      });
+        premium: formData.premium ? parseFloat(formData.premium) : null,
+        coverage: formData.coverage,
+        status: formData.status,
+        file_url: uploadedFile
+      };
+
+      // Make the PUT request
+      const response = await api.put(`/vehicle-documents/${selectedDocument.id}`, updateData);
 
       toast.success('Document updated successfully');
       setEditDialogOpen(false);
       resetForm();
-      fetchData();
+      fetchData(); // Refresh the documents list
     } catch (error) {
       console.error("API Error:", error);
-      toast.error(error.response?.data?.detail || 'Failed to update document');
+
+      // Handle error properly
+      let errorMessage = 'Failed to update document';
+
+      if (error.response) {
+        // Check if it's a validation error (422)
+        if (error.response.status === 422) {
+          const errorData = error.response.data;
+          if (Array.isArray(errorData.detail)) {
+            // FastAPI validation error format
+            errorMessage = errorData.detail.map(err => err.msg).join(', ');
+          } else if (errorData.detail) {
+            errorMessage = errorData.detail;
+          } else if (typeof errorData === 'string') {
+            errorMessage = errorData;
+          }
+        } else if (error.response.data?.detail) {
+          errorMessage = error.response.data.detail;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      toast.error(errorMessage);
     }
   };
 
@@ -967,18 +1006,20 @@ export const DocumentsPage = () => {
     if (!window.confirm(`Are you sure you want to delete version ${versionNumber}?`)) return;
 
     try {
-      await api.delete(`/vehicle-documents/${versionId}`);
+      await api.delete(`/vehicle-documents/${versionId}/version`);
       toast.success(`Version ${versionNumber} deleted successfully`);
 
+      // Refresh the history
       if (selectedDocHistory) {
         const response = await api.get(`/vehicle-documents/${selectedDocHistory.history[0].id}/history`);
         setSelectedDocHistory(response.data);
       }
 
+      // Refresh the main documents list
       fetchData();
     } catch (error) {
       console.error("Delete error:", error);
-      toast.error('Failed to delete version');
+      toast.error(error.response?.data?.detail || 'Failed to delete version');
     }
   };
 
@@ -988,10 +1029,16 @@ export const DocumentsPage = () => {
     try {
       await api.delete(`/vehicle-documents/${docId}`);
       toast.success('Document deleted successfully');
-      fetchData();
+      fetchData(); // Refresh the documents list
+
+      // Close history dialog if open
+      if (historyDialogOpen) {
+        setHistoryDialogOpen(false);
+        setSelectedDocHistory(null);
+      }
     } catch (error) {
       console.error("Delete error:", error);
-      toast.error('Failed to delete document');
+      toast.error(error.response?.data?.detail || 'Failed to delete document');
     }
   };
 
@@ -1015,110 +1062,110 @@ export const DocumentsPage = () => {
     return Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
   };
 
-const handleExportExcel = async (exportType = 'all') => {
-  try {
-    setExporting(true);
-    
-    let response;
-    let filename = '';
-    
-    if (exportType === 'filtered') {
-      // Export current filtered view
-      if (!filteredDocuments || filteredDocuments.length === 0) {
-        toast.error('No documents to export');
-        setExporting(false);
-        return;
+  const handleExportExcel = async (exportType = 'all') => {
+    try {
+      setExporting(true);
+
+      let response;
+      let filename = '';
+
+      if (exportType === 'filtered') {
+        // Export current filtered view
+        if (!filteredDocuments || filteredDocuments.length === 0) {
+          toast.error('No documents to export');
+          setExporting(false);
+          return;
+        }
+
+        const vehicleMap = {};
+        vehicles.forEach(v => {
+          vehicleMap[v.id] = {
+            registration_number: v.registration_number,
+            brand: v.brand,
+            model: v.model
+          };
+        });
+
+        response = await api.post('/export/vehicle-documents/current-view/excel', {
+          documents: filteredDocuments,
+          vehicle_map: vehicleMap
+        }, {
+          responseType: 'blob'
+        });
+
+        filename = `filtered_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+      } else if (exportType === 'vehicle' && selectedVehicle !== 'all') {
+        // Export specific vehicle
+        const params = new URLSearchParams();
+        params.append('vehicle_id', selectedVehicle);
+
+        response = await api.get(`/export/vehicle-documents/excel?${params.toString()}`, {
+          responseType: 'blob'
+        });
+
+        const vehicle = vehicles.find(v => v.id === selectedVehicle);
+        const vehicleReg = vehicle ? vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, '_') : 'vehicle';
+        filename = `${vehicleReg}_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+      } else {
+        // Export all documents
+        response = await api.get('/export/vehicle-documents/excel', {
+          responseType: 'blob'
+        });
+        filename = `all_vehicles_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
       }
 
-      const vehicleMap = {};
-      vehicles.forEach(v => {
-        vehicleMap[v.id] = {
-          registration_number: v.registration_number,
-          brand: v.brand,
-          model: v.model
-        };
-      });
-      
-      response = await api.post('/export/vehicle-documents/current-view/excel', {
-        documents: filteredDocuments,
-        vehicle_map: vehicleMap
-      }, {
-        responseType: 'blob'
-      });
-      
-      filename = `filtered_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
-      
-    } else if (exportType === 'vehicle' && selectedVehicle !== 'all') {
-      // Export specific vehicle
-      const params = new URLSearchParams();
-      params.append('vehicle_id', selectedVehicle);
-      
-      response = await api.get(`/export/vehicle-documents/excel?${params.toString()}`, { 
-        responseType: 'blob' 
-      });
-      
-      const vehicle = vehicles.find(v => v.id === selectedVehicle);
-      const vehicleReg = vehicle ? vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, '_') : 'vehicle';
-      filename = `${vehicleReg}_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
-      
-    } else {
-      // Export all documents
-      response = await api.get('/export/vehicle-documents/excel', { 
-        responseType: 'blob' 
-      });
-      filename = `all_vehicles_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
-    }
-    
-    // Check if response is valid
-    if (!response || !response.data) {
-      throw new Error('No data received from server');
-    }
-    
-    // Handle download
-    const blob = new Blob([response.data], { 
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-    });
-    
-    // Create download link
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    
-    // Cleanup
-    setTimeout(() => {
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-    }, 100);
-    
-    toast.success('Excel file downloaded successfully');
-  } catch (error) {
-    console.error('Export error:', error);
-    
-    // Try to get error message from response
-    let errorMessage = 'Failed to export documents';
-    if (error.response) {
-      if (error.response.data instanceof Blob) {
-        // Try to read error from blob
-        const text = await error.response.data.text();
-        try {
-          const errorData = JSON.parse(text);
-          errorMessage = errorData.detail || errorMessage;
-        } catch {
-          errorMessage = text || errorMessage;
-        }
-      } else {
-        errorMessage = error.response.data?.detail || errorMessage;
+      // Check if response is valid
+      if (!response || !response.data) {
+        throw new Error('No data received from server');
       }
+
+      // Handle download
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+
+      // Create download link
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+      }, 100);
+
+      toast.success('Excel file downloaded successfully');
+    } catch (error) {
+      console.error('Export error:', error);
+
+      // Try to get error message from response
+      let errorMessage = 'Failed to export documents';
+      if (error.response) {
+        if (error.response.data instanceof Blob) {
+          // Try to read error from blob
+          const text = await error.response.data.text();
+          try {
+            const errorData = JSON.parse(text);
+            errorMessage = errorData.detail || errorMessage;
+          } catch {
+            errorMessage = text || errorMessage;
+          }
+        } else {
+          errorMessage = error.response.data?.detail || errorMessage;
+        }
+      }
+
+      toast.error(errorMessage);
+    } finally {
+      setExporting(false);
     }
-    
-    toast.error(errorMessage);
-  } finally {
-    setExporting(false);
-  }
-};
+  };
 
   const filteredDocuments = getFilteredDocuments();
 
@@ -1145,8 +1192,8 @@ const handleExportExcel = async (exportType = 'all') => {
           {/* Export Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="border-slate-300"
                 disabled={exporting || documents.length === 0}
               >
@@ -1155,7 +1202,7 @@ const handleExportExcel = async (exportType = 'all') => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => handleExportExcel('all')}
                 disabled={exporting}
                 className="cursor-pointer"
@@ -1163,7 +1210,7 @@ const handleExportExcel = async (exportType = 'all') => {
                 <Download size={14} className="mr-2" />
                 All Documents
               </DropdownMenuItem>
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => handleExportExcel('filtered')}
                 disabled={exporting || filteredDocuments.length === 0}
                 className="cursor-pointer"
@@ -1172,7 +1219,7 @@ const handleExportExcel = async (exportType = 'all') => {
                 Current Filtered View ({filteredDocuments.length})
               </DropdownMenuItem>
               {selectedVehicle !== 'all' && (
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   onClick={() => handleExportExcel('vehicle')}
                   disabled={exporting}
                   className="cursor-pointer"
@@ -1486,10 +1533,10 @@ const handleExportExcel = async (exportType = 'all') => {
                 layout
               >
                 <Card className={`border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 ${daysLeft <= 0 ? 'border-l-4 border-l-rose-500' :
-                    daysLeft <= 3 ? 'border-l-4 border-l-red-500' :
-                      daysLeft <= 7 ? 'border-l-4 border-l-orange-500' :
-                        daysLeft <= 15 ? 'border-l-4 border-l-amber-500' :
-                          daysLeft <= 30 ? 'border-l-4 border-l-yellow-500' : ''
+                  daysLeft <= 3 ? 'border-l-4 border-l-red-500' :
+                    daysLeft <= 7 ? 'border-l-4 border-l-orange-500' :
+                      daysLeft <= 15 ? 'border-l-4 border-l-amber-500' :
+                        daysLeft <= 30 ? 'border-l-4 border-l-yellow-500' : ''
                   }`}>
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between">
@@ -1546,8 +1593,8 @@ const handleExportExcel = async (exportType = 'all') => {
                           <div>
                             <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Expiry Date</p>
                             <p className={`text-sm font-medium ${daysLeft <= 0 ? 'text-rose-600' :
-                                daysLeft <= 7 ? 'text-orange-600' :
-                                  daysLeft <= 30 ? 'text-amber-600' : ''
+                              daysLeft <= 7 ? 'text-orange-600' :
+                                daysLeft <= 30 ? 'text-amber-600' : ''
                               }`}>
                               {new Date(doc.expiry_date).toLocaleDateString()}
                               {daysLeft > 0 && daysLeft <= 30 && ` (${daysLeft}d)`}

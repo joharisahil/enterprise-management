@@ -2147,6 +2147,103 @@ async def download_rc_document(
         logger.error(f"RC download error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
+# Add this PUT endpoint after your GET /vehicle-documents endpoint and before the history endpoint
+
+@api_router.put("/vehicle-documents/{document_id}")
+async def update_vehicle_document(
+    document_id: str,
+    document_data: VehicleDocumentCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Update an existing vehicle document (direct update, no versioning)
+    """
+    # Check if document exists
+    existing_doc = await db.vehicle_documents.find_one({"id": document_id, "is_deleted": False})
+    if not existing_doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Prepare update data
+    update_data = document_data.model_dump()
+    
+    # Convert datetime fields to ISO format
+    if isinstance(update_data["issue_date"], datetime):
+        update_data["issue_date"] = update_data["issue_date"].isoformat()
+    if isinstance(update_data["expiry_date"], datetime):
+        update_data["expiry_date"] = update_data["expiry_date"].isoformat()
+    
+    # Handle premium conversion
+    if update_data.get("premium"):
+        update_data["premium"] = float(update_data["premium"])
+    
+    # Add update metadata
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_by"] = current_user["user_id"]
+    
+    # Remove fields that shouldn't be updated
+    update_data.pop("created_at", None)
+    update_data.pop("created_by", None)
+    update_data.pop("version", None)  # Don't increment version
+    update_data.pop("is_current", None)  # Keep existing is_current status
+    update_data.pop("previous_version_id", None)  # Keep existing relationship
+    
+    # Update the document
+    result = await db.vehicle_documents.update_one(
+        {"id": document_id, "is_deleted": False},
+        {"$set": update_data}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="No changes made to document")
+    
+    return {
+        "success": True,
+        "message": "Document updated successfully",
+        "document_id": document_id
+    }
+
+@api_router.delete("/vehicle-documents/{document_id}/version")
+async def delete_document_version(
+    document_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete a specific version of a document
+    """
+    # Check if document exists
+    existing_doc = await db.vehicle_documents.find_one({"id": document_id, "is_deleted": False})
+    if not existing_doc:
+        raise HTTPException(status_code=404, detail="Document version not found")
+    
+    # If this is the current version, we need to handle carefully
+    if existing_doc.get("is_current"):
+        # Check if there's a previous version
+        previous_version_id = existing_doc.get("previous_version_id")
+        if previous_version_id:
+            # Mark previous version as current
+            await db.vehicle_documents.update_one(
+                {"id": previous_version_id},
+                {"$set": {"is_current": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+    
+    # Soft delete this version
+    result = await db.vehicle_documents.update_one(
+        {"id": document_id},
+        {
+            "$set": {
+                "is_deleted": True,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": current_user["user_id"]
+            }
+        }
+    )
+    
+    return {
+        "success": True,
+        "message": "Document version deleted successfully"
+    }    
+
+
 @api_router.get("/export/vehicle-documents/excel")
 async def export_vehicle_documents_excel(
     vehicle_id: Optional[str] = None,

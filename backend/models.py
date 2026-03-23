@@ -362,7 +362,7 @@ class VehicleDocumentBase(BaseModel):
     status: Literal["Active", "Expired", "Renewed"] = "Active"
     file_url: Optional[str] = None
     file_public_id: Optional[str] = None
-    file_type: Optional[str] = None  # Add this
+    file_type: Optional[str] = None
     file_uploaded_at: Optional[datetime] = None
     file_uploaded_by: Optional[str] = None
     version: int = 1
