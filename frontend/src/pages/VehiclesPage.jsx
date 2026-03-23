@@ -1094,6 +1094,9 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
   const [localFastagPasses, setLocalFastagPasses] = useState([]);
   const [downloadingRc, setDownloadingRc] = useState(false);
   const [downloadingDocument, setDownloadingDocument] = useState({});
+  const [showRcDeleteDialog, setShowRcDeleteDialog] = useState(false);
+  const [showDocumentDeleteDialog, setShowDocumentDeleteDialog] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState(null);
 
   // Update local state when props change
   useEffect(() => {
@@ -1263,8 +1266,6 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
 
 
   const handleRcDelete = async () => {
-    if (!confirm('Are you sure you want to delete the RC document?')) return;
-
     try {
       await api.delete(`/vehicles/${localVehicleData.id}/delete-rc`);
       toast.success('RC document deleted successfully');
@@ -1413,8 +1414,6 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
   };
 
   const handleDocumentDelete = async (documentId, documentType) => {
-    if (!confirm(`Are you sure you want to delete this ${documentType} document?`)) return;
-
     try {
       await api.delete(`/vehicles/${localVehicleData.id}/delete-document/${documentId}`);
       toast.success(`${documentType} document deleted successfully`);
@@ -1947,7 +1946,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                                 size="sm"
                                 variant="outline"
                                 className="text-rose-600 border-rose-200 hover:bg-rose-50"
-                                onClick={handleRcDelete}
+                                onClick={() => setShowRcDeleteDialog(true)}
                               >
                                 <Trash2 size={14} className="mr-1" />
                                 Delete
@@ -2132,7 +2131,10 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                                     size="sm"
                                     variant="outline"
                                     className="flex-1 text-rose-600 border-rose-200 hover:bg-rose-50"
-                                    onClick={() => handleDocumentDelete(doc.id, doc.document_type)}
+                                    onClick={() => {
+                                      setDocumentToDelete({ id: doc.id, document_type: doc.document_type, policy_number: doc.policy_number });
+                                      setShowDocumentDeleteDialog(true);
+                                    }}
                                   >
                                     <Trash2 size={12} className="mr-1" />
                                     Delete
@@ -2359,6 +2361,92 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
             </TabsContent>
           </Tabs>
         </div>
+        {/* RC Delete Confirmation Dialog */}
+        <AlertDialog open={showRcDeleteDialog} onOpenChange={setShowRcDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-rose-600 flex items-center gap-2">
+                <AlertTriangle size={20} />
+                Delete RC Document
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-3">
+                <p>Are you sure you want to delete the RC document?</p>
+                {localVehicleData && (
+                  <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <p className="font-mono font-medium">{localVehicleData.registration_number}</p>
+                    <p className="text-sm text-slate-600">RC Document</p>
+                  </div>
+                )}
+                <p className="text-sm text-rose-600 font-medium mt-2">
+                  This action cannot be undone. The RC document will be permanently deleted from the system.
+                </p>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowRcDeleteDialog(false)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={async () => {
+                  await handleRcDelete();
+                  setShowRcDeleteDialog(false);
+                }}
+                className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
+              >
+                Delete Document
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Document Delete Confirmation Dialog */}
+        <AlertDialog open={showDocumentDeleteDialog} onOpenChange={setShowDocumentDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-rose-600 flex items-center gap-2">
+                <AlertTriangle size={20} />
+                Delete Document
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-3">
+                <p>Are you sure you want to delete this document?</p>
+                {documentToDelete && (
+                  <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <p className="font-semibold">{documentToDelete.document_type}</p>
+                    <p className="text-sm text-slate-600">{documentToDelete.policy_number}</p>
+                    {localVehicleData && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        Vehicle: {localVehicleData.registration_number}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <p className="text-sm text-rose-600 font-medium mt-2">
+                  This action cannot be undone. The document file will be permanently deleted.
+                </p>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => {
+                setShowDocumentDeleteDialog(false);
+                setDocumentToDelete(null);
+              }}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={async () => {
+                  if (documentToDelete) {
+                    await handleDocumentDelete(documentToDelete.id, documentToDelete.document_type);
+                  }
+                  setShowDocumentDeleteDialog(false);
+                  setDocumentToDelete(null);
+                }}
+                className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
+              >
+                Delete Document
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SheetContent>
     </Sheet>
   );
