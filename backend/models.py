@@ -334,6 +334,11 @@ class VehicleBase(BaseModel):
     registered_at: Optional[str] = None
     source: Optional[str] = Field(None, description="manual or surepass")
     last_synced: Optional[datetime] = None
+    rc_document_url: Optional[str] = None
+    rc_document_public_id: Optional[str] = None
+    rc_document_file_type: Optional[str] = None  # Add this
+    rc_document_uploaded_at: Optional[datetime] = None
+    rc_document_uploaded_by: Optional[str] = None
 
 class VehicleCreate(VehicleBase):
     pass
@@ -356,6 +361,10 @@ class VehicleDocumentBase(BaseModel):
     coverage: Optional[str] = None
     status: Literal["Active", "Expired", "Renewed"] = "Active"
     file_url: Optional[str] = None
+    file_public_id: Optional[str] = None
+    file_type: Optional[str] = None  # Add this
+    file_uploaded_at: Optional[datetime] = None
+    file_uploaded_by: Optional[str] = None
     version: int = 1
     is_current: bool = True
     previous_version_id: Optional[str] = None

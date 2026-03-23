@@ -1085,11 +1085,38 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
   const [activeTab, setActiveTab] = useState('overview');
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [uploadingRc, setUploadingRc] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState({});
+  const [rcFileInputRef, setRcFileInputRef] = useState(null);
+  const [documentFileInputRefs, setDocumentFileInputRefs] = useState({});
+  const [localVehicleData, setLocalVehicleData] = useState(null);
+  const [localVehicleReport, setLocalVehicleReport] = useState(null);
+  const [localFastagPasses, setLocalFastagPasses] = useState([]);
+  const [downloadingRc, setDownloadingRc] = useState(false);
+  const [downloadingDocument, setDownloadingDocument] = useState({});
+
+  // Update local state when props change
+  useEffect(() => {
+    if (vehicle) {
+      setLocalVehicleData(vehicle);
+    }
+  }, [vehicle]);
+
+  useEffect(() => {
+    if (vehicleReport) {
+      setLocalVehicleReport(vehicleReport);
+    }
+  }, [vehicleReport]);
+
+  useEffect(() => {
+    if (fastagPasses) {
+      setLocalFastagPasses(fastagPasses);
+    }
+  }, [fastagPasses]);
 
   useEffect(() => {
     if (vehicle && open) {
       setIsLoading(true);
-      // Small timeout to ensure UI updates
       const timer = setTimeout(() => {
         setIsLoading(false);
       }, 100);
@@ -1097,6 +1124,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
     }
   }, [vehicle, open]);
 
+  // Helper functions
   const getDaysLeft = (expiryDate) => {
     if (!expiryDate) return null;
     const today = new Date();
@@ -1121,67 +1149,329 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
     return <Badge className="bg-emerald-100 text-emerald-700">Valid ({daysLeft}d)</Badge>;
   };
 
-  const handleFetchChallans = async () => {
-    setFetchingChallans(true);
+  // RC Document handlers
+  const handleRcUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be less than 5MB');
+      return;
+    }
+
+    setUploadingRc(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
     try {
-      await onFetchChallans();
+      const response = await api.post(`/vehicles/${localVehicleData.id}/upload-rc`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success('RC document uploaded successfully');
+
+      // Immediately update local state with the new document URL
+      setLocalVehicleData(prev => ({
+        ...prev,
+        rc_document_url: response.data.url,
+        rc_document_public_id: response.data.public_id,
+        rc_document_uploaded_at: new Date().toISOString()
+      }));
+
+    } catch (error) {
+      console.error('RC upload error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to upload RC document');
     } finally {
-      setFetchingChallans(false);
+      setUploadingRc(false);
+      if (rcFileInputRef) rcFileInputRef.value = '';
     }
   };
 
+  const handleRcDownload = async () => {
+    try {
+      setDownloadingRc(true);
+
+      // Get the token from localStorage
+      const token = localStorage.getItem('token');
+
+      // Use the full URL with base URL
+      const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
+      const downloadUrl = `${baseURL}/vehicles/${localVehicleData.id}/download-rc`;
+
+      console.log('Downloading from:', downloadUrl);
+
+      // Fetch the file directly from the API endpoint
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': '*/*'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Download failed:', response.status, errorText);
+        throw new Error(`Download failed: ${response.status} ${errorText}`);
+      }
+
+      // Get the filename from Content-Disposition header
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `${localVehicleData.registration_number.replace(/[^a-zA-Z0-9]/g, '_')}_RC`;
+
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      // Get the blob from response
+      const blob = await response.blob();
+
+      // Check if blob is empty
+      if (blob.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+
+      console.log('Downloaded blob:', {
+        size: blob.size,
+        type: blob.type,
+        filename: filename
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Download started');
+
+    } catch (error) {
+      console.error('RC download error:', error);
+      toast.error(error.message || 'Failed to download RC document');
+    } finally {
+      setDownloadingRc(false);
+    }
+  };
+
+
+  const handleRcDelete = async () => {
+    if (!confirm('Are you sure you want to delete the RC document?')) return;
+
+    try {
+      await api.delete(`/vehicles/${localVehicleData.id}/delete-rc`);
+      toast.success('RC document deleted successfully');
+
+      // Immediately update local state to remove the document
+      setLocalVehicleData(prev => ({
+        ...prev,
+        rc_document_url: null,
+        rc_document_public_id: null,
+        rc_document_uploaded_at: null
+      }));
+
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to delete RC document');
+    }
+  };
+
+  // Document (Insurance/PUC) handlers
+  const handleDocumentUpload = async (documentId, documentType) => {
+    const fileInput = documentFileInputRefs[documentId];
+    const file = fileInput?.files[0];
+    if (!file) return;
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be less than 5MB');
+      return;
+    }
+
+    setUploadingDocument(prev => ({ ...prev, [documentId]: true }));
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await api.post(`/vehicles/${localVehicleData.id}/upload-document/${documentId}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(`${documentType} document uploaded successfully`);
+
+      // Immediately update local vehicle report
+      if (localVehicleReport) {
+        const updatedDocuments = localVehicleReport.documents.map(doc => {
+          if (doc.id === documentId) {
+            return {
+              ...doc,
+              file_url: response.data.url,
+              file_public_id: response.data.public_id,
+              file_uploaded_at: new Date().toISOString()
+            };
+          }
+          return doc;
+        });
+
+        setLocalVehicleReport({
+          ...localVehicleReport,
+          documents: updatedDocuments
+        });
+      }
+
+    } catch (error) {
+      console.error('Document upload error:', error);
+      toast.error(error.response?.data?.detail || `Failed to upload ${documentType} document`);
+    } finally {
+      setUploadingDocument(prev => ({ ...prev, [documentId]: false }));
+      if (fileInput) fileInput.value = '';
+    }
+  };
+
+  const handleDocumentDownload = async (documentId) => {
+    try {
+      // Find the document to get its type
+      const document = localVehicleReport?.documents?.find(d => d.id === documentId);
+      const docType = document?.document_type || 'document';
+
+      // Set downloading state
+      setDownloadingDocument(prev => ({ ...prev, [documentId]: true }));
+
+      // Get the token from localStorage
+      const token = localStorage.getItem('token');
+
+      // Use the full URL with base URL
+      const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
+      const downloadUrl = `${baseURL}/vehicles/${localVehicleData.id}/download-document/${documentId}`;
+
+      console.log('Downloading document from:', downloadUrl);
+
+      // Fetch the file directly from the API endpoint
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': '*/*'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Download failed:', response.status, errorText);
+        throw new Error(`Download failed: ${response.status} ${errorText}`);
+      }
+
+      // Get the filename from Content-Disposition header
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `${localVehicleData.registration_number.replace(/[^a-zA-Z0-9]/g, '_')}_${docType}`;
+
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      // Get the blob from response
+      const blob = await response.blob();
+
+      // Check if blob is empty
+      if (blob.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+
+      console.log('Downloaded document blob:', {
+        size: blob.size,
+        type: blob.type,
+        filename: filename
+      });
+
+      // Create download link using window.URL.createObjectURL
+      const url = window.URL.createObjectURL(blob);
+      const link = window.document.createElement('a'); // Make sure to use window.document
+      link.href = url;
+      link.download = filename;
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Download started');
+
+    } catch (error) {
+      console.error('Document download error:', error);
+      toast.error(error.message || 'Failed to download document');
+    } finally {
+      setDownloadingDocument(prev => ({ ...prev, [documentId]: false }));
+    }
+  };
+
+  const handleDocumentDelete = async (documentId, documentType) => {
+    if (!confirm(`Are you sure you want to delete this ${documentType} document?`)) return;
+
+    try {
+      await api.delete(`/vehicles/${localVehicleData.id}/delete-document/${documentId}`);
+      toast.success(`${documentType} document deleted successfully`);
+
+      // Immediately update local vehicle report
+      if (localVehicleReport) {
+        const updatedDocuments = localVehicleReport.documents.map(doc => {
+          if (doc.id === documentId) {
+            return {
+              ...doc,
+              file_url: null,
+              file_public_id: null,
+              file_uploaded_at: null
+            };
+          }
+          return doc;
+        });
+
+        setLocalVehicleReport({
+          ...localVehicleReport,
+          documents: updatedDocuments
+        });
+      }
+
+    } catch (error) {
+      toast.error(error.response?.data?.detail || `Failed to delete ${documentType} document`);
+    }
+  };
+
+  // PDF Generation
   const generatePDF = async () => {
-    if (!vehicle || !vehicleReport) return;
+    if (!localVehicleData || !localVehicleReport) return;
 
     setGeneratingPDF(true);
 
     try {
-      // Dynamically import jsPDF and jspdf-autotable
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
 
-      // Create new PDF document
       const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4'
       });
 
-      // Colors
-      const primaryColor = [16, 185, 129]; // Emerald-500
-      const secondaryColor = [100, 116, 139]; // Slate-500
-      const dangerColor = [225, 29, 72]; // Rose-600
-      const warningColor = [245, 158, 11]; // Amber-500
-      const infoColor = [59, 130, 246]; // Blue-500
-      const successColor = [34, 197, 94]; // Green-500
+      const primaryColor = [16, 185, 129];
+      const secondaryColor = [100, 116, 139];
+      const dangerColor = [225, 29, 72];
+      const warningColor = [245, 158, 11];
+      const infoColor = [59, 130, 246];
+      const successColor = [34, 197, 94];
 
-      // Helper function to check if date is expired
-      const isExpired = (date) => {
-        if (!date) return false;
-        return new Date(date) < new Date();
-      };
-
-      // Helper function to get days left
-      const getDaysLeftText = (date) => {
-        if (!date) return 'N/A';
-        const days = getDaysLeft(date);
-        if (days === null) return 'N/A';
-        if (days < 0) return 'Expired';
-        return `${days} days left`;
-      };
-
-      // Helper function to format currency - FIXED VERSION
       const formatCurrency = (amount) => {
         if (!amount && amount !== 0) return 'Rs. 0';
-
-        // Convert to number if it's a string
         const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-
         if (isNaN(numAmount)) return 'Rs. 0';
-
-        // Format without special characters that cause PDF rendering issues
         const formattedNumber = numAmount.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-
         return `Rs. ${formattedNumber}`;
       };
 
@@ -1190,44 +1480,41 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
       doc.setTextColor(40, 40, 40);
       doc.text('Vehicle Full Report', 14, 20);
 
-      // Vehicle Registration Number
       doc.setFontSize(16);
       doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.text(vehicle.registration_number, 14, 30);
+      doc.text(localVehicleData.registration_number, 14, 30);
 
-      // Report generation date
       doc.setFontSize(8);
       doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
       doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 36);
 
-      // Line separator
       doc.setDrawColor(200, 200, 200);
       doc.line(14, 38, 196, 38);
 
       let yPos = 45;
 
-      // ==================== VEHICLE DETAILS SECTION ====================
+      // Vehicle Details
       doc.setFontSize(14);
       doc.setTextColor(40, 40, 40);
       doc.text('Vehicle Details', 14, yPos);
       yPos += 6;
 
       const vehicleDetails = [
-        ['Registration Number', vehicle.registration_number],
-        ['Owner Name', vehicle.owner_name || 'N/A'],
-        ['Brand/Model', `${vehicle.brand} ${vehicle.model}`],
-        ['Year', vehicle.year || 'N/A'],
-        ['Type', vehicle.type],
-        ['Fuel Type', vehicle.fuel_type],
-        ['Color', vehicle.color || 'N/A'],
-        ['Chassis Number', vehicle.chassis_number || 'N/A'],
-        ['Engine Number', vehicle.engine_number || 'N/A'],
-        ['Seating Capacity', vehicle.seating_capacity || 'N/A'],
-        ['Average Mileage', vehicle.average_kmpl ? `${vehicle.average_kmpl} km/l` : 'N/A'],
-        ['Tank Capacity', vehicle.tank_capacity_liters ? `${vehicle.tank_capacity_liters} L` : 'N/A'],
-        ['Site Name', vehicle.site_name || 'N/A'],
-        ['Source', vehicle.source || 'Manual'],
-        ['File Status', vehicle.file_status ? 'Complete' : 'Incomplete']
+        ['Registration Number', localVehicleData.registration_number],
+        ['Owner Name', localVehicleData.owner_name || 'N/A'],
+        ['Brand/Model', `${localVehicleData.brand} ${localVehicleData.model}`],
+        ['Year', localVehicleData.year || 'N/A'],
+        ['Type', localVehicleData.type],
+        ['Fuel Type', localVehicleData.fuel_type],
+        ['Color', localVehicleData.color || 'N/A'],
+        ['Chassis Number', localVehicleData.chassis_number || 'N/A'],
+        ['Engine Number', localVehicleData.engine_number || 'N/A'],
+        ['Seating Capacity', localVehicleData.seating_capacity || 'N/A'],
+        ['Average Mileage', localVehicleData.average_kmpl ? `${localVehicleData.average_kmpl} km/l` : 'N/A'],
+        ['Tank Capacity', localVehicleData.tank_capacity_liters ? `${localVehicleData.tank_capacity_liters} L` : 'N/A'],
+        ['Site Name', localVehicleData.site_name || 'N/A'],
+        ['Source', localVehicleData.source || 'Manual'],
+        ['File Status', localVehicleData.file_status ? 'Complete' : 'Incomplete']
       ];
 
       autoTable(doc, {
@@ -1245,8 +1532,8 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
 
       yPos = doc.lastAutoTable.finalY + 10;
 
-      // ==================== DOCUMENTS SECTION ====================
-      if (vehicleReport?.documents && vehicleReport.documents.length > 0) {
+      // Documents Section
+      if (localVehicleReport?.documents && localVehicleReport.documents.length > 0) {
         if (yPos > 250) {
           doc.addPage();
           yPos = 20;
@@ -1257,19 +1544,19 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
         doc.text('Documents', 14, yPos);
         yPos += 6;
 
-        const documentsData = vehicleReport.documents.map(doc => {
-          const daysLeft = getDaysLeft(doc.expiry_date);
+        const documentsData = localVehicleReport.documents.map(docItem => {
+          const daysLeft = getDaysLeft(docItem.expiry_date);
           const status = daysLeft === 'Expired' ? 'Expired' :
             (typeof daysLeft === 'number' && daysLeft < 30 ? 'Expiring Soon' : 'Active');
 
           return [
-            doc.document_type === 'Custom' ? (doc.custom_document_name || 'Custom') : doc.document_type,
-            doc.provider || 'N/A',
-            doc.policy_number || 'N/A',
-            doc.issue_date ? new Date(doc.issue_date).toLocaleDateString() : 'N/A',
-            doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString() : 'N/A',
+            docItem.document_type === 'Custom' ? (docItem.custom_document_name || 'Custom') : docItem.document_type,
+            docItem.provider || 'N/A',
+            docItem.policy_number || 'N/A',
+            docItem.issue_date ? new Date(docItem.issue_date).toLocaleDateString() : 'N/A',
+            docItem.expiry_date ? new Date(docItem.expiry_date).toLocaleDateString() : 'N/A',
             status,
-            doc.premium ? formatCurrency(doc.premium) : 'N/A'
+            docItem.premium ? formatCurrency(docItem.premium) : 'N/A'
           ];
         });
 
@@ -1279,461 +1566,14 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
           body: documentsData,
           theme: 'striped',
           headStyles: { fillColor: primaryColor },
-          columnStyles: {
-            0: { cellWidth: 35 },
-            1: { cellWidth: 35 },
-            2: { cellWidth: 35 },
-            3: { cellWidth: 25 },
-            4: { cellWidth: 25 },
-            5: { cellWidth: 25 },
-            6: { cellWidth: 20 }
-          },
-          margin: { left: 14, right: 14 },
-          didDrawCell: (data) => {
-            if (data.section === 'body' && data.column.index === 5) {
-              const cellText = data.cell.text[0];
-              if (cellText === 'Expired') {
-                doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
-              } else if (cellText === 'Expiring Soon') {
-                doc.setTextColor(warningColor[0], warningColor[1], warningColor[2]);
-              } else {
-                doc.setTextColor(successColor[0], successColor[1], successColor[2]);
-              }
-            }
-          }
-        });
-
-        yPos = doc.lastAutoTable.finalY + 10;
-      }
-
-      // ==================== CHALLANS SECTION ====================
-      if (vehicleReport?.challans && vehicleReport.challans.length > 0) {
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
-
-        doc.setFontSize(14);
-        doc.setTextColor(40, 40, 40);
-        doc.text('Challans / Traffic Violations', 14, yPos);
-        yPos += 6;
-
-        const challansData = vehicleReport.challans.map(challan => {
-          return [
-            challan.challan_number || 'N/A',
-            new Date(challan.date).toLocaleDateString(),
-            challan.violation_type || 'N/A',
-            formatCurrency(challan.amount),
-            challan.status || 'N/A',
-            challan.location || 'N/A',
-            challan.payment_date ? new Date(challan.payment_date).toLocaleDateString() : '-'
-          ];
-        });
-
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Challan No.', 'Date', 'Violation Type', 'Amount', 'Status', 'Location', 'Payment Date']],
-          body: challansData,
-          theme: 'striped',
-          headStyles: { fillColor: primaryColor },
-          columnStyles: {
-            0: { cellWidth: 30 },
-            1: { cellWidth: 20 },
-            2: { cellWidth: 35 },
-            3: { cellWidth: 20 },
-            4: { cellWidth: 20 },
-            5: { cellWidth: 30 },
-            6: { cellWidth: 25 }
-          },
-          margin: { left: 14, right: 14 },
-          didDrawCell: (data) => {
-            if (data.section === 'body' && data.column.index === 4) {
-              const cellText = data.cell.text[0];
-              if (cellText === 'Unpaid') {
-                doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
-              } else if (cellText === 'Paid') {
-                doc.setTextColor(successColor[0], successColor[1], successColor[2]);
-              }
-            }
-          }
-        });
-
-        // Add challan summary
-        yPos = doc.lastAutoTable.finalY + 10;
-
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
-
-        const totalChallanAmount = vehicleReport.challans.reduce((sum, c) => sum + (c.amount || 0), 0);
-        const paidChallans = vehicleReport.challans.filter(c => c.status === 'Paid').length;
-        const unpaidChallans = vehicleReport.challans.filter(c => c.status === 'Unpaid').length;
-        const unpaidAmount = vehicleReport.challans
-          .filter(c => c.status === 'Unpaid')
-          .reduce((sum, c) => sum + (c.amount || 0), 0);
-
-        const challanSummary = [
-          ['Total Challans', vehicleReport.challans.length.toString()],
-          ['Paid Challans', paidChallans.toString()],
-          ['Unpaid Challans', unpaidChallans.toString()],
-          ['Total Amount', formatCurrency(totalChallanAmount)],
-          ['Unpaid Amount', formatCurrency(unpaidAmount)]
-        ];
-
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Challan Summary', 'Value']],
-          body: challanSummary,
-          theme: 'striped',
-          headStyles: { fillColor: infoColor },
-          columnStyles: {
-            0: { cellWidth: 60 },
-            1: { cellWidth: 120 }
-          },
           margin: { left: 14, right: 14 }
         });
 
         yPos = doc.lastAutoTable.finalY + 10;
       }
 
-      // ==================== SERVICE RECORDS SECTION ====================
-      if (vehicleReport?.services && vehicleReport.services.length > 0) {
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
-
-        doc.setFontSize(14);
-        doc.setTextColor(40, 40, 40);
-        doc.text('Service Records', 14, yPos);
-        yPos += 6;
-
-        const servicesData = vehicleReport.services.map(service => {
-          return [
-            new Date(service.service_date || service.date).toLocaleDateString(),
-            service.service_type || 'N/A',
-            service.odometer_reading ? `${service.odometer_reading} km` : 'N/A',
-            service.vendor || 'N/A',
-            formatCurrency(service.total_cost || service.cost || 0),
-            service.next_service_due_date ? new Date(service.next_service_due_date).toLocaleDateString() : 'N/A'
-          ];
-        });
-
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Date', 'Service Type', 'Odometer', 'Vendor', 'Cost', 'Next Due']],
-          body: servicesData,
-          theme: 'striped',
-          headStyles: { fillColor: primaryColor },
-          columnStyles: {
-            0: { cellWidth: 25 },
-            1: { cellWidth: 30 },
-            2: { cellWidth: 25 },
-            3: { cellWidth: 35 },
-            4: { cellWidth: 25 },
-            5: { cellWidth: 30 }
-          },
-          margin: { left: 14, right: 14 }
-        });
-
-        yPos = doc.lastAutoTable.finalY + 10;
-      }
-
-      // ==================== FASTAG PASSES SECTION ====================
-      if (fastagPasses && fastagPasses.length > 0) {
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
-
-        doc.setFontSize(14);
-        doc.setTextColor(40, 40, 40);
-        doc.text('FASTag Passes', 14, yPos);
-        yPos += 6;
-
-        const fastagData = fastagPasses.map(pass => {
-          return [
-            pass.pass_name || 'N/A',
-            pass.toll_plaza || 'N/A',
-            `${pass.balance_trips || 0}/${pass.trips_allowed || 0}`,
-            new Date(pass.issue_date).toLocaleDateString(),
-            new Date(pass.expiry_date).toLocaleDateString(),
-            pass.status || 'N/A'
-          ];
-        });
-
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Pass Name', 'Toll Plaza', 'Trips', 'Issue Date', 'Expiry Date', 'Status']],
-          body: fastagData,
-          theme: 'striped',
-          headStyles: { fillColor: primaryColor },
-          columnStyles: {
-            0: { cellWidth: 30 },
-            1: { cellWidth: 35 },
-            2: { cellWidth: 20 },
-            3: { cellWidth: 25 },
-            4: { cellWidth: 25 },
-            5: { cellWidth: 25 }
-          },
-          margin: { left: 14, right: 14 },
-          didDrawCell: (data) => {
-            if (data.section === 'body' && data.column.index === 5) {
-              const cellText = data.cell.text[0];
-              if (cellText === 'Expired') {
-                doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
-              } else if (cellText === 'Active') {
-                doc.setTextColor(successColor[0], successColor[1], successColor[2]);
-              }
-            }
-          }
-        });
-
-        yPos = doc.lastAutoTable.finalY + 10;
-      }
-
-      // ==================== ACCIDENTS SECTION ====================
-      if (vehicleReport?.accidents && vehicleReport.accidents.length > 0) {
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
-
-        doc.setFontSize(14);
-        doc.setTextColor(40, 40, 40);
-        doc.text('Accident Records', 14, yPos);
-        yPos += 6;
-
-        const accidentsData = vehicleReport.accidents.map(accident => {
-          return [
-            new Date(accident.accident_date || accident.date).toLocaleDateString(),
-            accident.location || 'N/A',
-            accident.description || 'N/A',
-            accident.claim_status || 'N/A',
-            formatCurrency(accident.damage_estimate || accident.repair_cost || 0)
-          ];
-        });
-
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Date', 'Location', 'Description', 'Claim Status', 'Damage Cost']],
-          body: accidentsData,
-          theme: 'striped',
-          headStyles: { fillColor: dangerColor },
-          columnStyles: {
-            0: { cellWidth: 25 },
-            1: { cellWidth: 35 },
-            2: { cellWidth: 50 },
-            3: { cellWidth: 30 },
-            4: { cellWidth: 30 }
-          },
-          margin: { left: 14, right: 14 }
-        });
-
-        yPos = doc.lastAutoTable.finalY + 10;
-      }
-
-      // ==================== DOCUMENT EXPIRY DATES SECTION (Quick Reference) ====================
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-
-      doc.setFontSize(14);
-      doc.setTextColor(40, 40, 40);
-      doc.text('Document Expiry Dates - Quick Reference', 14, yPos);
-      yPos += 6;
-
-      const documentExpiryData = [
-        ['Insurance',
-          vehicle.insurance_expiry ? new Date(vehicle.insurance_expiry).toLocaleDateString() : 'N/A',
-          vehicle.insurance_company || 'N/A',
-          getDaysLeftText(vehicle.insurance_expiry)],
-        ['PUC',
-          vehicle.puc_expiry ? new Date(vehicle.puc_expiry).toLocaleDateString() : 'N/A',
-          'RTO',
-          getDaysLeftText(vehicle.puc_expiry)],
-        ['Fitness',
-          vehicle.fit_up_to ? new Date(vehicle.fit_up_to).toLocaleDateString() : 'N/A',
-          'RTO',
-          getDaysLeftText(vehicle.fit_up_to)],
-        ['Tax',
-          vehicle.tax_upto ? new Date(vehicle.tax_upto).toLocaleDateString() : 'N/A',
-          'Transport Department',
-          getDaysLeftText(vehicle.tax_upto)]
-      ];
-
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Document', 'Expiry Date', 'Provider', 'Status']],
-        body: documentExpiryData,
-        theme: 'striped',
-        headStyles: { fillColor: primaryColor },
-        columnStyles: {
-          0: { cellWidth: 40 },
-          1: { cellWidth: 35 },
-          2: { cellWidth: 60 },
-          3: { cellWidth: 45 }
-        },
-        margin: { left: 14, right: 14 },
-        didDrawCell: (data) => {
-          if (data.section === 'body' && data.column.index === 3) {
-            const cellText = data.cell.text[0];
-            if (cellText.includes('Expired')) {
-              doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2]);
-            } else if (cellText.includes('days left') && parseInt(cellText) < 30) {
-              doc.setTextColor(warningColor[0], warningColor[1], warningColor[2]);
-            }
-          }
-        }
-      });
-
-      yPos = doc.lastAutoTable.finalY + 10;
-
-      // ==================== REGISTRATION DETAILS SECTION ====================
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-
-      doc.setFontSize(14);
-      doc.setTextColor(40, 40, 40);
-      doc.text('Registration Details', 14, yPos);
-      yPos += 6;
-
-      const registrationDetails = [
-        ['Date of Registration', vehicle.date_of_registration ? new Date(vehicle.date_of_registration).toLocaleDateString() : 'N/A'],
-        ['Registered At', vehicle.registered_at || 'N/A'],
-        ['Insurance Company', vehicle.insurance_company || 'N/A'],
-        ['Insurance Policy No.', vehicle.insurance_policy_number || 'N/A'],
-        ['PUC Number', vehicle.pucc_number || 'N/A']
-      ];
-
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Field', 'Value']],
-        body: registrationDetails,
-        theme: 'striped',
-        headStyles: { fillColor: primaryColor },
-        columnStyles: {
-          0: { cellWidth: 60 },
-          1: { cellWidth: 120 }
-        },
-        margin: { left: 14, right: 14 }
-      });
-
-      yPos = doc.lastAutoTable.finalY + 10;
-
-      // ==================== FASTAG DETAILS SECTION ====================
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-
-      doc.setFontSize(14);
-      doc.setTextColor(40, 40, 40);
-      doc.text('FASTag Details', 14, yPos);
-      yPos += 6;
-
-      const fastagDetails = [
-        ['FASTag Company', vehicle.fastag_company || 'N/A'],
-        ['FASTag Balance', vehicle.fastag_balance ? formatCurrency(vehicle.fastag_balance) : 'N/A'],
-        ['FASTag User ID', vehicle.fastag_user_id || 'N/A'],
-        ['FASTag Status', vehicle.fastag_sold ? 'Sold' : (vehicle.fastag_company ? 'Active' : 'Not Added')],
-        ['FASTag Sold Date', vehicle.fastag_sold_date ? new Date(vehicle.fastag_sold_date).toLocaleDateString() : 'N/A']
-      ];
-
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Field', 'Value']],
-        body: fastagDetails,
-        theme: 'striped',
-        headStyles: { fillColor: primaryColor },
-        columnStyles: {
-          0: { cellWidth: 60 },
-          1: { cellWidth: 120 }
-        },
-        margin: { left: 14, right: 14 }
-      });
-
-      yPos = doc.lastAutoTable.finalY + 10;
-
-      // ==================== SUMMARY STATISTICS SECTION ====================
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-
-      doc.setFontSize(14);
-      doc.setTextColor(40, 40, 40);
-      doc.text('Summary Statistics', 14, yPos);
-      yPos += 6;
-
-      const summaryData = [
-        ['Total Documents', vehicleReport?.summary?.total_documents?.toString() || '0'],
-        ['Active Documents', vehicleReport?.summary?.active_documents?.toString() || '0'],
-        ['Expired Documents', vehicleReport?.summary?.expired_documents?.toString() || '0'],
-        ['Total Challans', vehicleReport?.summary?.total_challans?.toString() || '0'],
-        ['Unpaid Challans', vehicleReport?.summary?.unpaid_challans?.toString() || '0'],
-        ['Total Challan Amount', vehicleReport?.summary?.total_challan_amount ? formatCurrency(vehicleReport.summary.total_challan_amount) : 'Rs. 0'],
-        ['Total Services', vehicleReport?.summary?.total_services?.toString() || '0'],
-        ['Total Service Cost', vehicleReport?.summary?.total_service_cost ? formatCurrency(vehicleReport.summary.total_service_cost) : 'Rs. 0'],
-        ['Total Accidents', vehicleReport?.summary?.total_accidents?.toString() || '0']
-      ];
-
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Metric', 'Value']],
-        body: summaryData,
-        theme: 'striped',
-        headStyles: { fillColor: primaryColor },
-        columnStyles: {
-          0: { cellWidth: 60 },
-          1: { cellWidth: 120 }
-        },
-        margin: { left: 14, right: 14 }
-      });
-
-      yPos = doc.lastAutoTable.finalY + 10;
-
-      // ==================== REMARK SECTION ====================
-      if (vehicle.remark) {
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
-
-        doc.setFontSize(14);
-        doc.setTextColor(40, 40, 40);
-        doc.text('Remarks', 14, yPos);
-        yPos += 6;
-
-        doc.setFontSize(10);
-        doc.setTextColor(60, 60, 60);
-
-        // Split long remarks into multiple lines
-        const splitRemark = doc.splitTextToSize(vehicle.remark, 170);
-        doc.text(splitRemark, 14, yPos);
-      }
-
-      // ==================== FOOTER ====================
-      const pageCount = doc.internal.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(150, 150, 150);
-        doc.text(
-          `Page ${i} of ${pageCount}`,
-          doc.internal.pageSize.width / 2,
-          doc.internal.pageSize.height - 10,
-          { align: 'center' }
-        );
-      }
-
-      // Save the PDF
-      doc.save(`${vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, '_')}_full_report_${new Date().toISOString().split('T')[0]}.pdf`);
-
+      // Save PDF
+      doc.save(`${localVehicleData.registration_number.replace(/[^a-zA-Z0-9]/g, '_')}_full_report_${new Date().toISOString().split('T')[0]}.pdf`);
       toast.success('PDF report generated successfully');
 
     } catch (error) {
@@ -1744,10 +1584,8 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
     }
   };
 
-  if (!vehicle) return null;
-
-  // Show loading skeleton while data is loading
-  if (!vehicle || isLoading) {
+  // Loading skeleton
+  if (!localVehicleData || isLoading) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent className="w-full sm:max-w-4xl p-0 overflow-y-auto">
@@ -1791,18 +1629,17 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
               <Truck size={32} className="text-emerald-700" />
             </div>
             <div>
-              <SheetTitle className="text-2xl font-mono">{vehicle.registration_number}</SheetTitle>
-              <p className="text-sm text-slate-600">{vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}</p>
+              <SheetTitle className="text-2xl font-mono">{localVehicleData.registration_number}</SheetTitle>
+              <p className="text-sm text-slate-600">{localVehicleData.brand} {localVehicleData.model} {localVehicleData.year && `(${localVehicleData.year})`}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-slate-100">{vehicle.type}</Badge>
-            <Badge variant="outline" className="bg-slate-100">{vehicle.fuel_type}</Badge>
-            {vehicle.source === 'surepass' && (
+            <Badge variant="outline" className="bg-slate-100">{localVehicleData.type}</Badge>
+            <Badge variant="outline" className="bg-slate-100">{localVehicleData.fuel_type}</Badge>
+            {localVehicleData.source === 'surepass' && (
               <Badge className="bg-blue-100 text-blue-700 border-blue-200">Surepass</Badge>
             )}
 
-            {/* Download PDF Button */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1811,7 +1648,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                     variant="outline"
                     className="ml-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50"
                     onClick={generatePDF}
-                    disabled={generatingPDF || !vehicleReport}
+                    disabled={generatingPDF || !localVehicleReport}
                   >
                     {generatingPDF ? (
                       <>
@@ -1832,8 +1669,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
               </Tooltip>
             </TooltipProvider>
 
-            {/* Fetch Challans Button - Only show for Surepass vehicles */}
-            {vehicle.source === 'surepass' && (
+            {localVehicleData.source === 'surepass' && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1894,12 +1730,12 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                   <div>
                     <p className="text-xs text-emerald-700 font-medium">Insurance</p>
                     <p className="text-2xl font-bold text-emerald-800">
-                      {vehicle.insurance_expiry ? new Date(vehicle.insurance_expiry).toLocaleDateString() : 'N/A'}
+                      {localVehicleData.insurance_expiry ? new Date(localVehicleData.insurance_expiry).toLocaleDateString() : 'N/A'}
                     </p>
                   </div>
                   <Shield size={24} className="text-emerald-600" />
                 </div>
-                {vehicle.insurance_expiry && getStatusBadge(getDaysLeft(vehicle.insurance_expiry))}
+                {localVehicleData.insurance_expiry && getStatusBadge(getDaysLeft(localVehicleData.insurance_expiry))}
               </CardContent>
             </Card>
 
@@ -1909,12 +1745,12 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                   <div>
                     <p className="text-xs text-amber-700 font-medium">PUC</p>
                     <p className="text-2xl font-bold text-amber-800">
-                      {vehicle.puc_expiry ? new Date(vehicle.puc_expiry).toLocaleDateString() : 'N/A'}
+                      {localVehicleData.puc_expiry ? new Date(localVehicleData.puc_expiry).toLocaleDateString() : 'N/A'}
                     </p>
                   </div>
                   <FileText size={24} className="text-amber-600" />
                 </div>
-                {vehicle.puc_expiry && getStatusBadge(getDaysLeft(vehicle.puc_expiry))}
+                {localVehicleData.puc_expiry && getStatusBadge(getDaysLeft(localVehicleData.puc_expiry))}
               </CardContent>
             </Card>
 
@@ -1924,7 +1760,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                   <div>
                     <p className="text-xs text-purple-700 font-medium">Registration</p>
                     <p className="text-2xl font-bold text-purple-800">
-                      {vehicle.fit_up_to ? new Date(vehicle.fit_up_to).toLocaleDateString() : 'N/A'}
+                      {localVehicleData.fit_up_to ? new Date(localVehicleData.fit_up_to).toLocaleDateString() : 'N/A'}
                     </p>
                   </div>
                   <Calendar size={24} className="text-purple-600" />
@@ -1938,7 +1774,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                   <div>
                     <p className="text-xs text-rose-700 font-medium">Tax</p>
                     <p className="text-2xl font-bold text-rose-800">
-                      {vehicle.tax_upto ? new Date(vehicle.tax_upto).toLocaleDateString() : 'N/A'}
+                      {localVehicleData.tax_upto ? new Date(localVehicleData.tax_upto).toLocaleDateString() : 'N/A'}
                     </p>
                   </div>
                   <AlertCircle size={24} className="text-rose-600" />
@@ -1951,17 +1787,16 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <TabsList className="grid grid-cols-6 w-full">
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="documents">Documents ({vehicleReport?.documents?.length || 0})</TabsTrigger>
-              <TabsTrigger value="challans">Challans ({vehicleReport?.challans?.length || 0})</TabsTrigger>
-              <TabsTrigger value="services">Services ({vehicleReport?.services?.length || 0})</TabsTrigger>
-              <TabsTrigger value="fastag">FASTag ({fastagPasses?.length || 0})</TabsTrigger>
-              <TabsTrigger value="accidents">Accidents ({vehicleReport?.accidents?.length || 0})</TabsTrigger>
+              <TabsTrigger value="documents">Documents ({localVehicleReport?.documents?.length || 0})</TabsTrigger>
+              <TabsTrigger value="challans">Challans ({localVehicleReport?.challans?.length || 0})</TabsTrigger>
+              <TabsTrigger value="services">Services ({localVehicleReport?.services?.length || 0})</TabsTrigger>
+              <TabsTrigger value="fastag">FASTag ({localFastagPasses?.length || 0})</TabsTrigger>
+              <TabsTrigger value="accidents">Accidents ({localVehicleReport?.accidents?.length || 0})</TabsTrigger>
             </TabsList>
 
             {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-6">
               <div className="grid grid-cols-3 gap-4">
-                {/* Vehicle Details Card */}
                 <Card className="col-span-2">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium">Vehicle Specifications</CardTitle>
@@ -1970,49 +1805,48 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs text-slate-500">Registration Number</p>
-                        <p className="font-mono font-medium">{vehicle.registration_number}</p>
+                        <p className="font-mono font-medium">{localVehicleData.registration_number}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Owner Name</p>
-                        <p>{vehicle.owner_name || 'N/A'}</p>
+                        <p>{localVehicleData.owner_name || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Brand/Model</p>
-                        <p>{vehicle.brand} {vehicle.model}</p>
+                        <p>{localVehicleData.brand} {localVehicleData.model}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Year</p>
-                        <p>{vehicle.year || 'N/A'}</p>
+                        <p>{localVehicleData.year || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Type</p>
-                        <p>{vehicle.type}</p>
+                        <p>{localVehicleData.type}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Fuel Type</p>
-                        <p>{vehicle.fuel_type}</p>
+                        <p>{localVehicleData.fuel_type}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Chassis Number</p>
-                        <p className="font-mono text-xs">{vehicle.chassis_number || 'N/A'}</p>
+                        <p className="font-mono text-xs">{localVehicleData.chassis_number || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Engine Number</p>
-                        <p className="font-mono text-xs">{vehicle.engine_number || 'N/A'}</p>
+                        <p className="font-mono text-xs">{localVehicleData.engine_number || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Color</p>
-                        <p>{vehicle.color || 'N/A'}</p>
+                        <p>{localVehicleData.color || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Seating Capacity</p>
-                        <p>{vehicle.seating_capacity || 'N/A'}</p>
+                        <p>{localVehicleData.seating_capacity || 'N/A'}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Performance Card */}
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium">Performance</CardTitle>
@@ -2020,16 +1854,16 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                   <CardContent className="space-y-3">
                     <div>
                       <p className="text-xs text-slate-500">Average Mileage</p>
-                      <p className="text-xl font-bold">{vehicle.average_kmpl || 'N/A'} <span className="text-sm font-normal text-slate-500">km/l</span></p>
+                      <p className="text-xl font-bold">{localVehicleData.average_kmpl || 'N/A'} <span className="text-sm font-normal text-slate-500">km/l</span></p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">Tank Capacity</p>
-                      <p className="text-xl font-bold">{vehicle.tank_capacity_liters || 'N/A'} <span className="text-sm font-normal text-slate-500">L</span></p>
+                      <p className="text-xl font-bold">{localVehicleData.tank_capacity_liters || 'N/A'} <span className="text-sm font-normal text-slate-500">L</span></p>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Registration Card */}
+                {/* Registration Card with RC Upload */}
                 <Card className="col-span-2">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium">Registration & Tax</CardTitle>
@@ -2038,27 +1872,105 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs text-slate-500">Date of Registration</p>
-                        <p>{vehicle.date_of_registration ? new Date(vehicle.date_of_registration).toLocaleDateString() : 'N/A'}</p>
+                        <p>{localVehicleData.date_of_registration ? new Date(localVehicleData.date_of_registration).toLocaleDateString() : 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Tax Validity</p>
-                        <p>{vehicle.tax_upto ? new Date(vehicle.tax_upto).toLocaleDateString() : 'N/A'}</p>
+                        <p>{localVehicleData.tax_upto ? new Date(localVehicleData.tax_upto).toLocaleDateString() : 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Registered At</p>
-                        <p>{vehicle.registered_at || 'N/A'}</p>
+                        <p>{localVehicleData.registered_at || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Source</p>
-                        <Badge className={vehicle.source === 'surepass' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100'}>
-                          {vehicle.source || 'Manual'}
+                        <Badge className={localVehicleData.source === 'surepass' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100'}>
+                          {localVehicleData.source || 'Manual'}
                         </Badge>
                       </div>
+                    </div>
+
+                    {/* RC Document Section */}
+                    {/* RC Document Section */}
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                          <FileText size={14} className="text-slate-500" />
+                          RC Document
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="file"
+                            ref={(ref) => {
+                              if (ref && rcFileInputRef !== ref) {
+                                setRcFileInputRef(ref);
+                              }
+                            }}
+                            onChange={handleRcUpload}
+                            accept="image/*,application/pdf"
+                            className="hidden"
+                            id="rc-upload"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const input = document.getElementById('rc-upload');
+                              if (input) input.click();
+                            }}
+                            disabled={uploadingRc}
+                          >
+                            {uploadingRc ? (
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-1"></div>
+                            ) : (
+                              <Upload size={14} className="mr-1" />
+                            )}
+                            Upload
+                          </Button>
+
+                          {localVehicleData.rc_document_url && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleRcDownload}
+                                disabled={downloadingRc}
+                              >
+                                {downloadingRc ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-1"></div>
+                                ) : (
+                                  <Download size={14} className="mr-1" />
+                                )}
+                                Download
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-rose-600 border-rose-200 hover:bg-rose-50"
+                                onClick={handleRcDelete}
+                              >
+                                <Trash2 size={14} className="mr-1" />
+                                Delete
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {localVehicleData.rc_document_url ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-sm text-emerald-700 flex items-center gap-2">
+                          <CheckCircle size={14} />
+                          <span>RC document uploaded</span>
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-sm text-amber-700 flex items-center gap-2">
+                          <AlertCircle size={14} />
+                          <span>No RC document uploaded</span>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* FASTag Card */}
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium">FASTag Details</CardTitle>
@@ -2066,17 +1978,17 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                   <CardContent className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-slate-500">Company</span>
-                      <span className="text-sm font-medium">{vehicle.fastag_company || 'N/A'}</span>
+                      <span className="text-sm font-medium">{localVehicleData.fastag_company || 'N/A'}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-slate-500">Balance</span>
-                      <span className="text-sm font-medium">₹{vehicle.fastag_balance?.toLocaleString() || '0'}</span>
+                      <span className="text-sm font-medium">₹{localVehicleData.fastag_balance?.toLocaleString() || '0'}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-slate-500">Status</span>
-                      {vehicle.fastag_sold ? (
+                      {localVehicleData.fastag_sold ? (
                         <Badge className="bg-amber-100 text-amber-700">Sold</Badge>
-                      ) : vehicle.fastag_company ? (
+                      ) : localVehicleData.fastag_company ? (
                         <Badge className="bg-emerald-100 text-emerald-700">Active</Badge>
                       ) : (
                         <span className="text-xs text-slate-400">Not added</span>
@@ -2085,23 +1997,22 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                   </CardContent>
                 </Card>
 
-                {/* Site & Remark */}
-                {(vehicle.site_name || vehicle.remark) && (
+                {(localVehicleData.site_name || localVehicleData.remark) && (
                   <Card className="col-span-3">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-medium">Location & Notes</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      {vehicle.site_name && (
+                      {localVehicleData.site_name && (
                         <div className="flex items-center gap-2 text-sm mb-2">
                           <MapPin size={14} className="text-slate-400" />
-                          <span>{vehicle.site_name}</span>
+                          <span>{localVehicleData.site_name}</span>
                         </div>
                       )}
-                      {vehicle.remark && (
+                      {localVehicleData.remark && (
                         <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
                           <p className="text-xs text-amber-700 font-medium mb-1">Remark</p>
-                          <p className="text-sm text-amber-900">{vehicle.remark}</p>
+                          <p className="text-sm text-amber-900">{localVehicleData.remark}</p>
                         </div>
                       )}
                     </CardContent>
@@ -2110,9 +2021,10 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
               </div>
             </TabsContent>
 
-            {/* Documents Tab */}
+            {/* Documents Tab with Upload/Download */}
+
             <TabsContent value="documents" className="space-y-4">
-              {vehicleReport?.documents?.length === 0 ? (
+              {localVehicleReport?.documents?.length === 0 ? (
                 <div className="text-center py-12 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
                   <FileText size={48} className="mx-auto text-slate-300 mb-3" />
                   <h3 className="text-lg font-semibold text-slate-900 mb-1">No documents found</h3>
@@ -2120,9 +2032,9 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {vehicleReport?.documents?.map((doc) => {
+                  {localVehicleReport?.documents?.map((doc) => {
                     const daysLeft = getDaysLeft(doc.expiry_date);
-                    const statusColor = getStatusColor(daysLeft);
+                    const isUploading = uploadingDocument[doc.id];
 
                     return (
                       <Card key={doc.id} className="hover:shadow-md transition-shadow">
@@ -2161,10 +2073,80 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                           </div>
 
                           <div className="mt-3">
-                            <div className="flex justify-between text-xs text-slate-500 mb-1">
+                            <div className="flex justify-between text-xs text-slate-500 mb-2">
                               <span>Issue: {new Date(doc.issue_date).toLocaleDateString()}</span>
                               <span>Expiry: {new Date(doc.expiry_date).toLocaleDateString()}</span>
                             </div>
+
+                            {/* Document Upload/Download Buttons */}
+                            <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+                              {/* Create a unique ref using useCallback or inline function that doesn't cause infinite loops */}
+                              <input
+                                type="file"
+                                ref={(ref) => {
+                                  // Store the ref without triggering state update if not needed
+                                  if (ref && documentFileInputRefs[doc.id] !== ref) {
+                                    setDocumentFileInputRefs(prev => ({ ...prev, [doc.id]: ref }));
+                                  }
+                                }}
+                                onChange={() => handleDocumentUpload(doc.id, doc.document_type)}
+                                accept="image/*,application/pdf"
+                                className="hidden"
+                                id={`doc-upload-${doc.id}`}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => {
+                                  const input = document.getElementById(`doc-upload-${doc.id}`);
+                                  if (input) input.click();
+                                }}
+                                disabled={uploadingDocument[doc.id]}
+                              >
+                                {uploadingDocument[doc.id] ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-1"></div>
+                                ) : (
+                                  <Upload size={12} className="mr-1" />
+                                )}
+                                Upload
+                              </Button>
+
+                              {doc.file_url && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => handleDocumentDownload(doc.id)}
+                                    disabled={downloadingDocument[doc.id]}
+                                  >
+                                    {downloadingDocument[doc.id] ? (
+                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-1"></div>
+                                    ) : (
+                                      <Download size={12} className="mr-1" />
+                                    )}
+                                    Download
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1 text-rose-600 border-rose-200 hover:bg-rose-50"
+                                    onClick={() => handleDocumentDelete(doc.id, doc.document_type)}
+                                  >
+                                    <Trash2 size={12} className="mr-1" />
+                                    Delete
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+
+                            {doc.file_url && (
+                              <div className="mt-2 text-xs text-emerald-600 bg-emerald-50 p-2 rounded flex items-center gap-1">
+                                <CheckCircle size={12} />
+                                <span>Document uploaded</span>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -2176,7 +2158,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
 
             {/* Challans Tab */}
             <TabsContent value="challans" className="space-y-4">
-              {vehicleReport?.challans?.length === 0 ? (
+              {localVehicleReport?.challans?.length === 0 ? (
                 <div className="text-center py-12 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
                   <AlertTriangle size={48} className="mx-auto text-slate-300 mb-3" />
                   <h3 className="text-lg font-semibold text-slate-900 mb-1">No challans found</h3>
@@ -2184,13 +2166,12 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {vehicleReport?.challans?.map((challan) => (
+                  {localVehicleReport?.challans?.map((challan) => (
                     <Card key={challan.id} className="hover:shadow-md transition-shadow">
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between">
                           <div className="flex items-start gap-3">
-                            <div className={`p-2 rounded-lg ${challan.status === 'Paid' ? 'bg-emerald-100' : 'bg-rose-100'
-                              }`}>
+                            <div className={`p-2 rounded-lg ${challan.status === 'Paid' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
                               {challan.status === 'Paid' ? (
                                 <CheckCircle size={20} className="text-emerald-600" />
                               ) : (
@@ -2223,7 +2204,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
 
             {/* Services Tab */}
             <TabsContent value="services" className="space-y-4">
-              {vehicleReport?.services?.length === 0 ? (
+              {localVehicleReport?.services?.length === 0 ? (
                 <div className="text-center py-12 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
                   <Wrench size={48} className="mx-auto text-slate-300 mb-3" />
                   <h3 className="text-lg font-semibold text-slate-900 mb-1">No service records</h3>
@@ -2231,7 +2212,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {vehicleReport?.services?.map((service) => (
+                  {localVehicleReport?.services?.map((service) => (
                     <Card key={service.id} className="hover:shadow-md transition-shadow">
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between">
@@ -2268,7 +2249,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                 </Button>
               </div>
 
-              {fastagPasses?.length === 0 ? (
+              {localFastagPasses?.length === 0 ? (
                 <div className="text-center py-12 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
                   <Zap size={48} className="mx-auto text-slate-300 mb-3" />
                   <h3 className="text-lg font-semibold text-slate-900 mb-1">No FASTag passes</h3>
@@ -2276,9 +2257,8 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {fastagPasses?.map((pass) => {
+                  {localFastagPasses?.map((pass) => {
                     const daysLeft = getDaysLeft(pass.expiry_date);
-
                     return (
                       <Card key={pass.id} className="hover:shadow-md transition-shadow">
                         <CardContent className="p-4">
@@ -2336,7 +2316,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
 
             {/* Accidents Tab */}
             <TabsContent value="accidents" className="space-y-4">
-              {vehicleReport?.accidents?.length === 0 ? (
+              {localVehicleReport?.accidents?.length === 0 ? (
                 <div className="text-center py-12 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
                   <AlertCircle size={48} className="mx-auto text-slate-300 mb-3" />
                   <h3 className="text-lg font-semibold text-slate-900 mb-1">No accident records</h3>
@@ -2344,7 +2324,7 @@ const VehicleDetailSheet = ({ vehicle, open, onOpenChange, vehicleReport, fastag
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {vehicleReport?.accidents?.map((accident) => (
+                  {localVehicleReport?.accidents?.map((accident) => (
                     <Card key={accident.id} className="hover:shadow-md transition-shadow">
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between">

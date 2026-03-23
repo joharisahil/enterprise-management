@@ -1764,6 +1764,388 @@ async def upload_document(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))   
 
+# Add these endpoints after your existing document endpoints
+
+@api_router.post("/vehicles/{vehicle_id}/upload-rc")
+async def upload_rc_document(
+    vehicle_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Upload RC document for a vehicle"""
+    try:
+        # Find the vehicle
+        vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        # Get file extension from filename
+        file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
+        
+        # Determine resource type based on file extension
+        if file_extension in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            resource_type = "image"
+        else:
+            resource_type = "raw"
+        
+        # Upload to Cloudinary
+        result = cloudinary.uploader.upload(
+            file.file,
+            folder=f"vehicles/{vehicle_id}/rc",
+            resource_type=resource_type,
+            transformation=[
+                {"quality": "auto", "fetch_format": "auto", "width": 1200, "crop": "limit"}
+            ] if resource_type == "image" else None
+        )
+        
+        # Update vehicle with RC document URL and file type
+        await db.vehicles.update_one(
+            {"id": vehicle_id},
+            {"$set": {
+                "rc_document_url": result["secure_url"],
+                "rc_document_public_id": result["public_id"],
+                "rc_document_file_type": file_extension if file_extension else 'bin',
+                "rc_document_uploaded_at": datetime.now(timezone.utc).isoformat(),
+                "rc_document_uploaded_by": current_user["user_id"]
+            }}
+        )
+        
+        return {
+            "success": True,
+            "url": result["secure_url"],
+            "public_id": result["public_id"],
+            "file_type": file_extension,
+            "message": "RC document uploaded successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"RC upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/vehicles/{vehicle_id}/delete-rc")
+async def delete_rc_document(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete RC document for a vehicle"""
+    try:
+        vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        public_id = vehicle.get("rc_document_public_id")
+        if public_id:
+            # Delete from Cloudinary
+            cloudinary.uploader.destroy(public_id)
+        
+        # Remove RC document fields from vehicle
+        await db.vehicles.update_one(
+            {"id": vehicle_id},
+            {"$unset": {
+                "rc_document_url": "",
+                "rc_document_public_id": "",
+                "rc_document_uploaded_at": "",
+                "rc_document_uploaded_by": ""
+            }}
+        )
+        
+        return {"success": True, "message": "RC document deleted successfully"}
+        
+    except Exception as e:
+        logger.error(f"RC delete error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/vehicles/{vehicle_id}/upload-document/{document_id}")
+async def upload_document_file(
+    vehicle_id: str,
+    document_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Upload file for a specific document (Insurance/PUC)"""
+    try:
+        # Find the document
+        document = await db.vehicle_documents.find_one({
+            "id": document_id,
+            "vehicle_id": vehicle_id,
+            "is_deleted": False
+        })
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Get file extension from filename
+        file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
+        
+        # Determine resource type based on file extension
+        if file_extension in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            resource_type = "image"
+        else:
+            resource_type = "raw"
+        
+        # Upload to Cloudinary
+        folder = f"vehicles/{vehicle_id}/{document['document_type'].lower()}"
+        
+        result = cloudinary.uploader.upload(
+            file.file,
+            folder=folder,
+            resource_type=resource_type,
+            transformation=[
+                {"quality": "auto", "fetch_format": "auto", "width": 1200, "crop": "limit"}
+            ] if resource_type == "image" else None
+        )
+        
+        # Update document with file URL and file type
+        await db.vehicle_documents.update_one(
+            {"id": document_id},
+            {"$set": {
+                "file_url": result["secure_url"],
+                "file_public_id": result["public_id"],
+                "file_type": file_extension,
+                "file_uploaded_at": datetime.now(timezone.utc).isoformat(),
+                "file_uploaded_by": current_user["user_id"]
+            }}
+        )
+        
+        return {
+            "success": True,
+            "url": result["secure_url"],
+            "public_id": result["public_id"],
+            "file_type": file_extension,
+            "message": f"{document['document_type']} document uploaded successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Document upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/vehicles/{vehicle_id}/delete-document/{document_id}")
+async def delete_document_file(
+    vehicle_id: str,
+    document_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete file for a specific document"""
+    try:
+        document = await db.vehicle_documents.find_one({
+            "id": document_id,
+            "vehicle_id": vehicle_id,
+            "is_deleted": False
+        })
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        public_id = document.get("file_public_id")
+        if public_id:
+            # Delete from Cloudinary
+            cloudinary.uploader.destroy(public_id)
+        
+        # Remove file fields from document
+        await db.vehicle_documents.update_one(
+            {"id": document_id},
+            {"$unset": {
+                "file_url": "",
+                "file_public_id": "",
+                "file_uploaded_at": "",
+                "file_uploaded_by": ""
+            }}
+        )
+        
+        return {"success": True, "message": "Document file deleted successfully"}
+        
+    except Exception as e:
+        logger.error(f"Document delete error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/vehicles/{vehicle_id}/download-document/{document_id}")
+async def download_document_file(
+    vehicle_id: str,
+    document_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Download document file directly"""
+    try:
+        # Find the document
+        document = await db.vehicle_documents.find_one({
+            "id": document_id,
+            "vehicle_id": vehicle_id,
+            "is_deleted": False
+        })
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        file_url = document.get("file_url")
+        if not file_url:
+            raise HTTPException(status_code=404, detail="No file uploaded for this document")
+        
+        # Get vehicle registration number
+        vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "registration_number": 1})
+        registration = vehicle.get("registration_number", "unknown").replace("/", "_").replace(" ", "_").replace("-", "_")
+        
+        doc_type = document.get("document_type", "document").lower()
+        
+        logger.info(f"Downloading {doc_type} document from: {file_url}")
+        
+        # Fetch the file from Cloudinary
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(file_url)
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch file from Cloudinary: {response.status_code}")
+                raise HTTPException(status_code=404, detail="File not found on Cloudinary")
+            
+            # Get the stored file type
+            file_type = document.get("file_type", "")
+            
+            # If stored file type exists, use it
+            if file_type:
+                if file_type in ['pdf']:
+                    content_type = 'application/pdf'
+                    filename = f"{registration}_{doc_type}.pdf"
+                elif file_type in ['jpg', 'jpeg']:
+                    content_type = 'image/jpeg'
+                    filename = f"{registration}_{doc_type}.jpg"
+                elif file_type in ['png']:
+                    content_type = 'image/png'
+                    filename = f"{registration}_{doc_type}.png"
+                elif file_type in ['gif']:
+                    content_type = 'image/gif'
+                    filename = f"{registration}_{doc_type}.gif"
+                else:
+                    content_type = 'application/octet-stream'
+                    filename = f"{registration}_{doc_type}.{file_type}"
+            else:
+                # Fallback: determine from content type
+                content_type = response.headers.get('content-type', 'application/octet-stream')
+                
+                if 'pdf' in content_type:
+                    filename = f"{registration}_{doc_type}.pdf"
+                    content_type = 'application/pdf'
+                elif 'jpeg' in content_type or 'jpg' in content_type:
+                    filename = f"{registration}_{doc_type}.jpg"
+                    content_type = 'image/jpeg'
+                elif 'png' in content_type:
+                    filename = f"{registration}_{doc_type}.png"
+                    content_type = 'image/png'
+                elif 'gif' in content_type:
+                    filename = f"{registration}_{doc_type}.gif"
+                    content_type = 'image/gif'
+                else:
+                    # Try to get extension from URL
+                    url_parts = file_url.split('.')
+                    ext = url_parts[-1].split('?')[0] if len(url_parts) > 1 else 'bin'
+                    filename = f"{registration}_{doc_type}.{ext}"
+            
+            logger.info(f"Serving file with content-type: {content_type}, filename: {filename}")
+            
+            # Return the file directly
+            return StreamingResponse(
+                iter([response.content]),
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Length": str(len(response.content)),
+                    "Cache-Control": "no-cache",
+                    "Access-Control-Expose-Headers": "Content-Disposition"
+                }
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Document download error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
+    
+@api_router.get("/vehicles/{vehicle_id}/download-rc")
+async def download_rc_document(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Download RC document file directly"""
+    try:
+        # Find the vehicle
+        vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        rc_url = vehicle.get("rc_document_url")
+        if not rc_url:
+            raise HTTPException(status_code=404, detail="No RC document uploaded")
+        
+        logger.info(f"Downloading RC document from: {rc_url}")
+        
+        # Fetch the file from Cloudinary
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(rc_url)
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch file from Cloudinary: {response.status_code}")
+                raise HTTPException(status_code=404, detail="File not found on Cloudinary")
+            
+            # Get the stored file type or determine from content type
+            file_type = vehicle.get("rc_document_file_type", "")
+            
+            # If stored file type exists, use it
+            if file_type:
+                if file_type in ['pdf']:
+                    content_type = 'application/pdf'
+                    filename = f"{vehicle['registration_number'].replace('/', '_').replace(' ', '_').replace('-', '_')}_RC.pdf"
+                elif file_type in ['jpg', 'jpeg']:
+                    content_type = 'image/jpeg'
+                    filename = f"{vehicle['registration_number'].replace('/', '_').replace(' ', '_').replace('-', '_')}_RC.jpg"
+                elif file_type in ['png']:
+                    content_type = 'image/png'
+                    filename = f"{vehicle['registration_number'].replace('/', '_').replace(' ', '_').replace('-', '_')}_RC.png"
+                elif file_type in ['gif']:
+                    content_type = 'image/gif'
+                    filename = f"{vehicle['registration_number'].replace('/', '_').replace(' ', '_').replace('-', '_')}_RC.gif"
+                else:
+                    content_type = 'application/octet-stream'
+                    filename = f"{vehicle['registration_number'].replace('/', '_').replace(' ', '_').replace('-', '_')}_RC.{file_type}"
+            else:
+                # Fallback: determine from content type
+                content_type = response.headers.get('content-type', 'application/octet-stream')
+                registration = vehicle["registration_number"].replace("/", "_").replace(" ", "_").replace("-", "_")
+                
+                if 'pdf' in content_type:
+                    filename = f"{registration}_RC.pdf"
+                    content_type = 'application/pdf'
+                elif 'jpeg' in content_type or 'jpg' in content_type:
+                    filename = f"{registration}_RC.jpg"
+                    content_type = 'image/jpeg'
+                elif 'png' in content_type:
+                    filename = f"{registration}_RC.png"
+                    content_type = 'image/png'
+                elif 'gif' in content_type:
+                    filename = f"{registration}_RC.gif"
+                    content_type = 'image/gif'
+                else:
+                    # Try to get extension from URL
+                    url_parts = rc_url.split('.')
+                    ext = url_parts[-1].split('?')[0] if len(url_parts) > 1 else 'bin'
+                    filename = f"{registration}_RC.{ext}"
+            
+            logger.info(f"Serving file with content-type: {content_type}, filename: {filename}")
+            
+            # Return the file directly
+            return StreamingResponse(
+                iter([response.content]),
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Length": str(len(response.content)),
+                    "Cache-Control": "no-cache",
+                    "Access-Control-Expose-Headers": "Content-Disposition"
+                }
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"RC download error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
 @api_router.get("/export/vehicle-documents/excel")
 async def export_vehicle_documents_excel(
