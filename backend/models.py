@@ -339,6 +339,7 @@ class VehicleBase(BaseModel):
     rc_document_file_type: Optional[str] = None  # Add this
     rc_document_uploaded_at: Optional[datetime] = None
     rc_document_uploaded_by: Optional[str] = None
+    sold: Optional[bool] = Field(False, description="Whether the vehicle is sold")
 
 class VehicleCreate(VehicleBase):
     pass

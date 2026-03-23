@@ -2147,6 +2147,32 @@ async def download_rc_document(
         logger.error(f"RC download error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
+@api_router.patch("/vehicles/{vehicle_id}/sold-status")
+async def update_vehicle_sold_status(
+    vehicle_id: str,
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update the sold status of a vehicle"""
+    sold_status = data.get("sold", False)
+    
+    result = await db.vehicles.update_one(
+        {"id": vehicle_id, "is_deleted": False},
+        {"$set": {
+            "sold": sold_status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": current_user["user_id"]
+        }}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    return {
+        "success": True,
+        "message": f"Vehicle sold status updated to {sold_status}",
+        "sold": sold_status
+    }
 # Add this PUT endpoint after your GET /vehicle-documents endpoint and before the history endpoint
 
 @api_router.put("/vehicle-documents/{document_id}")

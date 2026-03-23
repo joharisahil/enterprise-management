@@ -922,7 +922,7 @@ const VehicleForm = ({ formData, setFormData, onSubmit, submitText, taxType, set
 
 // ==================== VEHICLE CARD COMPONENT ====================
 
-const VehicleCard = ({ vehicle, onView, onEdit, onDelete }) => {
+const VehicleCard = ({ vehicle, onView, onEdit, onDelete, onSoldToggle, updatingStatus }) => {
   const getDaysLeft = (expiryDate) => {
     if (!expiryDate) return null;
     const today = new Date();
@@ -949,10 +949,18 @@ const VehicleCard = ({ vehicle, onView, onEdit, onDelete }) => {
       whileHover={{ y: -4 }}
       transition={{ duration: 0.2 }}
     >
-      <Card className="group relative border-slate-200 hover:border-emerald-200 hover:shadow-lg transition-all duration-300 overflow-hidden">
+      <Card className={`group relative border-slate-200 hover:border-emerald-200 hover:shadow-lg transition-all duration-300 overflow-hidden ${vehicle.sold ? 'opacity-75 bg-slate-50' : ''}`}>
         {/* Status Indicator Bar */}
-        <div className={`absolute top-0 left-0 w-1 h-full ${vehicle.file_status ? 'bg-emerald-500' : 'bg-amber-500'
-          }`} />
+        <div className={`absolute top-0 left-0 w-1 h-full ${vehicle.file_status ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+        
+        {/* Sold Overlay Badge */}
+        {vehicle.sold && (
+          <div className="absolute top-4 right-4 z-10">
+            <Badge className="bg-slate-600 text-white px-3 py-1 text-sm font-semibold shadow-lg">
+              SOLD
+            </Badge>
+          </div>
+        )}
 
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between">
@@ -992,6 +1000,7 @@ const VehicleCard = ({ vehicle, onView, onEdit, onDelete }) => {
             <Badge variant="outline">{vehicle.type}</Badge>
             <Badge variant="outline">{vehicle.fuel_type}</Badge>
             {vehicle.year && <Badge variant="outline">{vehicle.year}</Badge>}
+            {vehicle.sold && <Badge className="bg-slate-600 text-white">Sold</Badge>}
           </div>
 
           {vehicle.owner_name && (
@@ -1072,6 +1081,43 @@ const VehicleCard = ({ vehicle, onView, onEdit, onDelete }) => {
               <Edit size={14} className="mr-1" />
               Edit
             </Button>
+          </div>
+
+          {/* Sold Toggle Button */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <span className="text-xs text-slate-500">Vehicle Status</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant={vehicle.sold ? "destructive" : "outline"}
+                    className={`h-7 px-3 ${vehicle.sold ? 'bg-rose-600 hover:bg-rose-700' : 'border-emerald-600 text-emerald-700 hover:bg-emerald-50'}`}
+                    onClick={() => onSoldToggle(vehicle.id, vehicle.sold)}
+                    disabled={updatingStatus}
+                  >
+                    {updatingStatus ? (
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-1"></div>
+                    ) : (
+                      vehicle.sold ? (
+                        <>
+                          <XCircle size={12} className="mr-1" />
+                          Mark Active
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle size={12} className="mr-1" />
+                          Mark Sold
+                        </>
+                      )
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{vehicle.sold ? 'Mark vehicle as active' : 'Mark vehicle as sold'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </CardContent>
       </Card>
@@ -2487,6 +2533,8 @@ export const VehiclesPage = () => {
   const [fetchChallansDialogOpen, setFetchChallansDialogOpen] = useState(false);
   const [fetchingChallans, setFetchingChallans] = useState(false);
 
+  const [updatingSoldStatus, setUpdatingSoldStatus] = useState({});
+
   const [passForm, setPassForm] = useState({
     pass_name: "",
     trips_allowed: "",
@@ -2536,6 +2584,32 @@ export const VehiclesPage = () => {
       throw error;
     }
   };
+
+const handleSoldStatusToggle = async (vehicleId, currentStatus) => {
+  try {
+    setUpdatingSoldStatus(prev => ({ ...prev, [vehicleId]: true }));
+    
+    const response = await api.patch(`/vehicles/${vehicleId}/sold-status`, {
+      sold: !currentStatus
+    });
+    
+    toast.success(`Vehicle ${!currentStatus ? 'marked as sold' : 'marked as active'}`);
+    
+    // Update the vehicle in the local state
+    setVehicles(prevVehicles =>
+      prevVehicles.map(vehicle =>
+        vehicle.id === vehicleId
+          ? { ...vehicle, sold: !currentStatus }
+          : vehicle
+      )
+    );
+  } catch (error) {
+    console.error("Error updating sold status:", error);
+    toast.error(error.response?.data?.detail || 'Failed to update sold status');
+  } finally {
+    setUpdatingSoldStatus(prev => ({ ...prev, [vehicleId]: false }));
+  }
+};
 
   const handleView = async (vehicle) => {
     setVehicleReport(null);
@@ -3246,6 +3320,8 @@ export const VehiclesPage = () => {
               onView={handleView}
               onEdit={handleEdit}
               onDelete={handleDeleteClick}
+                    onSoldToggle={handleSoldStatusToggle}
+      updatingStatus={updatingSoldStatus[vehicle.id]}
             />
           ))}
         </div>
@@ -3272,80 +3348,100 @@ export const VehiclesPage = () => {
                     Math.ceil((new Date(vehicle.puc_expiry) - new Date()) / (1000 * 60 * 60 * 24)) : null;
 
                   return (
-                    <TableRow key={vehicle.id}>
-                      <TableCell className="font-mono font-medium">{vehicle.registration_number}</TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{vehicle.brand} {vehicle.model}</p>
-                          <p className="text-xs text-slate-500">{vehicle.year || 'N/A'}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="text-sm">{vehicle.owner_name || 'N/A'}</p>
-                          <p className="text-xs text-slate-500">{vehicle.site_name || 'No site'}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {vehicle.insurance_expiry ? (
-                          <Badge className={insuranceDays <= 0 ? 'bg-rose-100 text-rose-700' :
-                            insuranceDays <= 7 ? 'bg-orange-100 text-orange-700' :
-                              insuranceDays <= 30 ? 'bg-amber-100 text-amber-700' :
-                                'bg-emerald-100 text-emerald-700'}>
-                            {insuranceDays > 0 ? `${insuranceDays}d` : 'Expired'}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">N/A</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {vehicle.puc_expiry ? (
-                          <Badge className={pucDays <= 0 ? 'bg-rose-100 text-rose-700' :
-                            pucDays <= 7 ? 'bg-orange-100 text-orange-700' :
-                              pucDays <= 30 ? 'bg-amber-100 text-amber-700' :
-                                'bg-emerald-100 text-emerald-700'}>
-                            {pucDays > 0 ? `${pucDays}d` : 'Expired'}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">N/A</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {vehicle.file_status ? (
-                          <Badge className="bg-emerald-100 text-emerald-700">Complete</Badge>
-                        ) : (
-                          <Badge className="bg-amber-100 text-amber-700">Incomplete</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0"
-                            onClick={() => handleView(vehicle)}
-                          >
-                            <Eye size={14} />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0"
-                            onClick={() => handleEdit(vehicle)}
-                          >
-                            <Edit size={14} />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-rose-600"
-                            onClick={() => handleDeleteClick(vehicle)}
-                          >
-                            <Trash2 size={14} />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                    <TableRow key={vehicle.id} className={vehicle.sold ? 'bg-slate-50' : ''}>
+  <TableCell className="font-mono font-medium">{vehicle.registration_number}</TableCell>
+  <TableCell>
+    <div>
+      <p className="font-medium">{vehicle.brand} {vehicle.model}</p>
+      <p className="text-xs text-slate-500">{vehicle.year || 'N/A'}</p>
+    </div>
+  </TableCell>
+  <TableCell>
+    <div>
+      <p className="text-sm">{vehicle.owner_name || 'N/A'}</p>
+      <p className="text-xs text-slate-500">{vehicle.site_name || 'No site'}</p>
+    </div>
+  </TableCell>
+  <TableCell>
+    {vehicle.insurance_expiry ? (
+      <Badge className={insuranceDays <= 0 ? 'bg-rose-100 text-rose-700' :
+        insuranceDays <= 7 ? 'bg-orange-100 text-orange-700' :
+          insuranceDays <= 30 ? 'bg-amber-100 text-amber-700' :
+            'bg-emerald-100 text-emerald-700'}>
+        {insuranceDays > 0 ? `${insuranceDays}d` : 'Expired'}
+      </Badge>
+    ) : (
+      <Badge variant="outline">N/A</Badge>
+    )}
+  </TableCell>
+  <TableCell>
+    {vehicle.puc_expiry ? (
+      <Badge className={pucDays <= 0 ? 'bg-rose-100 text-rose-700' :
+        pucDays <= 7 ? 'bg-orange-100 text-orange-700' :
+          pucDays <= 30 ? 'bg-amber-100 text-amber-700' :
+            'bg-emerald-100 text-emerald-700'}>
+        {pucDays > 0 ? `${pucDays}d` : 'Expired'}
+      </Badge>
+    ) : (
+      <Badge variant="outline">N/A</Badge>
+    )}
+  </TableCell>
+  <TableCell>
+    <div className="flex items-center gap-2">
+      {vehicle.file_status ? (
+        <Badge className="bg-emerald-100 text-emerald-700">Complete</Badge>
+      ) : (
+        <Badge className="bg-amber-100 text-amber-700">Incomplete</Badge>
+      )}
+      {vehicle.sold && (
+        <Badge className="bg-slate-600 text-white">Sold</Badge>
+      )}
+    </div>
+  </TableCell>
+  <TableCell className="text-right">
+    <div className="flex justify-end gap-2">
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-8 w-8 p-0"
+        onClick={() => handleView(vehicle)}
+      >
+        <Eye size={14} />
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-8 w-8 p-0"
+        onClick={() => handleEdit(vehicle)}
+      >
+        <Edit size={14} />
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-8 w-8 p-0 text-rose-600"
+        onClick={() => handleDeleteClick(vehicle)}
+      >
+        <Trash2 size={14} />
+      </Button>
+      <Button
+        size="sm"
+        variant={vehicle.sold ? "destructive" : "outline"}
+        className={`h-8 px-2 ${vehicle.sold ? 'bg-rose-600 hover:bg-rose-700' : 'border-emerald-600 text-emerald-700 hover:bg-emerald-50'}`}
+        onClick={() => handleSoldStatusToggle(vehicle.id, vehicle.sold)}
+        disabled={updatingSoldStatus[vehicle.id]}
+      >
+        {updatingSoldStatus[vehicle.id] ? (
+          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+        ) : vehicle.sold ? (
+          <XCircle size={12} />
+        ) : (
+          <CheckCircle size={12} />
+        )}
+      </Button>
+    </div>
+  </TableCell>
+</TableRow>
                   );
                 })}
               </TableBody>
