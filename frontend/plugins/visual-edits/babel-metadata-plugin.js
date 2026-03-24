@@ -90,7 +90,7 @@ function parseFileAst(absPath, parser) {
     const code = fs.readFileSync(absPath, "utf8");
     const ast = parser.parse(code, {
       sourceType: "module",
-      plugins: ["jsx", "typescript"],
+      // plugins: ["jsx", "typescript"],
     });
     FILE_AST_CACHE.set(absPath, { ast, mtimeMs: stat.mtimeMs });
     return ast;
