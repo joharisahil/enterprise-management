@@ -728,7 +728,7 @@ async def export_vehicles_csv(current_user: dict = Depends(get_current_user)):
             elif h == "Date of Registration":
                 raw_value = clean_date(v.get("date_of_registration"))
             elif h == "Tax Validity":
-                raw_value = v.get("tax_upto", "")
+                raw_value = clean_date(v.get("tax_upto"))
             elif h == "Insurance Expiry":
                 raw_value = clean_date(v.get("insurance_expiry"))
             elif h == "Insurance Company":
