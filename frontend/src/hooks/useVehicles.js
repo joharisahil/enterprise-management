@@ -71,37 +71,37 @@ export const useVehicles = () => {
     }
   }, []);
 
-const updateSoldStatus = useCallback(async (vehicleId, currentStatus) => {
-  console.log('🔄 [useVehicles] updateSoldStatus called:', { vehicleId, currentStatus });
-  try {
-    const response = await api.patch(`/vehicles/${vehicleId}/sold-status`, {
-      sold: !currentStatus,
-    });
-    
-    toast.success(`Vehicle ${!currentStatus ? 'marked as sold' : 'marked as active'}`);
-    
-    // Update the vehicles state
-    setVehicles(prevVehicles =>
-      prevVehicles.map(vehicle =>
-        vehicle.id === vehicleId 
-          ? { ...vehicle, sold: !currentStatus }
-          : vehicle
-      )
-    );
-    
-    // If this was the selected vehicle, update it too
-    if (selectedVehicle?.id === vehicleId) {
-      setSelectedVehicle(prev => ({ ...prev, sold: !currentStatus }));
+  const updateSoldStatus = useCallback(async (vehicleId, currentStatus) => {
+    console.log('🔄 [useVehicles] updateSoldStatus called:', { vehicleId, currentStatus });
+    try {
+      const response = await api.patch(`/vehicles/${vehicleId}/sold-status`, {
+        sold: !currentStatus,
+      });
+      
+      toast.success(`Vehicle ${!currentStatus ? 'marked as sold' : 'marked as active'}`);
+      
+      // Update the vehicles state
+      setVehicles(prevVehicles =>
+        prevVehicles.map(vehicle =>
+          vehicle.id === vehicleId 
+            ? { ...vehicle, sold: !currentStatus }
+            : vehicle
+        )
+      );
+      
+      // If this was the selected vehicle, update it too
+      if (selectedVehicle?.id === vehicleId) {
+        setSelectedVehicle(prev => ({ ...prev, sold: !currentStatus }));
+      }
+      
+      console.log('✅ [useVehicles] Sold status updated');
+      return response.data;
+    } catch (error) {
+      console.error('❌ [useVehicles] Error updating sold status:', error);
+      toast.error(error.response?.data?.detail || 'Failed to update sold status');
+      throw error;
     }
-    
-    console.log('✅ [useVehicles] Sold status updated');
-    return response.data;
-  } catch (error) {
-    console.error('❌ [useVehicles] Error updating sold status:', error);
-    toast.error(error.response?.data?.detail || 'Failed to update sold status');
-    throw error;
-  }
-}, [selectedVehicle]);
+  }, [selectedVehicle]);
 
   const deleteVehicle = useCallback(async (vehicleId) => {
     console.log('🗑️ [useVehicles] deleteVehicle called for:', vehicleId);

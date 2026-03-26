@@ -14,6 +14,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Truck,
   Edit,
   Trash2,
@@ -22,12 +32,13 @@ import {
   Eye,
   User,
   MapPin,
-  CheckCircle,
   XCircle,
   MoreVertical,
   Shield,
   FileText,
   AlertTriangle,
+  Calendar,
+  Receipt,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -38,13 +49,13 @@ const getDaysLeft = (expiryDate) => {
   return Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
 };
 
-const getStatusColor = (days) => {
-  if (days === null) return 'bg-slate-400';
-  if (days <= 0) return 'bg-rose-500';
-  if (days <= 7) return 'bg-orange-500';
-  if (days <= 15) return 'bg-amber-500';
-  if (days <= 30) return 'bg-yellow-500';
-  return 'bg-emerald-500';
+const getStatusBadge = (daysLeft) => {
+  if (daysLeft === null) return <Badge variant="outline" className="text-xs">Not added</Badge>;
+  if (daysLeft <= 0) return <Badge className="bg-rose-500 text-white text-xs">Expired</Badge>;
+  if (daysLeft <= 7) return <Badge className="bg-orange-500 text-white text-xs">Critical ({daysLeft}d)</Badge>;
+  if (daysLeft <= 15) return <Badge className="bg-amber-500 text-white text-xs">Warning ({daysLeft}d)</Badge>;
+  if (daysLeft <= 30) return <Badge className="bg-yellow-500 text-white text-xs">Soon ({daysLeft}d)</Badge>;
+  return <Badge className="bg-emerald-500 text-white text-xs">Valid ({daysLeft}d)</Badge>;
 };
 
 export const VehicleCard = ({
@@ -57,9 +68,22 @@ export const VehicleCard = ({
 }) => {
   const insuranceDays = getDaysLeft(vehicle.insurance_expiry);
   const pucDays = getDaysLeft(vehicle.puc_expiry);
+  const fitnessDays = getDaysLeft(vehicle.fit_up_to);
+  
+  // Handle tax specially - it could be "LIFETIME" string or date
+  let taxDays = null;
+  let isLifetimeTax = false;
+  if (vehicle.tax_upto) {
+    if (vehicle.tax_upto === 'LIFETIME') {
+      isLifetimeTax = true;
+    } else {
+      taxDays = getDaysLeft(vehicle.tax_upto);
+    }
+  }
 
   const [showSoldDialog, setShowSoldDialog] = useState(false);
   const [soldVehicle, setSoldVehicle] = useState(null);
+  const [showUnsoldDialog, setShowUnsoldDialog] = useState(false);
 
   const handleSoldClick = () => {
     setSoldVehicle(vehicle);
@@ -67,17 +91,23 @@ export const VehicleCard = ({
   };
 
   const handleSoldSuccess = () => {
-    // Refresh the vehicle data by calling onSoldToggle with current status
     if (onSoldToggle) {
       onSoldToggle(vehicle.id, vehicle.sold);
     }
   };
 
   const handleMarkAsUnsold = () => {
-    if (window.confirm('Mark this vehicle as unsold? This will keep the agreement details.')) {
-      onSoldToggle(vehicle.id, vehicle.sold);
-    }
+    setShowUnsoldDialog(true);
   };
+
+  const confirmUnsold = async () => {
+    if (onSoldToggle) {
+      await onSoldToggle(vehicle.id, vehicle.sold);
+    }
+    setShowUnsoldDialog(false);
+  };
+
+  if (!vehicle) return null;
 
   return (
     <>
@@ -135,7 +165,6 @@ export const VehicleCard = ({
                     <Edit size={14} className="mr-2" /> Edit
                   </DropdownMenuItem>
                   
-                  {/* ADD THIS SECTION - Mark as Unsold option in dropdown */}
                   {vehicle.sold && (
                     <DropdownMenuItem 
                       onClick={handleMarkAsUnsold}
@@ -179,28 +208,39 @@ export const VehicleCard = ({
             )}
 
             <div className="space-y-2 pt-2">
+              {/* Insurance */}
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 flex items-center gap-1">
                   <Shield size={12} /> Insurance
                 </span>
-                {vehicle.insurance_expiry ? (
-                  <Badge className={`${getStatusColor(insuranceDays)} text-white`}>
-                    {insuranceDays > 0 ? `${insuranceDays}d` : 'Expired'}
-                  </Badge>
-                ) : (
-                  <span className="text-slate-400">Not added</span>
-                )}
+                {getStatusBadge(insuranceDays)}
               </div>
+              
+              {/* PUC */}
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 flex items-center gap-1">
                   <FileText size={12} /> PUC
                 </span>
-                {vehicle.puc_expiry ? (
-                  <Badge className={`${getStatusColor(pucDays)} text-white`}>
-                    {pucDays > 0 ? `${pucDays}d` : 'Expired'}
-                  </Badge>
+                {getStatusBadge(pucDays)}
+              </div>
+              
+              {/* Registration/Fitness */}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 flex items-center gap-1">
+                  <Calendar size={12} /> Registration/Fitness
+                </span>
+                {getStatusBadge(fitnessDays)}
+              </div>
+              
+              {/* Tax */}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 flex items-center gap-1">
+                  <Receipt size={12} /> Tax
+                </span>
+                {isLifetimeTax ? (
+                  <Badge className="bg-emerald-500 text-white text-xs">Lifetime</Badge>
                 ) : (
-                  <span className="text-slate-400">Not added</span>
+                  getStatusBadge(taxDays)
                 )}
               </div>
             </div>
@@ -211,7 +251,7 @@ export const VehicleCard = ({
                 <div>
                   <p className="text-xs text-slate-500">Avg</p>
                   <p className="text-sm font-semibold">
-                    {vehicle.average_kmpl || 'N/A'} km/l
+                    {vehicle.average_kmpl ? `${vehicle.average_kmpl} km/l` : 'N/A'}
                   </p>
                 </div>
               </div>
@@ -220,7 +260,7 @@ export const VehicleCard = ({
                 <div>
                   <p className="text-xs text-slate-500">Tank</p>
                   <p className="text-sm font-semibold">
-                    {vehicle.tank_capacity_liters || 'N/A'}L
+                    {vehicle.tank_capacity_liters ? `${vehicle.tank_capacity_liters}L` : 'N/A'}
                   </p>
                 </div>
               </div>
@@ -277,7 +317,7 @@ export const VehicleCard = ({
                           size="sm"
                           variant="outline"
                           className="h-7 px-3 border-rose-600 text-rose-700 hover:bg-rose-50"
-                          onClick={() => onSoldToggle(vehicle.id, vehicle.sold)}
+                          onClick={handleMarkAsUnsold}
                           disabled={updatingStatus}
                         >
                           {updatingStatus ? (
@@ -313,6 +353,51 @@ export const VehicleCard = ({
         onOpenChange={setShowSoldDialog}
         onSuccess={handleSoldSuccess}
       />
+
+      {/* Unsold Confirmation Dialog */}
+      <AlertDialog open={showUnsoldDialog} onOpenChange={setShowUnsoldDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle size={20} />
+              Mark Vehicle as Unsold
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>Are you sure you want to mark this vehicle as unsold?</p>
+              {vehicle && (
+                <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <p className="font-mono font-medium">
+                    {vehicle.registration_number}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    {vehicle.brand} {vehicle.model}
+                  </p>
+                </div>
+              )}
+              <div className="mt-2 text-sm">
+                <p className="font-medium text-slate-700">This will:</p>
+                <ul className="list-disc pl-5 mt-1 space-y-1 text-slate-600">
+                  <li>Remove the "Sold" status from this vehicle</li>
+                  <li>Keep all agreement details for reference</li>
+                  <li>Make the vehicle available in active fleet</li>
+                </ul>
+              </div>
+              <p className="text-sm text-amber-600 font-medium mt-2">
+                You can always mark it as sold again later.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmUnsold}
+              className="bg-amber-600 hover:bg-amber-700 focus:ring-amber-600"
+            >
+              Yes, Mark as Unsold
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
