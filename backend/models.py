@@ -325,6 +325,8 @@ class VehicleBase(BaseModel):
     fastag_password: Optional[str] = None
     fastag_sold: Optional[bool] = False
     fastag_sold_date: Optional[datetime] = None
+    fastag_status: Optional[str] = None  # Active, Inactive, Suspended
+    fastag_last_synced: Optional[datetime] = None
     insurance_expiry: Optional[datetime] = None
     puc_expiry: Optional[datetime] = None
     fit_up_to: Optional[datetime] = None
@@ -347,6 +349,24 @@ class VehicleCreate(VehicleBase):
 class Vehicle(VehicleBase, TimestampModel):
     model_config = ConfigDict(extra="ignore")
     id: str
+
+# Sold Vehicle Agreement Model
+class SoldVehicleAgreement(BaseModel):
+    """Track sold vehicle agreements"""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    vehicle_id: str
+    vehicle_registration: str
+    buyer_name: Optional[str] = None
+    buyer_phone: Optional[str] = None
+    agreement_date: datetime
+    agreement_url: Optional[str] = None
+    agreement_public_id: Optional[str] = None
+    agreement_file_type: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_by: Optional[str] = None
+    is_deleted: bool = False    
 
 # Vehicle Document Models (Versioned)
 class VehicleDocumentBase(BaseModel):

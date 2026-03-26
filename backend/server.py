@@ -25,23 +25,22 @@ from surepass import SurepassService
 import json
 
 # Helper function to convert datetime objects to readable format
-# Helper function to convert datetime objects to readable format
+
 def serialize_doc(doc):
     """Convert datetime objects in a dict to readable format for JSON serialization"""
     if isinstance(doc, dict):
-        # Remove MongoDB's _id field if present
         result = {}
         for k, v in doc.items():
             if k == '_id':
-                # Skip ObjectId entirely or convert to string
                 continue
             if isinstance(v, datetime):
-                # Format as YYYY-MM-DD for display
+                # Format as YYYY-MM-DD without time component
                 result[k] = v.strftime('%Y-%m-%d')
             elif isinstance(v, dict):
                 result[k] = serialize_doc(v)
+            elif isinstance(v, list):
+                result[k] = [serialize_doc(item) for item in v]
             elif hasattr(v, '__dict__') or (hasattr(v, 'items') and callable(v.items)):
-                # Handle other objects that might cause issues
                 try:
                     result[k] = str(v)
                 except:
@@ -51,8 +50,9 @@ def serialize_doc(doc):
         return result
     elif isinstance(doc, datetime):
         return doc.strftime('%Y-%m-%d')
+    elif isinstance(doc, list):
+        return [serialize_doc(item) for item in doc]
     elif hasattr(doc, '__dict__') or (hasattr(doc, 'items') and callable(doc.items)):
-        # Handle other objects
         try:
             return str(doc)
         except:
@@ -649,35 +649,128 @@ async def get_vehicle_full_report(vehicle_id: str, current_user: dict = Depends(
 
 @api_router.get("/vehicles/export/csv")
 async def export_vehicles_csv(current_user: dict = Depends(get_current_user)):
-    """Export all vehicles as CSV data"""
+    """Export all vehicles as CSV with comprehensive fields"""
     vehicles = await db.vehicles.find({"is_deleted": False}, {"_id": 0}).to_list(1000)
     
-    # CSV headers
+    # Comprehensive CSV headers with user-friendly names
     headers = [
-        "registration_number", "type", "brand", "model", "year", "chassis_number",
-        "engine_number", "color", "fuel_type", "average_kmpl", "tank_capacity_liters",
-        "seating_capacity", "owner_name", "file_status", "site_name",
-        "date_of_registration", "tax_upto", "remark"
+        "Registration Number", "Vehicle Type", "Brand", "Model", "Year", 
+        "Chassis Number", "Engine Number", "Color", "Fuel Type", 
+        "Average Mileage (km/l)", "Tank Capacity (L)", "Seating Capacity", 
+        "Owner Name", "File Status", "Site Name", "Date of Registration", 
+        "Tax Validity", "Insurance Expiry", "Insurance Company", 
+        "Insurance Policy Number", "PUC Expiry", "PUCC Number", 
+        "Fitness Upto", "Registered At", "Source", "Last Synced", 
+        "FASTag Company", "FASTag Balance", "FASTag Status", "Remark", 
+        "Sold Status", "Sold Date"
     ]
     
-    # Build CSV data
-    csv_rows = [",".join(headers)]
+    # Helper function to clean date strings
+    def clean_date(value):
+        if not value:
+            return ""
+        # If it's already a string, remove the time part if it exists
+        if isinstance(value, str):
+            # Check if it's an ISO date string with time
+            if 'T' in value:
+                # Split at T and take only the date part
+                return value.split('T')[0]
+            # Try to parse as datetime
+            try:
+                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                return dt.strftime('%Y-%m-%d')
+            except:
+                # If parsing fails, return as is
+                return value
+        # If it's a datetime object
+        if isinstance(value, datetime):
+            return value.strftime('%Y-%m-%d')
+        return str(value)
+    
+    # Build CSV rows
+    csv_rows = [",".join(f'"{h}"' for h in headers)]
+    
     for v in vehicles:
         row = []
         for h in headers:
-            val = v.get(h, "")
-            if val is None:
+            # Get the raw value from the vehicle
+            raw_value = None
+            if h == "Registration Number":
+                raw_value = v.get("registration_number", "")
+            elif h == "Vehicle Type":
+                raw_value = v.get("type", "")
+            elif h == "Brand":
+                raw_value = v.get("brand", "")
+            elif h == "Model":
+                raw_value = v.get("model", "")
+            elif h == "Year":
+                raw_value = v.get("year", "")
+            elif h == "Chassis Number":
+                raw_value = v.get("chassis_number", "")
+            elif h == "Engine Number":
+                raw_value = v.get("engine_number", "")
+            elif h == "Color":
+                raw_value = v.get("color", "")
+            elif h == "Fuel Type":
+                raw_value = v.get("fuel_type", "")
+            elif h == "Average Mileage (km/l)":
+                raw_value = v.get("average_kmpl", "")
+            elif h == "Tank Capacity (L)":
+                raw_value = v.get("tank_capacity_liters", "")
+            elif h == "Seating Capacity":
+                raw_value = v.get("seating_capacity", "")
+            elif h == "Owner Name":
+                raw_value = v.get("owner_name", "")
+            elif h == "File Status":
+                raw_value = "Complete" if v.get("file_status") else "Incomplete"
+            elif h == "Site Name":
+                raw_value = v.get("site_name", "")
+            elif h == "Date of Registration":
+                raw_value = clean_date(v.get("date_of_registration"))
+            elif h == "Tax Validity":
+                raw_value = v.get("tax_upto", "")
+            elif h == "Insurance Expiry":
+                raw_value = clean_date(v.get("insurance_expiry"))
+            elif h == "Insurance Company":
+                raw_value = v.get("insurance_company", "")
+            elif h == "Insurance Policy Number":
+                raw_value = v.get("insurance_policy_number", "")
+            elif h == "PUC Expiry":
+                raw_value = clean_date(v.get("puc_expiry"))
+            elif h == "PUCC Number":
+                raw_value = v.get("pucc_number", "")
+            elif h == "Fitness Upto":
+                raw_value = clean_date(v.get("fit_up_to"))
+            elif h == "Registered At":
+                raw_value = v.get("registered_at", "")
+            elif h == "Source":
+                raw_value = v.get("source", "Manual")
+            elif h == "Last Synced":
+                raw_value = clean_date(v.get("last_synced"))
+            elif h == "FASTag Company":
+                raw_value = v.get("fastag_company", "")
+            elif h == "FASTag Balance":
+                balance = v.get("fastag_balance")
+                raw_value = f"₹{balance:,.2f}" if balance else ""
+            elif h == "FASTag Status":
+                raw_value = v.get("fastag_status", "")
+            elif h == "Remark":
+                raw_value = v.get("remark", "")
+            elif h == "Sold Status":
+                raw_value = "Yes" if v.get("sold") else "No"
+            elif h == "Sold Date":
+                raw_value = clean_date(v.get("sold_date"))
+            
+            # Clean the value for CSV
+            if raw_value is None:
                 val = ""
-            elif isinstance(val, bool):
-                val = "Yes" if val else "No"
-            elif h == "date_of_registration" and val:
-                try:
-                    val = val[:10] if isinstance(val, str) else str(val)[:10]
-                except:
-                    val = str(val)
+            elif isinstance(raw_value, bool):
+                val = "Yes" if raw_value else "No"
             else:
-                val = str(val).replace(",", ";").replace("\n", " ")
-            row.append(val)
+                val = str(raw_value).replace('"', '""').replace(",", ";").replace("\n", " ")
+            
+            row.append(f'"{val}"')
+        
         csv_rows.append(",".join(row))
     
     return {
@@ -685,6 +778,175 @@ async def export_vehicles_csv(current_user: dict = Depends(get_current_user)):
         "filename": f"vehicles_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     }
 
+@api_router.get("/vehicles/export/excel")
+async def export_vehicles_excel(current_user: dict = Depends(get_current_user)):
+    """Export all vehicles to a professional Excel file with all fields"""
+    try:
+        vehicles = await db.vehicles.find({"is_deleted": False}, {"_id": 0}).to_list(1000)
+        
+        if not vehicles:
+            raise HTTPException(status_code=404, detail="No vehicles found to export")
+        
+        # Helper function to clean date strings
+        def clean_date(value):
+            if not value:
+                return ""
+            # If it's already a string, remove the time part if it exists
+            if isinstance(value, str):
+                # Check if it's an ISO date string with time
+                if 'T' in value:
+                    # Split at T and take only the date part
+                    return value.split('T')[0]
+                # Try to parse as datetime
+                try:
+                    dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                    return dt.strftime('%Y-%m-%d')
+                except:
+                    # If parsing fails, return as is
+                    return value
+            # If it's a datetime object
+            if isinstance(value, datetime):
+                return value.strftime('%Y-%m-%d')
+            return str(value)
+        
+        # Prepare data for Excel
+        excel_data = []
+        for v in vehicles:
+            excel_data.append({
+                "Registration Number": v.get("registration_number", ""),
+                "Vehicle Type": v.get("type", ""),
+                "Brand": v.get("brand", ""),
+                "Model": v.get("model", ""),
+                "Year": v.get("year", ""),
+                "Chassis Number": v.get("chassis_number", ""),
+                "Engine Number": v.get("engine_number", ""),
+                "Color": v.get("color", ""),
+                "Fuel Type": v.get("fuel_type", ""),
+                "Average Mileage (km/l)": v.get("average_kmpl", ""),
+                "Tank Capacity (L)": v.get("tank_capacity_liters", ""),
+                "Seating Capacity": v.get("seating_capacity", ""),
+                "Owner Name": v.get("owner_name", ""),
+                "File Status": "Complete" if v.get("file_status") else "Incomplete",
+                "Site Name": v.get("site_name", ""),
+                "Date of Registration": clean_date(v.get("date_of_registration")),
+                "Tax Validity": v.get("tax_upto", ""),
+                "Insurance Expiry": clean_date(v.get("insurance_expiry")),
+                "Insurance Company": v.get("insurance_company", ""),
+                "Insurance Policy Number": v.get("insurance_policy_number", ""),
+                "PUC Expiry": clean_date(v.get("puc_expiry")),
+                "PUCC Number": v.get("pucc_number", ""),
+                "Fitness Upto": clean_date(v.get("fit_up_to")),
+                "Registered At": v.get("registered_at", ""),
+                "Source": v.get("source", "Manual"),
+                "Last Synced": clean_date(v.get("last_synced")),
+                "FASTag Company": v.get("fastag_company", ""),
+                "FASTag Balance": v.get("fastag_balance", ""),
+                "FASTag Status": v.get("fastag_status", ""),
+                "Remark": v.get("remark", ""),
+                "Sold Status": "Yes" if v.get("sold") else "No",
+                "Sold Date": clean_date(v.get("sold_date"))
+            })
+        
+        # Create DataFrame
+        df = pd.DataFrame(excel_data)
+        
+        # Create Excel file in memory
+        output = io.BytesIO()
+        
+        # Use openpyxl engine
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Vehicles', index=False)
+            
+            # Get workbook and worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Vehicles']
+            
+            # Auto-adjust column widths
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+            
+            # Add summary sheet
+            total_vehicles = len(vehicles)
+            sold_vehicles = len([v for v in vehicles if v.get("sold")])
+            active_vehicles = total_vehicles - sold_vehicles
+            surepass_sourced = len([v for v in vehicles if v.get("source") == "surepass"])
+            manual_sourced = total_vehicles - surepass_sourced
+            
+            # Calculate document expiry statistics
+            today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            expired_insurance = 0
+            expired_puc = 0
+            expired_fitness = 0
+            
+            for v in vehicles:
+                insurance = clean_date(v.get("insurance_expiry"))
+                if insurance and insurance < today_str:
+                    expired_insurance += 1
+                
+                puc = clean_date(v.get("puc_expiry"))
+                if puc and puc < today_str:
+                    expired_puc += 1
+                
+                fitness = clean_date(v.get("fit_up_to"))
+                if fitness and fitness < today_str:
+                    expired_fitness += 1
+            
+            summary_data = {
+                'Metric': [
+                    'Total Vehicles',
+                    'Active Vehicles',
+                    'Sold Vehicles',
+                    'Surepass Sourced',
+                    'Manual Sourced',
+                    'Expired Insurance',
+                    'Expired PUC',
+                    'Expired Fitness',
+                    'Export Date'
+                ],
+                'Value': [
+                    total_vehicles,
+                    active_vehicles,
+                    sold_vehicles,
+                    surepass_sourced,
+                    manual_sourced,
+                    expired_insurance,
+                    expired_puc,
+                    expired_fitness,
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                ]
+            }
+            
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_excel(writer, sheet_name='Summary', index=False)
+            
+            # Auto-adjust summary sheet columns
+            summary_sheet = writer.sheets['Summary']
+            summary_sheet.column_dimensions['A'].width = 25
+            summary_sheet.column_dimensions['B'].width = 20
+        
+        output.seek(0)
+        
+        filename = f"vehicles_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting vehicles to Excel: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to export: {str(e)}")
+        
 @api_router.get("/vehicles/template/csv")
 async def get_vehicle_import_template(current_user: dict = Depends(get_current_user)):
     """Get CSV template for vehicle import with sample data"""
@@ -2057,7 +2319,272 @@ async def download_document_file(
     except Exception as e:
         logger.error(f"Document download error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
-    
+
+# ==================== SOLD VEHICLE AGREEMENT ROUTES ====================
+
+@api_router.post("/vehicles/{vehicle_id}/sold-agreement")
+async def create_sold_agreement(
+    vehicle_id: str,
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Create a sold vehicle agreement with optional document upload
+    """
+    try:
+        # Find the vehicle
+        vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        # Check if vehicle is marked as sold
+        if not vehicle.get("sold", False):
+            raise HTTPException(status_code=400, detail="Vehicle is not marked as sold")
+        
+        # Create agreement record
+        agreement_id = str(uuid.uuid4())
+        agreement = SoldVehicleAgreement(
+            id=agreement_id,
+            vehicle_id=vehicle_id,
+            vehicle_registration=vehicle["registration_number"],
+            buyer_name=data.get("buyer_name"),
+            buyer_phone=data.get("buyer_phone"),
+            agreement_date=datetime.fromisoformat(data.get("agreement_date", datetime.now(timezone.utc).isoformat())),
+            agreement_url=data.get("agreement_url"),
+            agreement_public_id=data.get("agreement_public_id"),
+            agreement_file_type=data.get("agreement_file_type"),
+            notes=data.get("notes"),
+            created_by=current_user["user_id"]
+        )
+        
+        agreement_dict = agreement.model_dump()
+        agreement_dict["created_at"] = agreement_dict["created_at"].isoformat()
+        agreement_dict["agreement_date"] = agreement_dict["agreement_date"].isoformat()
+        
+        await db.sold_vehicle_agreements.insert_one(agreement_dict)
+        
+        # Update vehicle with agreement reference
+        await db.vehicles.update_one(
+            {"id": vehicle_id},
+            {"$set": {
+                "sold_agreement_id": agreement_id,
+                "sold_date": datetime.now(timezone.utc).isoformat(),
+                "sold_agreement_created": True
+            }}
+        )
+        
+        return {
+            "success": True,
+            "agreement_id": agreement_id,
+            "message": "Sold vehicle agreement created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating sold agreement: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create agreement: {str(e)}")
+
+@api_router.post("/vehicles/{vehicle_id}/upload-agreement")
+async def upload_sold_agreement_document(
+    vehicle_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Upload agreement document for sold vehicle
+    """
+    try:
+        # Find the vehicle
+        vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        # Check if vehicle is marked as sold
+        if not vehicle.get("sold", False):
+            raise HTTPException(status_code=400, detail="Vehicle is not marked as sold")
+        
+        # Get file extension
+        file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
+        
+        # Determine resource type
+        if file_extension in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf']:
+            resource_type = "auto"
+        else:
+            resource_type = "raw"
+        
+        # Upload to Cloudinary
+        result = cloudinary.uploader.upload(
+            file.file,
+            folder=f"vehicles/{vehicle_id}/sold_agreements",
+            resource_type=resource_type,
+            transformation=[
+                {"quality": "auto", "fetch_format": "auto"}
+            ] if resource_type == "image" else None
+        )
+        
+        # Update the agreement record if it exists
+        agreement = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False},
+            sort=[("created_at", -1)]
+        )
+        
+        if agreement:
+            await db.sold_vehicle_agreements.update_one(
+                {"id": agreement["id"]},
+                {"$set": {
+                    "agreement_url": result["secure_url"],
+                    "agreement_public_id": result["public_id"],
+                    "agreement_file_type": file_extension,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+        
+        return {
+            "success": True,
+            "url": result["secure_url"],
+            "public_id": result["public_id"],
+            "file_type": file_extension,
+            "message": "Agreement document uploaded successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Agreement upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/vehicles/{vehicle_id}/sold-agreement")
+async def get_sold_agreement(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get sold vehicle agreement details
+    """
+    try:
+        agreement = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False},
+            {"_id": 0}
+        )
+        
+        if not agreement:
+            return {
+                "success": True,
+                "has_agreement": False,
+                "message": "No agreement found for this vehicle"
+            }
+        
+        # Convert datetime to string
+        if agreement.get("agreement_date"):
+            agreement["agreement_date"] = agreement["agreement_date"].isoformat() if isinstance(agreement["agreement_date"], datetime) else agreement["agreement_date"]
+        if agreement.get("created_at"):
+            agreement["created_at"] = agreement["created_at"].isoformat() if isinstance(agreement["created_at"], datetime) else agreement["created_at"]
+        
+        return {
+            "success": True,
+            "has_agreement": True,
+            "agreement": agreement
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching sold agreement: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/vehicles/{vehicle_id}/download-agreement")
+async def download_sold_agreement(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Download sold vehicle agreement document
+    """
+    try:
+        agreement = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False}
+        )
+        
+        if not agreement:
+            raise HTTPException(status_code=404, detail="No agreement found")
+        
+        file_url = agreement.get("agreement_url")
+        if not file_url:
+            raise HTTPException(status_code=404, detail="No document uploaded")
+        
+        # Get vehicle details
+        vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "registration_number": 1})
+        registration = vehicle["registration_number"].replace("/", "_").replace(" ", "_").replace("-", "_")
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(file_url)
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=404, detail="File not found")
+            
+            file_type = agreement.get("agreement_file_type", "pdf")
+            
+            if file_type == 'pdf':
+                content_type = 'application/pdf'
+                filename = f"{registration}_sold_agreement.pdf"
+            elif file_type in ['jpg', 'jpeg']:
+                content_type = 'image/jpeg'
+                filename = f"{registration}_sold_agreement.jpg"
+            elif file_type == 'png':
+                content_type = 'image/png'
+                filename = f"{registration}_sold_agreement.png"
+            else:
+                content_type = 'application/octet-stream'
+                filename = f"{registration}_sold_agreement.{file_type}"
+            
+            return StreamingResponse(
+                iter([response.content]),
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Length": str(len(response.content)),
+                    "Cache-Control": "no-cache"
+                }
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Agreement download error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/vehicles/{vehicle_id}/sold-agreement")
+async def delete_sold_agreement(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete sold vehicle agreement (soft delete)
+    """
+    try:
+        agreement = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False}
+        )
+        
+        if not agreement:
+            raise HTTPException(status_code=404, detail="No agreement found")
+        
+        # Soft delete
+        await db.sold_vehicle_agreements.update_one(
+            {"id": agreement["id"]},
+            {"$set": {"is_deleted": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        
+        # Remove agreement reference from vehicle
+        await db.vehicles.update_one(
+            {"id": vehicle_id},
+            {"$unset": {"sold_agreement_id": "", "sold_agreement_created": ""}}
+        )
+        
+        return {"success": True, "message": "Agreement deleted successfully"}
+        
+    except Exception as e:
+        logger.error(f"Agreement delete error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.get("/vehicles/{vehicle_id}/download-rc")
 async def download_rc_document(
     vehicle_id: str,
@@ -3000,6 +3527,146 @@ async def export_challans_current_view_excel(
         headers={"Content-Disposition": f"attachment; filename=challans_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"}
     )
 
+# FASTag Balance and Transaction Routes
+
+@api_router.post("/vehicles/{vehicle_id}/fastag-balance")
+async def get_vehicle_fastag_balance(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Fetch FASTag balance and details for a vehicle
+    """
+    try:
+        # Find the vehicle
+        vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        # Clean the registration number - remove hyphens and spaces
+        registration_number = vehicle["registration_number"].upper().replace("-", "").replace(" ", "")
+        
+        logger.info(f"Fetching FASTag balance for vehicle: {registration_number} (original: {vehicle['registration_number']})")
+        
+        # Call Surepass API
+        result = await surepass_service.fetch_fastag_details(registration_number)
+        
+        if not result["success"]:
+            logger.error(f"FASTag API error: {result.get('error')}")
+            raise HTTPException(status_code=400, detail=result.get("error", "Failed to fetch FASTag details"))
+        
+        fastag_data = result["data"]
+        
+        # Log the API call
+        try:
+            log_entry = {
+                "id": str(uuid.uuid4()),
+                "vehicle_id": vehicle_id,
+                "registration_number": registration_number,
+                "request_timestamp": datetime.now(timezone.utc).isoformat(),
+                "response_data": fastag_data,
+                "is_successful": True,
+                "created_by": current_user["user_id"]
+            }
+            await db.fastag_verification_logs.insert_one(log_entry)
+        except Exception as e:
+            logger.warning(f"Could not log FASTag verification: {e}")
+        
+        # Update vehicle with latest FASTag information
+        update_data = {}
+        if fastag_data.get("available_balance") is not None:
+            try:
+                update_data["fastag_balance"] = float(fastag_data["available_balance"])
+            except:
+                pass
+        if fastag_data.get("bank_name"):
+            update_data["fastag_company"] = fastag_data["bank_name"]
+        if fastag_data.get("tag_status"):
+            update_data["fastag_status"] = fastag_data["tag_status"]
+        
+        if update_data:
+            await db.vehicles.update_one(
+                {"id": vehicle_id},
+                {"$set": {
+                    **update_data,
+                    "fastag_last_synced": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+        
+        return {
+            "success": True,
+            "vehicle_id": vehicle_id,
+            "registration_number": registration_number,
+            "fastag_data": fastag_data,
+            "message": "FASTag details fetched successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_vehicle_fastag_balance: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@api_router.post("/vehicles/{vehicle_id}/fastag-transactions")
+async def get_vehicle_fastag_transactions(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Fetch FASTag transaction history for a vehicle
+    """
+    try:
+        # Find the vehicle
+        vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        # Clean the registration number - remove hyphens and spaces
+        registration_number = vehicle["registration_number"].upper().replace("-", "").replace(" ", "")
+        
+        logger.info(f"Fetching FASTag transactions for vehicle: {registration_number} (original: {vehicle['registration_number']})")
+        
+        # Call Surepass API
+        result = await surepass_service.fetch_fastag_transactions(registration_number)
+        
+        if not result["success"]:
+            logger.error(f"FASTag transaction API error: {result.get('error')}")
+            raise HTTPException(status_code=400, detail=result.get("error", "Failed to fetch transactions"))
+        
+        transactions_data = result["data"]
+        
+        # Log the API call
+        try:
+            log_entry = {
+                "id": str(uuid.uuid4()),
+                "vehicle_id": vehicle_id,
+                "registration_number": registration_number,
+                "request_timestamp": datetime.now(timezone.utc).isoformat(),
+                "response_data": transactions_data,
+                "is_successful": True,
+                "created_by": current_user["user_id"]
+            }
+            await db.fastag_verification_logs.insert_one(log_entry)
+        except Exception as e:
+            logger.warning(f"Could not log FASTag transaction: {e}")
+        
+        return {
+            "success": True,
+            "vehicle_id": vehicle_id,
+            "registration_number": registration_number,
+            "transactions": transactions_data.get("transactions", []),
+            "transaction_count": transactions_data.get("transaction_count", 0),
+            "tag_id": transactions_data.get("tag_id"),
+            "bank_name": transactions_data.get("bank_name"),
+            "status": transactions_data.get("status"),
+            "message": "FASTag transactions fetched successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_vehicle_fastag_transactions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 # ==================== SERVICE RECORD ROUTES ====================
 
 @api_router.post("/service-records")

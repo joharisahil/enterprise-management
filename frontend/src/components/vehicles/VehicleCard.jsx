@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { SoldAgreementDialog } from './SoldAgreementDialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +28,7 @@ import {
   Shield,
   FileText,
 } from 'lucide-react';
+import { useState } from 'react';
 
 const getDaysLeft = (expiryDate) => {
   if (!expiryDate) return null;
@@ -54,6 +56,9 @@ export const VehicleCard = ({
 }) => {
   const insuranceDays = getDaysLeft(vehicle.insurance_expiry);
   const pucDays = getDaysLeft(vehicle.puc_expiry);
+
+  const [showSoldDialog, setShowSoldDialog] = useState(false);
+  const [soldVehicle, setSoldVehicle] = useState(null);
 
   return (
     <motion.div

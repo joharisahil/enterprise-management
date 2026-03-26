@@ -472,6 +472,35 @@ export const VehiclesPage = () => {
     viewDialogOpen
   });
 
+
+  // Add this new handler in your VehiclesPage component
+const handleExportExcel = async () => {
+  console.log('📊 [VehiclesPage] handleExportExcel called');
+  try {
+    console.log('📊 [VehiclesPage] Calling API: GET /vehicles/export/excel');
+    const response = await api.get('/vehicles/export/excel', {
+      responseType: 'blob'
+    });
+    
+    // Create blob and download
+    const blob = new Blob([response.data], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vehicles_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    console.log('✅ [VehiclesPage] Vehicles exported successfully to Excel');
+    toast.success('Vehicles exported successfully');
+  } catch (error) {
+    console.error('❌ [VehiclesPage] Error exporting vehicles:', error);
+    toast.error('Failed to export vehicles');
+  }
+};
+
   return (
     <div className="p-8" data-testid="vehicles-page">
       {/* Header */}

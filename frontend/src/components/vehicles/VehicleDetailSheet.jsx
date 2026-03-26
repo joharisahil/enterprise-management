@@ -50,7 +50,9 @@ import {
   Fuel,
   Plus,
   Edit,
-  X
+  X,
+  CreditCard,
+  Wallet
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../utils/api';
@@ -108,6 +110,11 @@ export const VehicleDetailSheet = ({
   const [downloadingDocument, setDownloadingDocument] = useState({});
   const [rcFileInputRef, setRcFileInputRef] = useState(null);
   const [documentFileInputRefs, setDocumentFileInputRefs] = useState({});
+
+const [fetchingFastagBalance, setFetchingFastagBalance] = useState(false);
+const [fetchingFastagTransactions, setFetchingFastagTransactions] = useState(false);
+const [fastagBalanceData, setFastagBalanceData] = useState(null);
+const [fastagTransactions, setFastagTransactions] = useState([]);
 
   useEffect(() => {
     if (vehicle) setLocalVehicleData(vehicle);
@@ -600,6 +607,46 @@ export const VehicleDetailSheet = ({
     );
   }
 
+  // Add these handlers
+const fetchFastagBalance = async () => {
+  if (!localVehicleData?.id) return;
+  
+  setFetchingFastagBalance(true);
+  try {
+    const response = await api.post(`/vehicles/${localVehicleData.id}/fastag-balance`);
+    setFastagBalanceData(response.data.fastag_data);
+    toast.success('FASTag balance fetched successfully');
+  } catch (error) {
+    console.error('Error fetching FASTag balance:', error);
+    toast.error(error.response?.data?.detail || 'Failed to fetch FASTag balance');
+  } finally {
+    setFetchingFastagBalance(false);
+  }
+};
+
+const fetchFastagTransactions = async () => {
+  if (!localVehicleData?.id) return;
+  
+  setFetchingFastagTransactions(true);
+  try {
+    const response = await api.post(`/vehicles/${localVehicleData.id}/fastag-transactions`);
+    setFastagTransactions(response.data.transactions || []);
+    toast.success(`Fetched ${response.data.transaction_count} transactions`);
+  } catch (error) {
+    console.error('Error fetching FASTag transactions:', error);
+    toast.error(error.response?.data?.detail || 'Failed to fetch transactions');
+  } finally {
+    setFetchingFastagTransactions(false);
+  }
+};
+
+const getFastagBalanceColor = (balance) => {
+  const numBalance = parseFloat(balance) || 0;
+  if (numBalance <= 100) return 'text-rose-600';
+  if (numBalance <= 500) return 'text-orange-600';
+  return 'text-emerald-600';
+};
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-4xl overflow-y-auto">
@@ -922,35 +969,187 @@ export const VehicleDetailSheet = ({
               )}
             </TabsContent>
 
-            {/* FASTag Tab */}
-            <TabsContent value="fastag" className="mt-4">
-              <div className="flex justify-between items-center mb-4"><h3 className="font-medium">FASTag Passes</h3><Button size="sm" onClick={onAddPass} className="bg-emerald-700 hover:bg-emerald-800"><Plus size={14} className="mr-1" /> Add Pass</Button></div>
-              {!localFastagPasses?.length ? (
-                <div className="text-center py-12 bg-slate-50 rounded-lg"><Zap size={48} className="mx-auto text-slate-300 mb-3" /><p>No FASTag passes</p></div>
-              ) : (
-                <div className="space-y-3">
-                  {localFastagPasses.map((pass) => (
-                    <Card key={pass.id}>
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="font-semibold">{pass.pass_name}</h4>
-                            <p className="text-sm text-slate-600">{pass.toll_plaza}</p>
-                            <p className="text-xs text-slate-500">Trips: {pass.balance_trips}/{pass.trips_allowed}</p>
-                            <p className="text-xs text-slate-500">Expires: {new Date(pass.expiry_date).toLocaleDateString()}</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Badge className={pass.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100'}>{pass.status}</Badge>
-                            <Button size="sm" variant="ghost" onClick={() => onEditPass(pass)}><Edit size={14} /></Button>
-                            <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => onDeletePass(pass.id)}><Trash2 size={14} /></Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+{/* FASTag Tab */}
+<TabsContent value="fastag" className="mt-4">
+  <div className="space-y-6">
+    {/* FASTag Balance & Transactions Section */}
+    <Card className="border-purple-200 bg-gradient-to-r from-purple-50 to-white">
+      <CardHeader className="pb-3">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <Zap size={20} className="text-purple-600" />
+            FASTag Live Data
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={fetchFastagBalance}
+              disabled={fetchingFastagBalance}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <RefreshCw size={14} className={`mr-1 ${fetchingFastagBalance ? 'animate-spin' : ''}`} />
+              {fetchingFastagBalance ? 'Fetching...' : 'Fetch Balance'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={fetchFastagTransactions}
+              disabled={fetchingFastagTransactions}
+              className="border-purple-500 text-purple-600"
+            >
+              <RefreshCw size={14} className={`mr-1 ${fetchingFastagTransactions ? 'animate-spin' : ''}`} />
+              {fetchingFastagTransactions ? 'Fetching...' : 'Fetch Transactions'}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {fastagBalanceData ? (
+          <div className="space-y-4">
+            {/* Balance Card */}
+            <div className="bg-white rounded-lg p-4 shadow-sm border border-purple-100">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Wallet size={18} className="text-purple-600" />
+                  <span className="font-medium text-purple-900">Current Balance</span>
+                </div>
+                <Badge className={fastagBalanceData.tag_status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
+                  {fastagBalanceData.tag_status || 'Unknown'}
+                </Badge>
+              </div>
+              <p className={`text-3xl font-bold ${getFastagBalanceColor(fastagBalanceData.available_balance)}`}>
+                ₹{parseFloat(fastagBalanceData.available_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </p>
+              <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-purple-100">
+                <div>
+                  <p className="text-xs text-purple-500">Recharge Limit</p>
+                  <p className="font-semibold text-sm">₹{parseFloat(fastagBalanceData.available_recharge_limit || 0).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-purple-500">Bank</p>
+                  <p className="font-medium text-sm">{fastagBalanceData.bank_name || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-purple-500">Tag ID</p>
+                  <p className="font-mono text-xs">{fastagBalanceData.tag_id?.slice(-12) || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-purple-500">Vehicle Class</p>
+                  <p className="font-medium text-sm">{fastagBalanceData.vehicle_class_desc || fastagBalanceData.vehicle_class || 'N/A'}</p>
+                </div>
+              </div>
+              {fastagBalanceData.customer_name && (
+                <div className="mt-3 pt-3 border-t border-purple-100 flex items-center gap-2">
+                  <User size={12} className="text-purple-400" />
+                  <p className="text-xs text-purple-600">Owner: {fastagBalanceData.customer_name}</p>
                 </div>
               )}
-            </TabsContent>
+            </div>
+
+            {/* Transactions */}
+            {(fastagBalanceData.transactions?.length > 0 || fastagTransactions.length > 0) && (
+              <div>
+                <h4 className="font-medium text-sm text-purple-800 mb-3 flex items-center gap-2">
+                  <Route size={14} />
+                  Recent Transactions
+                </h4>
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {(fastagBalanceData.transactions || fastagTransactions).slice(0, 5).map((txn, idx) => (
+                    <div key={idx} className="bg-white rounded-lg p-3 border border-purple-100 hover:shadow-sm transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <MapPin size={12} className="text-slate-400" />
+                            <p className="font-medium text-sm">{txn.toll_plaza_name}</p>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-slate-500 mb-1">
+                            <span className="flex items-center gap-1">
+                              <Clock size={10} />
+                              {new Date(txn.transaction_date_time).toLocaleString()}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <ArrowRight size={10} />
+                              {txn.lane_direction === 'S' ? 'Southbound' : txn.lane_direction === 'N' ? 'Northbound' : txn.lane_direction}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 font-mono">
+                            Seq: {txn.seq_no?.slice(-8)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-rose-600">-₹{txn.amount || '??'}</p>
+                          <p className="text-xs text-slate-400">Toll Fee</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {(fastagBalanceData.transactions?.length > 5 || fastagTransactions.length > 5) && (
+                    <p className="text-center text-xs text-slate-400 mt-2">
+                      Showing last 5 of {fastagBalanceData.transactions?.length || fastagTransactions.length} transactions
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : fetchingFastagBalance ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto mb-3"></div>
+            <p className="text-sm text-slate-500">Fetching FASTag data...</p>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Zap size={40} className="mx-auto text-purple-200 mb-2" />
+            <p className="text-sm text-slate-500 mb-2">Click "Fetch Balance" to get FASTag details</p>
+            <p className="text-xs text-slate-400">This will fetch current balance and recent transactions</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+
+    {/* Existing FASTag Passes */}
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-medium flex items-center gap-2">
+          <CreditCard size={16} />
+          FASTag Passes
+        </h3>
+        <Button size="sm" onClick={onAddPass} className="bg-emerald-700 hover:bg-emerald-800">
+          <Plus size={14} className="mr-1" /> Add Pass
+        </Button>
+      </div>
+      
+      {!localFastagPasses?.length ? (
+        <div className="text-center py-8 bg-slate-50 rounded-lg">
+          <Zap size={40} className="mx-auto text-slate-300 mb-2" />
+          <p className="text-sm text-slate-500">No FASTag passes added</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {localFastagPasses.map((pass) => (
+            <Card key={pass.id}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-semibold">{pass.pass_name}</h4>
+                    <p className="text-sm text-slate-600">{pass.toll_plaza}</p>
+                    <p className="text-xs text-slate-500">Trips: {pass.balance_trips}/{pass.trips_allowed}</p>
+                    <p className="text-xs text-slate-500">Expires: {new Date(pass.expiry_date).toLocaleDateString()}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Badge className={pass.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100'}>{pass.status}</Badge>
+                    <Button size="sm" variant="ghost" onClick={() => onEditPass(pass)}><Edit size={14} /></Button>
+                    <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => onDeletePass(pass.id)}><Trash2 size={14} /></Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+</TabsContent>
 
             {/* Accidents Tab */}
             <TabsContent value="accidents" className="mt-4">
