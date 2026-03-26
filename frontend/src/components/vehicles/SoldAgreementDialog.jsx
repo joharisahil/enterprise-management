@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Upload, Download, Trash2, Eye, FileText, User, Phone, Calendar, X } from 'lucide-react';
+import { Upload, Download, Trash2, FileText, User, Phone, Calendar, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../utils/api';
 
@@ -22,6 +22,32 @@ export const SoldAgreementDialog = ({ vehicle, open, onOpenChange, onSuccess }) 
   const [agreementData, setAgreementData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [markingSold, setMarkingSold] = useState(false);
+  const [unmarkingSold, setUnmarkingSold] = useState(false);
+
+const handleUnmarkSold = async () => {
+  if (!window.confirm('Are you sure you want to mark this vehicle as unsold? This will remove the sold status but keep the agreement details.')) {
+    return;
+  }
+  
+  setUnmarkingSold(true);
+  try {
+    await api.patch(`/vehicles/${vehicle.id}/sold-status`, {
+      sold: false
+    });
+    
+    toast.success('Vehicle marked as unsold');
+    if (onSuccess) onSuccess();
+    
+    // Optionally close the dialog
+    onOpenChange(false);
+  } catch (error) {
+    console.error('Error marking vehicle as unsold:', error);
+    toast.error(error.response?.data?.detail || 'Failed to mark vehicle as unsold');
+  } finally {
+    setUnmarkingSold(false);
+  }
+};
 
   useEffect(() => {
     if (open && vehicle?.id) {
@@ -58,6 +84,30 @@ export const SoldAgreementDialog = ({ vehicle, open, onOpenChange, onSuccess }) 
     
     setUploading(true);
     try {
+      // First, check if vehicle is already marked as sold
+      let vehicleSold = vehicle.sold;
+      
+      // If vehicle is not sold, mark it as sold first
+      if (!vehicleSold) {
+        setMarkingSold(true);
+        try {
+          const soldResponse = await api.patch(`/vehicles/${vehicle.id}/sold-status`, {
+            sold: true
+          });
+          vehicleSold = true;
+          toast.success('Vehicle marked as sold');
+        } catch (error) {
+          console.error('Error marking vehicle as sold:', error);
+          toast.error('Failed to mark vehicle as sold');
+          setUploading(false);
+          setMarkingSold(false);
+          return;
+        } finally {
+          setMarkingSold(false);
+        }
+      }
+      
+      // Now save the agreement details
       const response = await api.post(`/vehicles/${vehicle.id}/sold-agreement`, {
         ...formData,
         agreement_date: new Date(formData.agreement_date).toISOString()
@@ -88,6 +138,11 @@ export const SoldAgreementDialog = ({ vehicle, open, onOpenChange, onSuccess }) 
     formData.append('file', file);
     
     try {
+      // First ensure vehicle is marked as sold
+      if (!vehicle.sold) {
+        await api.patch(`/vehicles/${vehicle.id}/sold-status`, { sold: true });
+      }
+      
       const response = await api.post(`/vehicles/${vehicle.id}/upload-agreement`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -103,54 +158,79 @@ export const SoldAgreementDialog = ({ vehicle, open, onOpenChange, onSuccess }) 
     }
   };
 
-  const handleDownload = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
-      const downloadUrl = `${baseURL}/vehicles/${vehicle.id}/download-agreement`;
-      
-      const response = await fetch(downloadUrl, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (!response.ok) throw new Error('Download failed');
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, "_")}_sold_agreement.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('Download started');
-    } catch (error) {
-      console.error('Download error:', error);
-      toast.error('Failed to download document');
-    }
-  };
+const handleDownload = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    // Use the api instance's baseURL instead of hardcoding
+    const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
+    const downloadUrl = `${baseURL}/vehicles/${vehicle.id}/download-agreement`;
+    
+    console.log('Downloading from:', downloadUrl);
+    
+    const response = await fetch(downloadUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "*/*",
+      },
+    });
 
-  const handleDelete = async () => {
-    try {
-      await api.delete(`/vehicles/${vehicle.id}/sold-agreement`);
-      toast.success('Agreement deleted successfully');
-      setAgreementData(null);
-      setFormData({
-        buyer_name: '',
-        buyer_phone: '',
-        agreement_date: new Date().toISOString().split('T')[0],
-        notes: ''
-      });
-      if (onSuccess) onSuccess();
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error('Failed to delete agreement');
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Download failed:', response.status, errorText);
+      throw new Error(`Download failed: ${response.status}`);
     }
-  };
 
+    const contentDisposition = response.headers.get("Content-Disposition");
+    let filename = `${vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, "_")}_sold_agreement.pdf`;
+    
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, "");
+      }
+    }
+
+    const blob = await response.blob();
+    
+    if (blob.size === 0) {
+      throw new Error("Downloaded file is empty");
+    }
+
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    window.document.body.appendChild(link);
+    link.click();
+    window.document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    
+    toast.success('Download started');
+  } catch (error) {
+    console.error('Download error:', error);
+    toast.error(error.message || 'Failed to download document');
+  }
+};
+
+const handleDelete = async () => {
+  try {
+    await api.delete(`/vehicles/${vehicle.id}/sold-agreement`);
+    toast.success('Agreement deleted successfully');
+    setAgreementData(null);
+    setFormData({
+      buyer_name: '',
+      buyer_phone: '',
+      agreement_date: new Date().toISOString().split('T')[0],
+      notes: ''
+    });
+    if (onSuccess) onSuccess();
+  } catch (error) {
+    console.error('Delete error:', error);
+    toast.error(error.response?.data?.detail || 'Failed to delete agreement');
+  }
+};
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -176,7 +256,11 @@ export const SoldAgreementDialog = ({ vehicle, open, onOpenChange, onSuccess }) 
                       <p className="font-mono font-bold text-lg">{vehicle?.registration_number}</p>
                       <p className="text-sm text-emerald-600">{vehicle?.brand} {vehicle?.model}</p>
                     </div>
-                    <Badge className="bg-emerald-600 text-white">Sold</Badge>
+                    {vehicle?.sold || agreementData ? (
+                      <Badge className="bg-emerald-600 text-white">Sold</Badge>
+                    ) : (
+                      <Badge className="bg-amber-600 text-white">Pending Sale</Badge>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -229,10 +313,21 @@ export const SoldAgreementDialog = ({ vehicle, open, onOpenChange, onSuccess }) 
                 
                 <Button
                   type="submit"
-                  disabled={uploading}
+                  disabled={uploading || markingSold}
                   className="w-full bg-emerald-700 hover:bg-emerald-800"
                 >
-                  {uploading ? 'Saving...' : agreementData ? 'Update Details' : 'Save Agreement Details'}
+                  {markingSold ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                      Marking as Sold...
+                    </>
+                  ) : uploading ? (
+                    'Saving...'
+                  ) : agreementData ? (
+                    'Update Details'
+                  ) : (
+                    'Mark as Sold & Save Details'
+                  )}
                 </Button>
               </form>
               
@@ -285,36 +380,62 @@ export const SoldAgreementDialog = ({ vehicle, open, onOpenChange, onSuccess }) 
                 )}
               </div>
               
-              {/* View Sold Details Section */}
-              {agreementData && (
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-3">Sold Details</h4>
-                  <div className="space-y-2 text-sm">
-                    {agreementData.buyer_name && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">Buyer Name:</span>
-                        <span className="font-medium">{agreementData.buyer_name}</span>
-                      </div>
-                    )}
-                    {agreementData.buyer_phone && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">Buyer Phone:</span>
-                        <span className="font-medium">{agreementData.buyer_phone}</span>
-                      </div>
-                    )}
-                    {agreementData.agreement_date && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">Agreement Date:</span>
-                        <span className="font-medium">{new Date(agreementData.agreement_date).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                    {agreementData.notes && (
-                      <div>
-                        <span className="text-slate-600">Notes:</span>
-                        <p className="mt-1 p-2 bg-slate-50 rounded text-slate-700">{agreementData.notes}</p>
-                      </div>
-                    )}
-                  </div>
+{/* View Sold Details Section */}
+{agreementData && (
+  <div className="border-t pt-4">
+    <div className="flex justify-between items-center mb-3">
+      <h4 className="font-medium">Sold Details</h4>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={handleUnmarkSold}
+        disabled={unmarkingSold}
+        className="text-amber-600 border-amber-600 hover:bg-amber-50"
+      >
+        {unmarkingSold ? (
+          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-600 mr-1" />
+        ) : (
+          <AlertTriangle size={12} className="mr-1" />
+        )}
+        Mark as Unsold
+      </Button>
+    </div>
+    <div className="space-y-2 text-sm">
+      {agreementData.buyer_name && (
+        <div className="flex justify-between">
+          <span className="text-slate-600">Buyer Name:</span>
+          <span className="font-medium">{agreementData.buyer_name}</span>
+        </div>
+      )}
+      {agreementData.buyer_phone && (
+        <div className="flex justify-between">
+          <span className="text-slate-600">Buyer Phone:</span>
+          <span className="font-medium">{agreementData.buyer_phone}</span>
+        </div>
+      )}
+      {agreementData.agreement_date && (
+        <div className="flex justify-between">
+          <span className="text-slate-600">Agreement Date:</span>
+          <span className="font-medium">{new Date(agreementData.agreement_date).toLocaleDateString()}</span>
+        </div>
+      )}
+      {agreementData.notes && (
+        <div>
+          <span className="text-slate-600">Notes:</span>
+          <p className="mt-1 p-2 bg-slate-50 rounded text-slate-700">{agreementData.notes}</p>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+              
+              {/* Info message if vehicle is not sold */}
+              {!vehicle?.sold && !agreementData && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+                  <AlertTriangle size={16} className="text-amber-600 mt-0.5" />
+                  <p className="text-sm text-amber-700">
+                    This vehicle is not yet marked as sold. Click the button above to mark it as sold and save the agreement details.
+                  </p>
                 </div>
               )}
             </div>

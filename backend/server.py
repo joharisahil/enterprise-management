@@ -2510,17 +2510,24 @@ async def download_sold_agreement(
             raise HTTPException(status_code=404, detail="No document uploaded")
         
         # Get vehicle details
-        vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "registration_number": 1})
+        vehicle = await db.vehicles.find_one(
+            {"id": vehicle_id}, 
+            {"_id": 0, "registration_number": 1}
+        )
         registration = vehicle["registration_number"].replace("/", "_").replace(" ", "_").replace("-", "_")
+        
+        logger.info(f"Downloading agreement document from: {file_url}")
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(file_url)
             
             if response.status_code != 200:
-                raise HTTPException(status_code=404, detail="File not found")
+                logger.error(f"Failed to fetch file from Cloudinary: {response.status_code}")
+                raise HTTPException(status_code=404, detail="File not found on Cloudinary")
             
             file_type = agreement.get("agreement_file_type", "pdf")
             
+            # Determine content type
             if file_type == 'pdf':
                 content_type = 'application/pdf'
                 filename = f"{registration}_sold_agreement.pdf"
@@ -2530,26 +2537,34 @@ async def download_sold_agreement(
             elif file_type == 'png':
                 content_type = 'image/png'
                 filename = f"{registration}_sold_agreement.png"
+            elif file_type == 'gif':
+                content_type = 'image/gif'
+                filename = f"{registration}_sold_agreement.gif"
             else:
                 content_type = 'application/octet-stream'
                 filename = f"{registration}_sold_agreement.{file_type}"
             
+            logger.info(f"Serving file with content-type: {content_type}, filename: {filename}")
+            
+            # Return the file directly
             return StreamingResponse(
                 iter([response.content]),
                 media_type=content_type,
                 headers={
                     "Content-Disposition": f"attachment; filename={filename}",
                     "Content-Length": str(len(response.content)),
-                    "Cache-Control": "no-cache"
+                    "Cache-Control": "no-cache",
+                    "Access-Control-Expose-Headers": "Content-Disposition"
                 }
             )
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Agreement download error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Agreement download error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
+        
 @api_router.delete("/vehicles/{vehicle_id}/sold-agreement")
 async def delete_sold_agreement(
     vehicle_id: str,
