@@ -20,8 +20,17 @@ import { VehicleLiveCard } from "@/components/tracking/VehicleLiveCard";
 import { TimelineBar } from "@/components/tracking/TimelineBar";
 import { NodeDetailPanel } from "@/components/tracking/NodeDetailPanel";
 import { HistoryPanel } from "@/components/tracking/HistoryPanel";
-
+import { MapContainer, TileLayer, Marker, Polyline, Popup } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import api from '../utils/api';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+});
 
 export const GPSPage = () => {
   const [vehicles, setVehicles] = useState([]);
@@ -297,6 +306,34 @@ export const GPSPage = () => {
       {/* Main Content */}
       {selectedImei ? (
         <div className="space-y-6">
+          {/* 🔥 MAP */}
+<div className="h-[400px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800">
+  <MapContainer
+    center={
+      liveData ? [liveData.lat, liveData.lng] : [26.5, 80.5]
+    }
+    zoom={13}
+    className="h-full w-full"
+  >
+    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+
+    {/* Route */}
+    {history.length > 0 && (
+      <Polyline positions={history.map(p => [p.lat, p.lng])} />
+    )}
+
+    {/* Live Marker */}
+    {liveData && (
+      <Marker position={[liveData.lat, liveData.lng]}>
+        <Popup>
+          🚗 {vehicleName} <br />
+          Speed: {liveData.speed} km/h <br />
+          Status: {liveData.status}
+        </Popup>
+      </Marker>
+    )}
+  </MapContainer>
+</div>
           <VehicleLiveCard 
             liveData={liveData} 
             loading={liveLoading} 
