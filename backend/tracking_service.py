@@ -148,7 +148,15 @@ class TrackingService:
                 "lng": self.safe_float(v.get("Longitude")),
                 "speed": self.safe_int(v.get("Speed")),
                 "status": v.get("Status"),
-                "location": v.get("Location"),  
+                "ignition": v.get("IGN"),
+
+                "status": v.get("Status"),
+                "location": v.get("Location"),
+                "angle": self.safe_int(v.get("Angle")),
+                "satellite_count": v.get("satellite_count"),
+                "battery": v.get("battery_percentage"),
+                "external_voltage": self.safe_float(v.get("ExternalVolt")),  
+                "gps_time": v.get("GPSActualTime"),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
