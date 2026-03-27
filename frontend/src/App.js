@@ -18,6 +18,7 @@ import { DocumentsPage } from './pages/DocumentsPage';
 import { ChallansPage } from './pages/ChallansPage';
 import { ServicePage } from './pages/ServicePage';
 import { GPSPage } from './pages/GPSPage';
+
 import { DriversPage } from './pages/DriversPage';
 import { AccidentsPage } from './pages/AccidentsPage';
 import { AlertsPage } from './pages/AlertsPage';
@@ -144,6 +145,7 @@ function App() {
               </PrivateRoute>
             }
           />
+          
           <Route
             path="/drivers"
             element={
