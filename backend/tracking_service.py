@@ -150,7 +150,7 @@ class TrackingService:
                 "status": v.get("Status"),
                 "ignition": v.get("IGN"),
 
-                "status": v.get("Status"),
+                
                 "location": v.get("Location"),
                 "angle": self.safe_int(v.get("Angle")),
                 "satellite_count": v.get("satellite_count"),
@@ -158,6 +158,7 @@ class TrackingService:
                 "external_voltage": self.safe_float(v.get("ExternalVolt")),  
                 "gps_time": v.get("GPSActualTime"),
                 "timestamp": datetime.now(timezone.utc).isoformat()
+
             }
 
             print("📍 Record to save:", record)

@@ -2171,7 +2171,12 @@ async def get_vehicle_timeline(
 
     for i, r in enumerate(records):
         speed = r.get("speed", 0)
-        state = "STOP" if speed == 0 else "MOVING"
+        if r.get("ignition") == "OFF":
+            state = "ENGINE_OFF"
+        elif speed == 0:
+            state = "IDLE"
+        else:
+            state = "MOVING"
 
         current_time = datetime.fromisoformat(r["timestamp"])
 
