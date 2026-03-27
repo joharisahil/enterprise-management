@@ -14,10 +14,12 @@ import httpx
 import pandas as pd
 import io
 from fastapi.responses import StreamingResponse
+from datetime import datetime
 
 from models import *
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, check_role
 from telematics import get_telematics_provider, TelematicsService
+from tracking_service import TrackingService
 from automation import AutomationService
 import cloudinary
 import cloudinary.uploader
@@ -80,6 +82,7 @@ db = client[os.environ['DB_NAME']]
 # Global services
 telematics_service = TelematicsService(get_telematics_provider("Simulation"))
 automation_service = None
+tracking_service = None
 
 # Background task for automation
 async def automation_background_task():
@@ -92,20 +95,62 @@ async def automation_background_task():
         # Run every 6 hours
         await asyncio.sleep(6 * 60 * 60)
 
+async def tracking_background_task():
+    global tracking_service
+
+    await asyncio.sleep(2)
+
+    while True:
+        try:
+            if not tracking_service:
+                print("Tracking service not initialized yet...")
+                await asyncio.sleep(5)
+                continue
+
+            interval_doc = await db.tracking_settings.find_one({})
+            interval = interval_doc.get("interval", 60) if interval_doc else 60
+
+            print(f"[TRACKING] Fetching data... Interval: {interval}s")
+
+            await tracking_service.fetch_live_data()
+
+            await asyncio.sleep(interval)
+
+        except Exception as e:
+            print("❌ Tracking Error:", e)
+            await asyncio.sleep(60)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    global automation_service
-    automation_service = AutomationService(db)
-    # Start background task
-    task = asyncio.create_task(automation_background_task())
-    logging.info("Application started, automation task running")
-    yield
-    # Shutdown
-    task.cancel()
-    client.close()
-    logging.info("Application shutdown")
+    global automation_service, tracking_service
 
+    print("🚀 Starting application...")
+
+    automation_service = AutomationService(db)
+    tracking_service = TrackingService(db)
+
+    task1 = asyncio.create_task(automation_background_task())
+    task2 = asyncio.create_task(tracking_background_task())
+
+    try:
+        yield
+    finally:
+        print("🛑 Shutting down...")
+
+        task1.cancel()
+        task2.cancel()
+
+        try:
+            await task1
+        except asyncio.CancelledError:
+            pass
+
+        try:
+            await task2
+        except asyncio.CancelledError:
+            pass
+
+        client.close()
 app = FastAPI(lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
@@ -537,19 +582,48 @@ async def delete_water_bill(bill_id: str, current_user: dict = Depends(get_curre
 # ==================== VEHICLE ROUTES ====================
 
 @api_router.post("/vehicles")
+# async def create_vehicle(vehicle_data: VehicleCreate, current_user: dict = Depends(get_current_user)):
+#     vehicle_id = str(uuid.uuid4())
+#     vehicle = Vehicle(id=vehicle_id, **vehicle_data.model_dump(), created_by=current_user["user_id"])
+    
+#     vehicle_dict = vehicle.model_dump()
+#     vehicle_dict["created_at"] = vehicle_dict["created_at"].isoformat()
+#     vehicle_dict["updated_at"] = vehicle_dict["updated_at"].isoformat()
+#     if vehicle_dict.get("date_of_registration"):
+#         vehicle_dict["date_of_registration"] = vehicle_dict["date_of_registration"].isoformat()
+    
+#     await db.vehicles.insert_one(vehicle_dict)
+#     return serialize_doc(vehicle_dict)
 async def create_vehicle(vehicle_data: VehicleCreate, current_user: dict = Depends(get_current_user)):
     vehicle_id = str(uuid.uuid4())
-    vehicle = Vehicle(id=vehicle_id, **vehicle_data.model_dump(), created_by=current_user["user_id"])
+
+    if vehicle_data.imei:
+        existing = await db.vehicles.find_one({
+            "imei": vehicle_data.imei,
+            "is_deleted": False
+        })
+        if existing:
+            raise HTTPException(status_code=400, detail="IMEI already exists")
+
+    vehicle = Vehicle(
+        id=vehicle_id,
+        **vehicle_data.model_dump(),
+        created_by=current_user["user_id"]
+    )
     
     vehicle_dict = vehicle.model_dump()
     vehicle_dict["created_at"] = vehicle_dict["created_at"].isoformat()
     vehicle_dict["updated_at"] = vehicle_dict["updated_at"].isoformat()
+
     if vehicle_dict.get("date_of_registration"):
         vehicle_dict["date_of_registration"] = vehicle_dict["date_of_registration"].isoformat()
-    
-    await db.vehicles.insert_one(vehicle_dict)
-    return serialize_doc(vehicle_dict)
 
+    if vehicle_dict.get("imei") and len(vehicle_dict["imei"]) < 10:
+        raise HTTPException(status_code=400, detail="Invalid IMEI")
+
+    await db.vehicles.insert_one(vehicle_dict)
+
+    return serialize_doc(vehicle_dict)
 @api_router.get("/vehicles")
 async def get_vehicles(
     skip: int = 0,
@@ -568,18 +642,47 @@ async def get_vehicle(vehicle_id: str, current_user: dict = Depends(get_current_
     return vehicle
 
 @api_router.put("/vehicles/{vehicle_id}")
-async def update_vehicle(vehicle_id: str, vehicle_data: VehicleCreate, current_user: dict = Depends(get_current_user)):
+async def update_vehicle(
+    vehicle_id: str,
+    vehicle_data: VehicleCreate,
+    current_user: dict = Depends(get_current_user)
+):
     update_data = vehicle_data.model_dump()
+
+    # 🔴 1. Check IMEI uniqueness (if updating IMEI)
+    if update_data.get("imei"):
+        existing = await db.vehicles.find_one({
+            "imei": update_data["imei"],
+            "id": {"$ne": vehicle_id},
+            "is_deleted": False
+        })
+        if existing:
+            raise HTTPException(status_code=400, detail="IMEI already exists")
+
+        # 🔴 Optional: basic validation
+        if len(update_data["imei"]) < 10:
+            raise HTTPException(status_code=400, detail="Invalid IMEI")
+
+    # 🔴 2. Prevent accidental null overwrite
+    update_data = {k: v for k, v in update_data.items() if v is not None}
+
+    # 🔴 3. Add metadata
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     update_data["updated_by"] = current_user["user_id"]
+
+    # 🔴 4. Date conversion
     if update_data.get("date_of_registration"):
         update_data["date_of_registration"] = update_data["date_of_registration"].isoformat()
-    
-    result = await db.vehicles.update_one({"id": vehicle_id, "is_deleted": False}, {"$set": update_data})
+
+    result = await db.vehicles.update_one(
+        {"id": vehicle_id, "is_deleted": False},
+        {"$set": update_data}
+    )
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Vehicle not found")
-    return {"message": "Vehicle updated"}
 
+    return {"message": "Vehicle updated"}
 @api_router.delete("/vehicles/{vehicle_id}")
 async def delete_vehicle(vehicle_id: str, current_user: dict = Depends(get_current_user)):
     result = await db.vehicles.update_one(
@@ -2020,6 +2123,150 @@ async def fetch_challans_from_surepass(
         "challans_imported": imported,
         "challans": new_challans,
         "message": f"Imported {imported} new challans out of {len(challan_details)} found"
+    }
+
+# ==================== VEHICLE TRACKING ROUTES ====================
+
+@api_router.get("/vehicle-tracking/live")
+async def get_live_vehicle(imei: str, current_user: dict = Depends(get_current_user)):
+    vehicle = await db.vehicle_live.find_one({"imei": imei}, {"_id": 0})
+
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="No live data found")
+
+    return vehicle
+
+@api_router.get("/vehicle-tracking/history")
+async def get_vehicle_history(
+    imei: str,
+    limit: int = 100,
+    current_user: dict = Depends(get_current_user)
+):
+    data = await db.vehicle_history.find(
+        {"imei": imei},
+        {"_id": 0}
+    ).sort("timestamp", -1).limit(limit).to_list(limit)
+
+    return {
+        "count": len(data),
+        "data": data[::-1]
+    }
+
+@api_router.get("/vehicle-tracking/timeline")
+async def get_vehicle_timeline(
+    imei: str,
+    limit: int = 200,
+    current_user: dict = Depends(get_current_user)
+):
+    records = await db.vehicle_history.find(
+        {"imei": imei},
+        {"_id": 0}
+    ).sort("timestamp", 1).limit(limit).to_list(limit)
+
+    if not records:
+        return {"timeline": []}
+
+    timeline = []
+    last_state = None
+
+    for i, r in enumerate(records):
+        speed = r.get("speed", 0)
+        state = "STOP" if speed == 0 else "MOVING"
+
+        current_time = datetime.fromisoformat(r["timestamp"])
+
+        if i < len(records) - 1:
+            next_time = datetime.fromisoformat(records[i + 1]["timestamp"])
+            duration_min = (next_time - current_time).total_seconds() / 60
+        else:
+            duration_min = 0
+
+        if state != last_state:
+            timeline.append({
+                "time": r["timestamp"],
+                "type": state,
+                "lat": r["lat"],
+                "lng": r["lng"],
+                "location": r.get("location"),  # ✅ LOCATION ADDED
+                "duration_min": round(duration_min, 2)
+            })
+            last_state = state
+
+    # 🔹 START
+    timeline.insert(0, {
+        "time": records[0]["timestamp"],
+        "type": "START",
+        "lat": records[0]["lat"],
+        "lng": records[0]["lng"],
+        "location": records[0].get("location")
+    })
+
+    # 🔹 END
+    timeline.append({
+        "time": records[-1]["timestamp"],
+        "type": "END",
+        "lat": records[-1]["lat"],
+        "lng": records[-1]["lng"],
+        "location": records[-1].get("location")
+    })
+
+    return {
+        "imei": imei,
+        "total_points": len(records),
+        "timeline_points": len(timeline),
+        "timeline": timeline
+    }
+    records = await db.vehicle_history.find(
+        {"imei": imei},
+        {"_id": 0}
+    ).sort("timestamp", 1).limit(limit).to_list(limit)
+
+    if not records:
+        return {"timeline": []}
+
+    timeline = []
+    last_state = None
+
+    for i, r in enumerate(records):
+        speed = r.get("speed", 0)
+        state = "STOP" if speed == 0 else "MOVING"
+
+        current_time = datetime.fromisoformat(r["timestamp"])
+
+        # 🔥 calculate duration
+        if i < len(records) - 1:
+            next_time = datetime.fromisoformat(records[i + 1]["timestamp"])
+            duration_min = (next_time - current_time).total_seconds() / 60
+        else:
+            duration_min = 0
+
+        if state != last_state:
+            timeline.append({
+                "time": r["timestamp"],
+                "type": state,
+                "lat": r["lat"],
+                "lng": r["lng"],
+                "duration_min": round(duration_min, 2)  # 🔥 NEW
+            })
+            last_state = state
+
+    # 🔹 START
+    timeline.insert(0, {
+        "time": records[0]["timestamp"],
+        "type": "START"
+    })
+
+    # 🔹 END
+    timeline.append({
+        "time": records[-1]["timestamp"],
+        "type": "END"
+    })
+
+    return {
+        "imei": imei,
+        "total_points": len(records),
+        "timeline_points": len(timeline),
+        "timeline": timeline
     }
 # ==================== VEHICLE DOCUMENT ROUTES (VERSIONED) ====================
 
