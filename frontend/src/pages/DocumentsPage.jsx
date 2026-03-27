@@ -6,7 +6,8 @@ import {
   FileText, Plus, Clock, AlertCircle, Edit, Trash2, Eye, Phone, Download, Info,
   Calendar, AlertOctagon, AlertTriangle, CheckCircle, Filter, X, Gauge,
   TrendingUp, TrendingDown, Activity, Bell, Shield, CalendarDays,
-  Clock3, Clock4, Clock9, Sparkles, Star, Flame, Upload, FileSpreadsheet
+  Clock3, Clock4, Clock9, Sparkles, Star, Flame, Upload, FileSpreadsheet,
+  History, CalendarRange, AlertCircle as AlertIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -395,14 +396,14 @@ const DocumentForm = ({
       </div>
 
       <div>
-        <Label>Upload Document</Label>
+        <Label>Upload Document (Optional)</Label>
         <Input
           type="file"
           accept="image/*,.pdf"
           onChange={onDocumentUpload}
           disabled={uploading}
         />
-        <p className="text-xs text-gray-500 mt-1">Max file size: 3MB</p>
+        <p className="text-xs text-gray-500 mt-1">Max file size: 3MB (Optional)</p>
 
         {uploading && (
           <p className="text-sm text-blue-600 mt-1">Uploading file...</p>
@@ -424,8 +425,201 @@ const DocumentForm = ({
 
       <Button
         type="submit"
-        disabled={uploading || !uploadedFile || isAutoFilling}
+        disabled={uploading || isAutoFilling}
         className="w-full bg-blue-800 hover:bg-blue-900 disabled:opacity-50"
+      >
+        {uploading ? "Uploading..." : submitText}
+      </Button>
+    </form>
+  );
+};
+
+// Past Document Form Component with Validation
+const PastDocumentForm = ({
+  formData,
+  vehicles,
+  currentDocument,
+  validationError,
+  onVehicleChange,
+  onDocumentTypeChange,
+  onInputChange,
+  onIssueDateChange,
+  onExpiryDateChange,
+  onDocumentUpload,
+  onSubmit,
+  submitText,
+  uploading,
+  uploadedFile
+}) => {
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      {validationError && (
+        <Alert className="bg-red-50 border-red-200">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-700 text-sm">
+            {validationError}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {currentDocument && (
+        <Alert className="bg-blue-50 border-blue-200">
+          <Info className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-700 text-sm">
+            Current active document expires on {new Date(currentDocument.expiry_date).toLocaleDateString()}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div>
+        <Label>Vehicle *</Label>
+        <Select
+          value={formData.vehicle_id}
+          onValueChange={onVehicleChange}
+          required
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select vehicle" />
+          </SelectTrigger>
+          <SelectContent>
+            {vehicles.map((vehicle) => (
+              <SelectItem key={vehicle.id} value={vehicle.id}>
+                {vehicle.registration_number}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Document Type *</Label>
+          <Select
+            value={formData.document_type}
+            onValueChange={onDocumentTypeChange}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {documentTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {formData.document_type === 'Custom' && (
+          <div>
+            <Label>Document Name *</Label>
+            <Input
+              required
+              value={formData.custom_document_name}
+              onChange={(e) => onInputChange('custom_document_name', e.target.value)}
+            />
+          </div>
+        )}
+
+        <div>
+          <Label>Policy/Document Number *</Label>
+          <Input
+            required
+            value={formData.policy_number}
+            onChange={(e) => onInputChange('policy_number', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div>
+        <Label>Provider *</Label>
+        <Input
+          required
+          value={formData.provider}
+          onChange={(e) => onInputChange('provider', e.target.value)}
+          placeholder="e.g., ICICI Lombard, HDFC Ergo"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Issue Date *</Label>
+          <Input
+            type="date"
+            required
+            value={formData.issue_date}
+            onChange={(e) => onIssueDateChange(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Expiry Date *</Label>
+          <Input
+            type="date"
+            required
+            value={formData.expiry_date}
+            onChange={(e) => onExpiryDateChange(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>
+            {formData.document_type === "Insurance" ? "Premium (Rs)" : "Fee (Rs)"}
+          </Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={formData.premium}
+            placeholder={
+              formData.document_type === "Insurance"
+                ? "Insurance premium amount"
+                : "Document fee amount"
+            }
+            onChange={(e) => onInputChange('premium', e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Coverage</Label>
+          <Input
+            value={formData.coverage}
+            onChange={(e) => onInputChange('coverage', e.target.value)}
+            placeholder="e.g., Comprehensive, Third Party"
+          />
+        </div>
+      </div>
+
+      <div>
+        <Label>Upload Document (Optional)</Label>
+        <Input
+          type="file"
+          accept="image/*,.pdf"
+          onChange={onDocumentUpload}
+          disabled={uploading}
+        />
+        <p className="text-xs text-gray-500 mt-1">Max file size: 3MB (Optional)</p>
+
+        {uploading && (
+          <p className="text-sm text-blue-600 mt-1">Uploading file...</p>
+        )}
+
+        {uploadedFile && (
+          <div className="mt-3">
+            {uploadedFile.includes(".pdf") || uploadedFile.includes("/raw/") ? (
+              <div className="flex items-center gap-2 p-2 bg-slate-50 rounded border">
+                <FileText size={20} className="text-blue-600" />
+                <span className="text-sm">PDF Document</span>
+              </div>
+            ) : (
+              <img src={uploadedFile} alt="Preview" className="w-32 rounded border" />
+            )}
+          </div>
+        )}
+      </div>
+
+      <Button
+        type="submit"
+        disabled={uploading}
+        className="w-full bg-emerald-700 hover:bg-emerald-800"
       >
         {uploading ? "Uploading..." : submitText}
       </Button>
@@ -440,10 +634,12 @@ export const DocumentsPage = () => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [pastDocumentDialogOpen, setPastDocumentDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
+  const [pastUploadedFile, setPastUploadedFile] = useState(null);
   const [selectedDocHistory, setSelectedDocHistory] = useState(null);
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [phoneWarning, setPhoneWarning] = useState("");
@@ -452,6 +648,8 @@ export const DocumentsPage = () => {
   const [previousVersion, setPreviousVersion] = useState(null);
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [pastDocumentValidationError, setPastDocumentValidationError] = useState("");
+  const [currentActiveDocument, setCurrentActiveDocument] = useState(null);
   const [expiryStats, setExpiryStats] = useState({
     expired: 0,
     critical: 0,
@@ -462,6 +660,21 @@ export const DocumentsPage = () => {
   });
 
   const [formData, setFormData] = useState({
+    vehicle_id: '',
+    document_type: 'Insurance',
+    custom_document_name: '',
+    policy_number: '',
+    provider: '',
+    phone_number: '',
+    issue_date: '',
+    expiry_date: '',
+    premium: '',
+    coverage: '',
+    status: 'Active',
+    file_url: ''
+  });
+
+  const [pastDocumentFormData, setPastDocumentFormData] = useState({
     vehicle_id: '',
     document_type: 'Insurance',
     custom_document_name: '',
@@ -569,6 +782,75 @@ export const DocumentsPage = () => {
       console.error("Error checking previous version:", error);
       return null;
     }
+  };
+
+  const checkCurrentActiveDocument = async (vehicleId, documentType) => {
+    if (!vehicleId || !documentType) return null;
+
+    try {
+      const response = await api.get(`/vehicle-documents?vehicle_id=${vehicleId}&current_only=true`);
+      const docs = response.data.data;
+      const activeDoc = docs.find(doc => doc.document_type === documentType && doc.is_current);
+      return activeDoc || null;
+    } catch (error) {
+      console.error("Error checking current document:", error);
+      return null;
+    }
+  };
+
+  const validatePastDocument = async (vehicleId, documentType, issueDate, expiryDate) => {
+    // Check if there's a current active document
+    const currentDoc = await checkCurrentActiveDocument(vehicleId, documentType);
+    
+    if (currentDoc) {
+      const currentExpiry = new Date(currentDoc.expiry_date);
+      const newIssue = new Date(issueDate);
+      const newExpiry = new Date(expiryDate);
+      const today = new Date();
+
+      // Check if expiry date is in the future
+      if (newExpiry > today) {
+        setPastDocumentValidationError(
+          `This document expires in the future (${newExpiry.toLocaleDateString()}). ` +
+          `Please use the "Add Document" button instead to add this as a renewal.`
+        );
+        return false;
+      }
+
+      // Check if the new document overlaps with the current active document
+      if (newExpiry > currentExpiry) {
+        setPastDocumentValidationError(
+          `Cannot add this past document. Its expiry date (${newExpiry.toLocaleDateString()}) ` +
+          `is after the current active document's expiry (${currentExpiry.toLocaleDateString()}). ` +
+          `This would make it the current document. Please use the "Add Document" button instead.`
+        );
+        return false;
+      }
+
+      // Check if the new document's date range conflicts
+      if (newExpiry > currentExpiry) {
+        setPastDocumentValidationError(
+          `Date conflict: This document's expiry (${newExpiry.toLocaleDateString()}) ` +
+          `overlaps with the current active document.`
+        );
+        return false;
+      }
+    }
+
+    // Check if expiry date is after today (should be past for past documents)
+    const today = new Date();
+    const newExpiry = new Date(expiryDate);
+    
+    if (newExpiry > today) {
+      setPastDocumentValidationError(
+        `This document expires in the future (${newExpiry.toLocaleDateString()}). ` +
+        `Past documents should have expired already. Use the "Add Document" button instead.`
+      );
+      return false;
+    }
+
+    setPastDocumentValidationError("");
+    return true;
   };
 
   const validateDateOverlap = (newIssueDate, newExpiryDate, previousDoc) => {
@@ -739,6 +1021,54 @@ export const DocumentsPage = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   }, []);
 
+  const handlePastInputChange = useCallback((field, value) => {
+    setPastDocumentFormData(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handlePastVehicleChange = async (vehicleId) => {
+    setPastDocumentFormData(prev => ({ ...prev, vehicle_id: vehicleId }));
+    
+    if (vehicleId && pastDocumentFormData.document_type) {
+      const currentDoc = await checkCurrentActiveDocument(vehicleId, pastDocumentFormData.document_type);
+      setCurrentActiveDocument(currentDoc);
+    }
+  };
+
+  const handlePastDocumentTypeChange = async (docType) => {
+    setPastDocumentFormData(prev => ({ ...prev, document_type: docType }));
+    
+    if (pastDocumentFormData.vehicle_id && docType) {
+      const currentDoc = await checkCurrentActiveDocument(pastDocumentFormData.vehicle_id, docType);
+      setCurrentActiveDocument(currentDoc);
+    }
+  };
+
+  const handlePastIssueDateChange = async (date) => {
+    setPastDocumentFormData(prev => ({ ...prev, issue_date: date }));
+    
+    if (pastDocumentFormData.vehicle_id && pastDocumentFormData.document_type && date && pastDocumentFormData.expiry_date) {
+      await validatePastDocument(
+        pastDocumentFormData.vehicle_id,
+        pastDocumentFormData.document_type,
+        date,
+        pastDocumentFormData.expiry_date
+      );
+    }
+  };
+
+  const handlePastExpiryDateChange = async (date) => {
+    setPastDocumentFormData(prev => ({ ...prev, expiry_date: date }));
+    
+    if (pastDocumentFormData.vehicle_id && pastDocumentFormData.document_type && pastDocumentFormData.issue_date && date) {
+      await validatePastDocument(
+        pastDocumentFormData.vehicle_id,
+        pastDocumentFormData.document_type,
+        pastDocumentFormData.issue_date,
+        date
+      );
+    }
+  };
+
   const handleIssueDateChange = useCallback((date) => {
     setFormData(prev => ({ ...prev, issue_date: date }));
 
@@ -784,6 +1114,39 @@ export const DocumentsPage = () => {
       const { url } = res.data;
       setUploadedFile(url);
       setFormData(prev => ({
+        ...prev,
+        file_url: url
+      }));
+
+      toast.success("Document uploaded successfully");
+    } catch (err) {
+      toast.error("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handlePastDocumentUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("File too large. Maximum allowed size is 3MB");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+
+    try {
+      setUploading(true);
+      const res = await api.post("/upload-document", form, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+
+      const { url } = res.data;
+      setPastUploadedFile(url);
+      setPastDocumentFormData(prev => ({
         ...prev,
         file_url: url
       }));
@@ -884,6 +1247,26 @@ export const DocumentsPage = () => {
     setIsAutoFilling(false);
   };
 
+  const resetPastForm = () => {
+    setPastDocumentFormData({
+      vehicle_id: '',
+      document_type: 'Insurance',
+      custom_document_name: '',
+      policy_number: '',
+      provider: '',
+      phone_number: '',
+      issue_date: '',
+      expiry_date: '',
+      premium: '',
+      coverage: '',
+      status: 'Active',
+      file_url: ''
+    });
+    setPastUploadedFile(null);
+    setPastDocumentValidationError("");
+    setCurrentActiveDocument(null);
+  };
+
   const handleEdit = (doc) => {
     setSelectedDocument(doc);
     setFormData({
@@ -918,7 +1301,6 @@ export const DocumentsPage = () => {
     }
 
     try {
-      // Prepare the data
       const updateData = {
         vehicle_id: formData.vehicle_id,
         document_type: formData.document_type,
@@ -934,25 +1316,21 @@ export const DocumentsPage = () => {
         file_url: uploadedFile
       };
 
-      // Make the PUT request
       const response = await api.put(`/vehicle-documents/${selectedDocument.id}`, updateData);
 
       toast.success('Document updated successfully');
       setEditDialogOpen(false);
       resetForm();
-      fetchData(); // Refresh the documents list
+      fetchData();
     } catch (error) {
       console.error("API Error:", error);
 
-      // Handle error properly
       let errorMessage = 'Failed to update document';
 
       if (error.response) {
-        // Check if it's a validation error (422)
         if (error.response.status === 422) {
           const errorData = error.response.data;
           if (Array.isArray(errorData.detail)) {
-            // FastAPI validation error format
             errorMessage = errorData.detail.map(err => err.msg).join(', ');
           } else if (errorData.detail) {
             errorMessage = errorData.detail;
@@ -978,23 +1356,63 @@ export const DocumentsPage = () => {
       return;
     }
 
-    if (!uploadedFile) {
-      toast.error("Please upload a document first");
+    try {
+      const submitData = {
+        ...formData,
+        file_url: uploadedFile || null,
+        issue_date: new Date(formData.issue_date).toISOString(),
+        expiry_date: new Date(formData.expiry_date).toISOString(),
+        premium: formData.premium ? parseFloat(formData.premium) : null
+      };
+
+      await api.post('/vehicle-documents', submitData);
+
+      toast.success('Document added successfully');
+      resetForm();
+      setDialogOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error("API Error:", error);
+      toast.error(error.response?.data?.detail || 'Failed to add document');
+    }
+  };
+
+  const handlePastDocumentSubmit = async (e) => {
+    e.preventDefault();
+
+    if (uploading) {
+      toast.error("Please wait until the file upload finishes");
+      return;
+    }
+
+    // Validate again before submission
+    const isValid = await validatePastDocument(
+      pastDocumentFormData.vehicle_id,
+      pastDocumentFormData.document_type,
+      pastDocumentFormData.issue_date,
+      pastDocumentFormData.expiry_date
+    );
+
+    if (!isValid) {
+      toast.error(pastDocumentValidationError);
       return;
     }
 
     try {
-      await api.post('/vehicle-documents', {
-        ...formData,
-        file_url: uploadedFile,
-        issue_date: new Date(formData.issue_date).toISOString(),
-        expiry_date: new Date(formData.expiry_date).toISOString(),
-        premium: formData.premium ? parseFloat(formData.premium) : null
-      });
+      const submitData = {
+        ...pastDocumentFormData,
+        file_url: pastUploadedFile || null,
+        issue_date: new Date(pastDocumentFormData.issue_date).toISOString(),
+        expiry_date: new Date(pastDocumentFormData.expiry_date).toISOString(),
+        premium: pastDocumentFormData.premium ? parseFloat(pastDocumentFormData.premium) : null,
+        is_current: false // Past documents should never be current
+      };
 
-      toast.success('Document added successfully (version tracked)');
-      resetForm();
-      setDialogOpen(false);
+      await api.post('/vehicle-documents', submitData);
+
+      toast.success('Past document added successfully');
+      resetPastForm();
+      setPastDocumentDialogOpen(false);
       fetchData();
     } catch (error) {
       console.error("API Error:", error);
@@ -1009,13 +1427,11 @@ export const DocumentsPage = () => {
       await api.delete(`/vehicle-documents/${versionId}/version`);
       toast.success(`Version ${versionNumber} deleted successfully`);
 
-      // Refresh the history
       if (selectedDocHistory) {
         const response = await api.get(`/vehicle-documents/${selectedDocHistory.history[0].id}/history`);
         setSelectedDocHistory(response.data);
       }
 
-      // Refresh the main documents list
       fetchData();
     } catch (error) {
       console.error("Delete error:", error);
@@ -1029,9 +1445,8 @@ export const DocumentsPage = () => {
     try {
       await api.delete(`/vehicle-documents/${docId}`);
       toast.success('Document deleted successfully');
-      fetchData(); // Refresh the documents list
+      fetchData();
 
-      // Close history dialog if open
       if (historyDialogOpen) {
         setHistoryDialogOpen(false);
         setSelectedDocHistory(null);
@@ -1070,7 +1485,6 @@ export const DocumentsPage = () => {
       let filename = '';
 
       if (exportType === 'filtered') {
-        // Export current filtered view
         if (!filteredDocuments || filteredDocuments.length === 0) {
           toast.error('No documents to export');
           setExporting(false);
@@ -1096,7 +1510,6 @@ export const DocumentsPage = () => {
         filename = `filtered_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
 
       } else if (exportType === 'vehicle' && selectedVehicle !== 'all') {
-        // Export specific vehicle
         const params = new URLSearchParams();
         params.append('vehicle_id', selectedVehicle);
 
@@ -1109,24 +1522,20 @@ export const DocumentsPage = () => {
         filename = `${vehicleReg}_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
 
       } else {
-        // Export all documents
         response = await api.get('/export/vehicle-documents/excel', {
           responseType: 'blob'
         });
         filename = `all_vehicles_documents_${new Date().toISOString().split('T')[0]}.xlsx`;
       }
 
-      // Check if response is valid
       if (!response || !response.data) {
         throw new Error('No data received from server');
       }
 
-      // Handle download
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
 
-      // Create download link
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -1134,7 +1543,6 @@ export const DocumentsPage = () => {
       document.body.appendChild(link);
       link.click();
 
-      // Cleanup
       setTimeout(() => {
         document.body.removeChild(link);
         window.URL.revokeObjectURL(downloadUrl);
@@ -1144,11 +1552,9 @@ export const DocumentsPage = () => {
     } catch (error) {
       console.error('Export error:', error);
 
-      // Try to get error message from response
       let errorMessage = 'Failed to export documents';
       if (error.response) {
         if (error.response.data instanceof Blob) {
-          // Try to read error from blob
           const text = await error.response.data.text();
           try {
             const errorData = JSON.parse(text);
@@ -1189,6 +1595,43 @@ export const DocumentsPage = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Add Past Document Button */}
+          <Dialog open={pastDocumentDialogOpen} onOpenChange={(open) => {
+            setPastDocumentDialogOpen(open);
+            if (!open) resetPastForm();
+          }}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="border-emerald-600 text-emerald-700 hover:bg-emerald-50">
+                <History size={18} className="mr-2" />
+                Add Past Document
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add Past Document</DialogTitle>
+                <p className="text-sm text-slate-500">
+                  Add historical documents that have already expired. These will not become the current document.
+                </p>
+              </DialogHeader>
+              <PastDocumentForm
+                formData={pastDocumentFormData}
+                vehicles={vehicles}
+                currentDocument={currentActiveDocument}
+                validationError={pastDocumentValidationError}
+                onVehicleChange={handlePastVehicleChange}
+                onDocumentTypeChange={handlePastDocumentTypeChange}
+                onInputChange={handlePastInputChange}
+                onIssueDateChange={handlePastIssueDateChange}
+                onExpiryDateChange={handlePastExpiryDateChange}
+                onDocumentUpload={handlePastDocumentUpload}
+                onSubmit={handlePastDocumentSubmit}
+                submitText="Add Past Document"
+                uploading={uploading}
+                uploadedFile={pastUploadedFile}
+              />
+            </DialogContent>
+          </Dialog>
+
           {/* Export Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1231,6 +1674,7 @@ export const DocumentsPage = () => {
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Add Document Button */}
           <Dialog
             open={dialogOpen}
             onOpenChange={(open) => {
@@ -1247,7 +1691,7 @@ export const DocumentsPage = () => {
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Vehicle Document</DialogTitle>
-                <p className="text-sm text-slate-500">Previous versions will be preserved automatically</p>
+                <p className="text-sm text-slate-500">Add a new document (renewal or new document)</p>
               </DialogHeader>
               <DocumentForm
                 formData={formData}
@@ -1267,7 +1711,7 @@ export const DocumentsPage = () => {
                 onDocumentUpload={handleDocumentUpload}
                 onPhoneChange={handlePhoneChange}
                 onSubmit={handleSubmit}
-                submitText="Add Document (Auto-Versioned)"
+                submitText="Add Document"
               />
             </DialogContent>
           </Dialog>

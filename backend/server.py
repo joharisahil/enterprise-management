@@ -1737,6 +1737,98 @@ async def debug_vehicle_documents(vehicle_id: str, current_user: dict = Depends(
         "document_fields_summary": doc_fields
     }
 
+# ==================== VEHICLE DOCUMENT ROUTES (VERSIONED) ====================
+
+@api_router.post("/vehicle-documents")
+async def create_vehicle_document(
+    document_data: VehicleDocumentCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Create a new vehicle document with versioning
+    """
+    try:
+        # Check if vehicle exists
+        vehicle = await db.vehicles.find_one({"id": document_data.vehicle_id, "is_deleted": False})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        # Check for existing current version
+        existing_doc = await db.vehicle_documents.find_one({
+            "vehicle_id": document_data.vehicle_id,
+            "document_type": document_data.document_type,
+            "is_current": True,
+            "is_deleted": False
+        })
+        
+        # Create new document ID
+        document_id = str(uuid.uuid4())
+        
+        # Convert datetime fields to ISO format
+        issue_date = document_data.issue_date
+        if isinstance(issue_date, datetime):
+            issue_date = issue_date.isoformat()
+        
+        expiry_date = document_data.expiry_date
+        if isinstance(expiry_date, datetime):
+            expiry_date = expiry_date.isoformat()
+        
+        # Create document dict
+        document_dict = {
+            "id": document_id,
+            "vehicle_id": document_data.vehicle_id,
+            "document_type": document_data.document_type,
+            "custom_document_name": document_data.custom_document_name,
+            "policy_number": document_data.policy_number,
+            "provider": document_data.provider,
+            "phone_number": document_data.phone_number,
+            "issue_date": issue_date,
+            "expiry_date": expiry_date,
+            "premium": document_data.premium,
+            "coverage": document_data.coverage,
+            "status": document_data.status,
+            "file_url": document_data.file_url,
+            "file_public_id": document_data.file_public_id,
+            "file_type": document_data.file_type,
+            "file_uploaded_at": document_data.file_uploaded_at.isoformat() if document_data.file_uploaded_at else None,
+            "file_uploaded_by": document_data.file_uploaded_by,
+            "version": (existing_doc.get("version", 0) + 1) if existing_doc else 1,
+            "is_current": True,
+            "previous_version_id": existing_doc["id"] if existing_doc else None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": current_user["user_id"],
+            "updated_by": current_user["user_id"],
+            "is_deleted": False
+        }
+        
+        # If there's an existing current document, mark it as not current
+        if existing_doc:
+            await db.vehicle_documents.update_many(
+                {
+                    "vehicle_id": document_data.vehicle_id,
+                    "document_type": document_data.document_type,
+                    "is_current": True
+                },
+                {"$set": {"is_current": False, "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+        
+        # Insert new document
+        await db.vehicle_documents.insert_one(document_dict)
+        
+        return {
+            "success": True,
+            "document_id": document_id,
+            "version": document_dict["version"],
+            "message": "Document created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating vehicle document: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create document: {str(e)}")
+
 @api_router.get("/vehicles/{vehicle_id}/document-status")
 async def check_vehicle_document_status(
     vehicle_id: str,
@@ -2564,7 +2656,7 @@ async def download_sold_agreement(
         logger.error(f"Agreement download error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
-        
+
 @api_router.delete("/vehicles/{vehicle_id}/sold-agreement")
 async def delete_sold_agreement(
     vehicle_id: str,

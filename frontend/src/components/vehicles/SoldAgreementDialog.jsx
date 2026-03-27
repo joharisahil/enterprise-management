@@ -23,31 +23,6 @@ export const SoldAgreementDialog = ({ vehicle, open, onOpenChange, onSuccess }) 
   const [loading, setLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [markingSold, setMarkingSold] = useState(false);
-  const [unmarkingSold, setUnmarkingSold] = useState(false);
-
-const handleUnmarkSold = async () => {
-  if (!window.confirm('Are you sure you want to mark this vehicle as unsold? This will remove the sold status but keep the agreement details.')) {
-    return;
-  }
-  
-  setUnmarkingSold(true);
-  try {
-    await api.patch(`/vehicles/${vehicle.id}/sold-status`, {
-      sold: false
-    });
-    
-    toast.success('Vehicle marked as unsold');
-    if (onSuccess) onSuccess();
-    
-    // Optionally close the dialog
-    onOpenChange(false);
-  } catch (error) {
-    console.error('Error marking vehicle as unsold:', error);
-    toast.error(error.response?.data?.detail || 'Failed to mark vehicle as unsold');
-  } finally {
-    setUnmarkingSold(false);
-  }
-};
 
   useEffect(() => {
     if (open && vehicle?.id) {
@@ -61,6 +36,7 @@ const handleUnmarkSold = async () => {
     setLoading(true);
     try {
       const response = await api.get(`/vehicles/${vehicle.id}/sold-agreement`);
+      console.log('Fetched agreement:', response.data);
       if (response.data.has_agreement) {
         setAgreementData(response.data.agreement);
         setFormData({
@@ -69,6 +45,8 @@ const handleUnmarkSold = async () => {
           agreement_date: response.data.agreement.agreement_date?.split('T')[0] || new Date().toISOString().split('T')[0],
           notes: response.data.agreement.notes || ''
         });
+      } else {
+        setAgreementData(null);
       }
     } catch (error) {
       console.error('Error fetching agreement:', error);
@@ -96,6 +74,8 @@ const handleUnmarkSold = async () => {
           });
           vehicleSold = true;
           toast.success('Vehicle marked as sold');
+          // Update vehicle in parent
+          if (onSuccess) onSuccess();
         } catch (error) {
           console.error('Error marking vehicle as sold:', error);
           toast.error('Failed to mark vehicle as sold');
@@ -115,7 +95,7 @@ const handleUnmarkSold = async () => {
       
       toast.success('Agreement details saved successfully');
       if (onSuccess) onSuccess();
-      fetchAgreement();
+      await fetchAgreement(); // Refresh data
     } catch (error) {
       console.error('Error saving agreement:', error);
       toast.error(error.response?.data?.detail || 'Failed to save agreement');
@@ -141,14 +121,23 @@ const handleUnmarkSold = async () => {
       // First ensure vehicle is marked as sold
       if (!vehicle.sold) {
         await api.patch(`/vehicles/${vehicle.id}/sold-status`, { sold: true });
+        if (onSuccess) onSuccess();
       }
       
+      console.log('Uploading agreement document...');
       const response = await api.post(`/vehicles/${vehicle.id}/upload-agreement`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       
+      console.log('Upload response:', response.data);
       toast.success('Agreement document uploaded successfully');
-      fetchAgreement();
+      
+      // Wait a moment for database to update, then refresh
+      setTimeout(async () => {
+        await fetchAgreement();
+        if (onSuccess) onSuccess();
+      }, 500);
+      
     } catch (error) {
       console.error('Upload error:', error);
       toast.error(error.response?.data?.detail || 'Failed to upload document');
@@ -158,79 +147,84 @@ const handleUnmarkSold = async () => {
     }
   };
 
-const handleDownload = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    // Use the api instance's baseURL instead of hardcoding
-    const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
-    const downloadUrl = `${baseURL}/vehicles/${vehicle.id}/download-agreement`;
-    
-    console.log('Downloading from:', downloadUrl);
-    
-    const response = await fetch(downloadUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "*/*",
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Download failed:', response.status, errorText);
-      throw new Error(`Download failed: ${response.status}`);
+  const handleDownload = async () => {
+    if (!agreementData?.agreement_url) {
+      toast.error('No document available to download');
+      return;
     }
-
-    const contentDisposition = response.headers.get("Content-Disposition");
-    let filename = `${vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, "_")}_sold_agreement.pdf`;
     
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-      if (filenameMatch && filenameMatch[1]) {
-        filename = filenameMatch[1].replace(/['"]/g, "");
+    try {
+      const token = localStorage.getItem('token');
+      const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
+      const downloadUrl = `${baseURL}/vehicles/${vehicle.id}/download-agreement`;
+      
+      console.log('Downloading from:', downloadUrl);
+      console.log('Agreement URL:', agreementData.agreement_url);
+      
+      const response = await fetch(downloadUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "*/*",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Download failed:', response.status, errorText);
+        throw new Error(`Download failed: ${response.status}`);
       }
+
+      const contentDisposition = response.headers.get("Content-Disposition");
+      let filename = `${vehicle.registration_number.replace(/[^a-zA-Z0-9]/g, "_")}_sold_agreement.pdf`;
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, "");
+        }
+      }
+
+      const blob = await response.blob();
+      
+      if (blob.size === 0) {
+        throw new Error("Downloaded file is empty");
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Download started');
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error(error.message || 'Failed to download document');
     }
+  };
 
-    const blob = await response.blob();
-    
-    if (blob.size === 0) {
-      throw new Error("Downloaded file is empty");
+  const handleDelete = async () => {
+    try {
+      await api.delete(`/vehicles/${vehicle.id}/sold-agreement`);
+      toast.success('Agreement deleted successfully');
+      setAgreementData(null);
+      setFormData({
+        buyer_name: '',
+        buyer_phone: '',
+        agreement_date: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      if (onSuccess) onSuccess();
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete agreement');
     }
+  };
 
-    // Create download link
-    const url = window.URL.createObjectURL(blob);
-    const link = window.document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    window.document.body.appendChild(link);
-    link.click();
-    window.document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-    
-    toast.success('Download started');
-  } catch (error) {
-    console.error('Download error:', error);
-    toast.error(error.message || 'Failed to download document');
-  }
-};
-
-const handleDelete = async () => {
-  try {
-    await api.delete(`/vehicles/${vehicle.id}/sold-agreement`);
-    toast.success('Agreement deleted successfully');
-    setAgreementData(null);
-    setFormData({
-      buyer_name: '',
-      buyer_phone: '',
-      agreement_date: new Date().toISOString().split('T')[0],
-      notes: ''
-    });
-    if (onSuccess) onSuccess();
-  } catch (error) {
-    console.error('Delete error:', error);
-    toast.error(error.response?.data?.detail || 'Failed to delete agreement');
-  }
-};
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -376,58 +370,45 @@ const handleDelete = async () => {
                     <p className="text-xs text-emerald-600 mt-1">
                       {agreementData.agreement_file_type?.toUpperCase()} file • Uploaded on {new Date(agreementData.created_at).toLocaleDateString()}
                     </p>
+                    <p className="text-xs text-emerald-500 mt-1 break-all font-mono">
+                      File URL: {agreementData.agreement_url?.substring(0, 60)}...
+                    </p>
                   </div>
                 )}
               </div>
               
-{/* View Sold Details Section */}
-{agreementData && (
-  <div className="border-t pt-4">
-    <div className="flex justify-between items-center mb-3">
-      <h4 className="font-medium">Sold Details</h4>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={handleUnmarkSold}
-        disabled={unmarkingSold}
-        className="text-amber-600 border-amber-600 hover:bg-amber-50"
-      >
-        {unmarkingSold ? (
-          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-600 mr-1" />
-        ) : (
-          <AlertTriangle size={12} className="mr-1" />
-        )}
-        Mark as Unsold
-      </Button>
-    </div>
-    <div className="space-y-2 text-sm">
-      {agreementData.buyer_name && (
-        <div className="flex justify-between">
-          <span className="text-slate-600">Buyer Name:</span>
-          <span className="font-medium">{agreementData.buyer_name}</span>
-        </div>
-      )}
-      {agreementData.buyer_phone && (
-        <div className="flex justify-between">
-          <span className="text-slate-600">Buyer Phone:</span>
-          <span className="font-medium">{agreementData.buyer_phone}</span>
-        </div>
-      )}
-      {agreementData.agreement_date && (
-        <div className="flex justify-between">
-          <span className="text-slate-600">Agreement Date:</span>
-          <span className="font-medium">{new Date(agreementData.agreement_date).toLocaleDateString()}</span>
-        </div>
-      )}
-      {agreementData.notes && (
-        <div>
-          <span className="text-slate-600">Notes:</span>
-          <p className="mt-1 p-2 bg-slate-50 rounded text-slate-700">{agreementData.notes}</p>
-        </div>
-      )}
-    </div>
-  </div>
-)}
+              {/* View Sold Details Section */}
+              {agreementData && (
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-3">Sold Details</h4>
+                  <div className="space-y-2 text-sm">
+                    {agreementData.buyer_name && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Buyer Name:</span>
+                        <span className="font-medium">{agreementData.buyer_name}</span>
+                      </div>
+                    )}
+                    {agreementData.buyer_phone && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Buyer Phone:</span>
+                        <span className="font-medium">{agreementData.buyer_phone}</span>
+                      </div>
+                    )}
+                    {agreementData.agreement_date && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Agreement Date:</span>
+                        <span className="font-medium">{new Date(agreementData.agreement_date).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    {agreementData.notes && (
+                      <div>
+                        <span className="text-slate-600">Notes:</span>
+                        <p className="mt-1 p-2 bg-slate-50 rounded text-slate-700">{agreementData.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               
               {/* Info message if vehicle is not sold */}
               {!vehicle?.sold && !agreementData && (
