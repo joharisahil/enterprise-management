@@ -1604,7 +1604,7 @@ const handleDocumentTypeChange = async (docType) => {
     }
   };
 
-  const handlePastDocumentSubmit = async (e) => {
+const handlePastDocumentSubmit = async (e) => {
     e.preventDefault();
 
     if (uploading) {
@@ -1612,15 +1612,26 @@ const handleDocumentTypeChange = async (docType) => {
       return;
     }
 
-    const isValid = await validatePastDocument(
-      pastDocumentFormData.vehicle_id,
-      pastDocumentFormData.document_type,
-      pastDocumentFormData.issue_date,
-      pastDocumentFormData.expiry_date
-    );
+    // Basic date checks on frontend before hitting API
+    if (!pastDocumentFormData.issue_date || !pastDocumentFormData.expiry_date) {
+      toast.error("Both issue date and expiry date are required");
+      return;
+    }
 
-    if (!isValid) {
-      toast.error(pastDocumentValidationError);
+    const expiry = new Date(pastDocumentFormData.expiry_date);
+    const issue = new Date(pastDocumentFormData.issue_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (expiry <= issue) {
+      setPastDocumentValidationError("Expiry date must be after issue date");
+      return;
+    }
+
+    if (expiry > today) {
+      setPastDocumentValidationError(
+        `This document expires in the future (${expiry.toLocaleDateString()}). Past documents should have already expired.`
+      );
       return;
     }
 
@@ -1631,7 +1642,8 @@ const handleDocumentTypeChange = async (docType) => {
         issue_date: new Date(pastDocumentFormData.issue_date).toISOString(),
         expiry_date: new Date(pastDocumentFormData.expiry_date).toISOString(),
         premium: pastDocumentFormData.premium ? parseFloat(pastDocumentFormData.premium) : null,
-        is_current: false,
+        is_current: false,           // ✅ never current
+        is_past_document: true,      // ✅ mark as past
         status: "Expired"
       };
 
@@ -1643,7 +1655,10 @@ const handleDocumentTypeChange = async (docType) => {
       fetchData();
     } catch (error) {
       console.error("API Error:", error);
-      toast.error(error.response?.data?.detail || 'Failed to add document');
+      // ✅ Show backend validation error (e.g. date conflict) directly
+      const msg = error.response?.data?.detail || 'Failed to add document';
+      setPastDocumentValidationError(msg);
+      toast.error(msg);
     }
   };
 
@@ -2227,23 +2242,29 @@ const handleDocumentTypeChange = async (docType) => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         {/* Header with badges */}
-                        <div className="flex items-center gap-3 mb-3 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <div className="p-2 bg-blue-100 rounded-md">
-                              <FileText size={20} className="text-blue-700" />
-                            </div>
-                            <h3 className="font-semibold text-lg text-slate-900">
-                              {doc.document_type === 'Custom' ? doc.custom_document_name : doc.document_type}
-                            </h3>
-                          </div>
-                          <Badge variant="outline">v{doc.version}</Badge>
-                          {doc.is_current && (
-                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-                              Current
-                            </Badge>
-                          )}
-                          <ExpiryStatusBadge daysLeft={daysLeft} />
-                        </div>
+{/* In the documents list, inside the badges row */}
+<div className="flex items-center gap-3 mb-3 flex-wrap">
+  <div className="flex items-center gap-2">
+    <div className="p-2 bg-blue-100 rounded-md">
+      <FileText size={20} className="text-blue-700" />
+    </div>
+    <h3 className="font-semibold text-lg text-slate-900">
+      {doc.document_type === 'Custom' ? doc.custom_document_name : doc.document_type}
+    </h3>
+  </div>
+  <Badge variant="outline">v{doc.version}</Badge>
+  {doc.is_current && (
+    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+      Current
+    </Badge>
+  )}
+  {doc.is_past_document && (
+    <Badge className="bg-slate-100 text-slate-600 border-slate-200">
+      Past Record
+    </Badge>
+  )}
+  <ExpiryStatusBadge daysLeft={daysLeft} />
+</div>
 
                         {/* Vehicle and policy info */}
                         <p className="text-sm text-slate-600 mb-3">

@@ -930,48 +930,101 @@ const handleDocumentUpload = async (documentId, documentType) => {
             </TabsContent>
 
             {/* Documents Tab */}
-            <TabsContent value="documents" className="mt-4">
-              {!localVehicleReport?.documents?.length ? (
-                <div className="text-center py-12 bg-slate-50 rounded-lg"><FileText size={48} className="mx-auto text-slate-300 mb-3" /><p>No documents found</p></div>
-              ) : (
-                <div className="space-y-3">
-                  {localVehicleReport.documents.map((doc) => {
-                    const daysLeft = getDaysLeft(doc.expiry_date);
-                    return (
-                      <Card key={doc.id}>
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <h4 className="font-semibold">{doc.document_type === 'Custom' ? doc.custom_document_name : doc.document_type}</h4>
-                                {doc.is_current && <Badge className="bg-emerald-100 text-emerald-700 text-xs">Current</Badge>}
-                                {doc.source === 'surepass' && <Badge className="bg-blue-100 text-blue-700 text-xs">Surepass</Badge>}
-                              </div>
-                              <p className="text-sm text-slate-600">{doc.policy_number}</p>
-                              <p className="text-xs text-slate-500">{doc.provider}</p>
-                              <p className="text-xs text-slate-500 mt-1">Expires: {new Date(doc.expiry_date).toLocaleDateString()}</p>
-                            </div>
-                            <div className="text-right">
-                              {getStatusBadge(daysLeft)}
-                              {doc.premium && <p className="text-sm font-semibold mt-2">₹{doc.premium.toLocaleString()}</p>}
-                            </div>
-                          </div>
-
-                          <div className="mt-3 pt-3 border-t border-slate-100">
-                            <div className="flex gap-2">
-                              <input type="file" ref={(ref) => { if (ref && documentFileInputRefs[doc.id] !== ref) setDocumentFileInputRefs(prev => ({ ...prev, [doc.id]: ref })); }} onChange={() => handleDocumentUpload(doc.id, doc.document_type)} accept="image/*,application/pdf" className="hidden" id={`doc-upload-${doc.id}`} />
-                              <Button size="sm" variant="outline" className="flex-1" onClick={() => document.getElementById(`doc-upload-${doc.id}`).click()} disabled={uploadingDocument[doc.id]}>{uploadingDocument[doc.id] ? 'Uploading...' : <><Upload size={12} className="mr-1" /> Upload</>}</Button>
-                              {doc.file_url && (<><Button size="sm" variant="outline" className="flex-1" onClick={() => handleDocumentDownload(doc.id)} disabled={downloadingDocument[doc.id]}><Download size={12} className="mr-1" /> Download</Button><Button size="sm" variant="outline" className="flex-1 text-rose-600" onClick={() => { setDocumentToDelete({ id: doc.id, document_type: doc.document_type, policy_number: doc.policy_number }); setShowDocumentDeleteDialog(true); }}><Trash2 size={12} className="mr-1" /> Delete</Button></>)}
-                            </div>
-                            {doc.file_url && <div className="mt-2 text-xs text-emerald-600 bg-emerald-50 p-2 rounded"><CheckCircle size={12} className="inline mr-1" /> Document uploaded</div>}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+{/* Documents Tab */}
+<TabsContent value="documents" className="mt-4">
+  {!localVehicleReport?.documents?.length ? (
+    <div className="text-center py-12 bg-slate-50 rounded-lg"><FileText size={48} className="mx-auto text-slate-300 mb-3" /><p>No documents found</p></div>
+  ) : (
+    <div className="space-y-3">
+      {localVehicleReport.documents.map((doc) => {
+        const daysLeft = getDaysLeft(doc.expiry_date);
+        return (
+          <Card key={doc.id} className={doc.is_past_document ? 'border-slate-200 opacity-80' : ''}>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="font-semibold">{doc.document_type === 'Custom' ? doc.custom_document_name : doc.document_type}</h4>
+                    {doc.is_current && (
+                      <Badge className="bg-emerald-100 text-emerald-700 text-xs">Current</Badge>
+                    )}
+                    {doc.is_past_document && (
+                      <Badge className="bg-slate-100 text-slate-600 border border-slate-300 text-xs">Past Record</Badge>
+                    )}
+                    {doc.source === 'surepass' && (
+                      <Badge className="bg-blue-100 text-blue-700 text-xs">Surepass</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-slate-600">{doc.policy_number}</p>
+                  <p className="text-xs text-slate-500">{doc.provider}</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Issue: {doc.issue_date ? new Date(doc.issue_date).toLocaleDateString() : 'N/A'} •{' '}
+                    Expires: {new Date(doc.expiry_date).toLocaleDateString()}
+                  </p>
                 </div>
-              )}
-            </TabsContent>
+                <div className="text-right">
+                  {getStatusBadge(daysLeft)}
+                  {doc.premium && <p className="text-sm font-semibold mt-2">₹{doc.premium.toLocaleString()}</p>}
+                </div>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <div className="flex gap-2">
+                  <input
+                    type="file"
+                    ref={(ref) => { if (ref && documentFileInputRefs[doc.id] !== ref) setDocumentFileInputRefs(prev => ({ ...prev, [doc.id]: ref })); }}
+                    onChange={() => handleDocumentUpload(doc.id, doc.document_type)}
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    id={`doc-upload-${doc.id}`}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => document.getElementById(`doc-upload-${doc.id}`).click()}
+                    disabled={uploadingDocument[doc.id]}
+                  >
+                    {uploadingDocument[doc.id] ? 'Uploading...' : <><Upload size={12} className="mr-1" /> Upload</>}
+                  </Button>
+                  {doc.file_url && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleDocumentDownload(doc.id)}
+                        disabled={downloadingDocument[doc.id]}
+                      >
+                        <Download size={12} className="mr-1" /> Download
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-rose-600"
+                        onClick={() => {
+                          setDocumentToDelete({ id: doc.id, document_type: doc.document_type, policy_number: doc.policy_number });
+                          setShowDocumentDeleteDialog(true);
+                        }}
+                      >
+                        <Trash2 size={12} className="mr-1" /> Delete
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {doc.file_url && (
+                  <div className="mt-2 text-xs text-emerald-600 bg-emerald-50 p-2 rounded">
+                    <CheckCircle size={12} className="inline mr-1" /> Document uploaded
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  )}
+</TabsContent>
 
             {/* Challans Tab */}
             <TabsContent value="challans" className="mt-4">

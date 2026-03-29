@@ -388,6 +388,7 @@ class VehicleDocumentBase(BaseModel):
     file_uploaded_by: Optional[str] = None
     version: int = 1
     is_current: bool = True
+    is_past_document: bool = False
     previous_version_id: Optional[str] = None
 
 class VehicleDocumentCreate(VehicleDocumentBase):

@@ -1847,15 +1847,11 @@ async def create_vehicle_document(
     document_data: VehicleDocumentCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Create a new vehicle document with versioning
-    """
     try:
-        # Check if vehicle exists
         vehicle = await db.vehicles.find_one({"id": document_data.vehicle_id, "is_deleted": False})
         if not vehicle:
             raise HTTPException(status_code=404, detail="Vehicle not found")
-        
+
         # Check for existing current version
         existing_doc = await db.vehicle_documents.find_one({
             "vehicle_id": document_data.vehicle_id,
@@ -1863,20 +1859,49 @@ async def create_vehicle_document(
             "is_current": True,
             "is_deleted": False
         })
-        
-        # Create new document ID
+
+        # ✅ If is_current is explicitly False, this is a past document
+        is_past_document = document_data.is_current == False
+
+        if is_past_document:
+            # Validate: past document expiry must be before the current doc's issue date
+            if existing_doc:
+                current_issue_date = existing_doc.get("issue_date")
+                if current_issue_date:
+                    if isinstance(current_issue_date, str):
+                        current_issue_dt = datetime.fromisoformat(current_issue_date.replace('Z', '+00:00'))
+                    else:
+                        current_issue_dt = current_issue_date
+
+                    # Make timezone-aware if naive
+                    if current_issue_dt.tzinfo is None:
+                        current_issue_dt = current_issue_dt.replace(tzinfo=timezone.utc)
+
+                    expiry_date = document_data.expiry_date
+                    if isinstance(expiry_date, str):
+                        expiry_dt = datetime.fromisoformat(expiry_date.replace('Z', '+00:00'))
+                    else:
+                        expiry_dt = expiry_date
+
+                    if expiry_dt.tzinfo is None:
+                        expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
+
+                    if expiry_dt >= current_issue_dt:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Past document expiry date ({expiry_dt.strftime('%Y-%m-%d')}) must be before the current document's issue date ({current_issue_dt.strftime('%Y-%m-%d')})"
+                        )
+
         document_id = str(uuid.uuid4())
-        
-        # Convert datetime fields to ISO format
+
         issue_date = document_data.issue_date
         if isinstance(issue_date, datetime):
             issue_date = issue_date.isoformat()
-        
+
         expiry_date = document_data.expiry_date
         if isinstance(expiry_date, datetime):
             expiry_date = expiry_date.isoformat()
-        
-        # Create document dict
+
         document_dict = {
             "id": document_id,
             "vehicle_id": document_data.vehicle_id,
@@ -1895,18 +1920,19 @@ async def create_vehicle_document(
             "file_type": document_data.file_type,
             "file_uploaded_at": document_data.file_uploaded_at.isoformat() if document_data.file_uploaded_at else None,
             "file_uploaded_by": document_data.file_uploaded_by,
-            "version": (existing_doc.get("version", 0) + 1) if existing_doc else 1,
-            "is_current": True,
-            "previous_version_id": existing_doc["id"] if existing_doc else None,
+            "version": (existing_doc.get("version", 0) + 1) if existing_doc and not is_past_document else 1,
+            "is_current": False if is_past_document else True,   # ✅ past = never current
+            "is_past_document": is_past_document,                 # ✅ new flag
+            "previous_version_id": existing_doc["id"] if existing_doc and not is_past_document else None,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "created_by": current_user["user_id"],
             "updated_by": current_user["user_id"],
             "is_deleted": False
         }
-        
-        # If there's an existing current document, mark it as not current
-        if existing_doc:
+
+        # Only mark existing doc as not current if this is NOT a past document
+        if existing_doc and not is_past_document:
             await db.vehicle_documents.update_many(
                 {
                     "vehicle_id": document_data.vehicle_id,
@@ -1915,17 +1941,17 @@ async def create_vehicle_document(
                 },
                 {"$set": {"is_current": False, "updated_at": datetime.now(timezone.utc).isoformat()}}
             )
-        
-        # Insert new document
+
         await db.vehicle_documents.insert_one(document_dict)
-        
+
         return {
             "success": True,
             "document_id": document_id,
             "version": document_dict["version"],
-            "message": "Document created successfully"
+            "is_past_document": is_past_document,
+            "message": "Past document added successfully" if is_past_document else "Document created successfully"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
