@@ -285,54 +285,52 @@ const DocumentForm = ({
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Document Type *</Label>
-          <Select
-            value={formData.document_type}
-            onValueChange={onDocumentTypeChange}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {documentTypes.map((type) => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+<div className="grid grid-cols-2 gap-4">
+  <div>
+    <Label>Document Type *</Label>
+    <Select
+      value={formData.document_type}
+      onValueChange={onDocumentTypeChange}
+    >
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {documentTypes.map((type) => (
+          <SelectItem key={type} value={type}>{type}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
 
-        {formData.document_type === 'Custom' && (
-          <div>
-            <Label>Document Name *</Label>
-            <Input
-              required
-              value={formData.custom_document_name}
-              onChange={(e) => onInputChange('custom_document_name', e.target.value)}
-            />
-          </div>
-        )}
+  {formData.document_type === 'Custom' && (
+    <div>
+      <Label>Document Name *</Label>
+      <Input
+        required
+        value={formData.custom_document_name}
+        onChange={(e) => onInputChange('custom_document_name', e.target.value)}
+      />
+    </div>
+  )}
 
-        <div>
-          <Label>Policy/Document Number *</Label>
-          <Input
-            required
-            value={formData.policy_number}
-            onChange={(e) => onInputChange('policy_number', e.target.value)}
-          />
-        </div>
-      </div>
+  <div>
+    <Label>Policy/Document Number <span className="text-slate-400 text-xs">(Optional)</span></Label>
+    <Input
+      value={formData.policy_number}
+      onChange={(e) => onInputChange('policy_number', e.target.value)}
+    />
+  </div>
+</div>
 
-      <div>
-        <Label>Provider *</Label>
-        <Input
-          required
-          value={formData.provider}
-          onChange={(e) => onInputChange('provider', e.target.value)}
-          placeholder="e.g., ICICI Lombard, HDFC Ergo"
-        />
-      </div>
+<div>
+  <Label>Provider <span className="text-slate-400 text-xs">(Optional)</span></Label>
+  <Input
+    value={formData.provider}
+    onChange={(e) => onInputChange('provider', e.target.value)}
+    placeholder="e.g., ICICI Lombard, HDFC Ergo"
+  />
+</div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -514,54 +512,52 @@ const PastDocumentForm = ({
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Document Type *</Label>
-          <Select
-            value={formData.document_type}
-            onValueChange={onDocumentTypeChange}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {documentTypes.map((type) => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+<div className="grid grid-cols-2 gap-4">
+  <div>
+    <Label>Document Type *</Label>
+    <Select
+      value={formData.document_type}
+      onValueChange={onDocumentTypeChange}
+    >
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {documentTypes.map((type) => (
+          <SelectItem key={type} value={type}>{type}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
 
-        {formData.document_type === 'Custom' && (
-          <div>
-            <Label>Document Name *</Label>
-            <Input
-              required
-              value={formData.custom_document_name}
-              onChange={(e) => onInputChange('custom_document_name', e.target.value)}
-            />
-          </div>
-        )}
+  {formData.document_type === 'Custom' && (
+    <div>
+      <Label>Document Name *</Label>
+      <Input
+        required
+        value={formData.custom_document_name}
+        onChange={(e) => onInputChange('custom_document_name', e.target.value)}
+      />
+    </div>
+  )}
 
-        <div>
-          <Label>Policy/Document Number *</Label>
-          <Input
-            required
-            value={formData.policy_number}
-            onChange={(e) => onInputChange('policy_number', e.target.value)}
-          />
-        </div>
-      </div>
+  <div>
+    <Label>Policy/Document Number <span className="text-slate-400 text-xs">(Optional)</span></Label>
+    <Input
+      value={formData.policy_number}
+      onChange={(e) => onInputChange('policy_number', e.target.value)}
+    />
+  </div>
+</div>
 
-      <div>
-        <Label>Provider *</Label>
-        <Input
-          required
-          value={formData.provider}
-          onChange={(e) => onInputChange('provider', e.target.value)}
-          placeholder="e.g., ICICI Lombard, HDFC Ergo"
-        />
-      </div>
+<div>
+  <Label>Provider <span className="text-slate-400 text-xs">(Optional)</span></Label>
+  <Input
+    value={formData.provider}
+    onChange={(e) => onInputChange('provider', e.target.value)}
+    placeholder="e.g., ICICI Lombard, HDFC Ergo"
+  />
+</div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -1178,7 +1174,7 @@ export const DocumentsPage = () => {
     setIsAutoFilling(false);
   };
 
-  const handleDocumentTypeChange = async (docType) => {
+const handleDocumentTypeChange = async (docType) => {
     setIsAutoFilling(true);
     setFormData(prev => ({ ...prev, document_type: docType }));
 
@@ -1205,6 +1201,7 @@ export const DocumentsPage = () => {
 
         setFormData(prev => ({
           ...prev,
+          document_type: docType,
           policy_number: prevVersion.policy_number,
           provider: prevVersion.provider,
           premium: prevVersion.premium?.toString() || '',
@@ -1218,6 +1215,24 @@ export const DocumentsPage = () => {
           `Previous expiry was ${new Date(prevVersion.expiry_date).toLocaleDateString()}. ` +
           `You can edit these values before submission.`
         );
+      } else {
+        // ✅ No document found for this type — clear the form fields
+        setFormData(prev => ({
+          ...prev,
+          document_type: docType,
+          policy_number: '',
+          provider: '',
+          premium: '',
+          coverage: '',
+          issue_date: '',
+          expiry_date: '',
+          phone_number: '',
+          custom_document_name: ''
+        }));
+        setAutoFillMessage('');
+        setDateOverlapWarning('');
+        setDateValidationError('');
+        setUploadedFile(null);
       }
     }
     setIsAutoFilling(false);
