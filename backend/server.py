@@ -765,7 +765,7 @@ async def export_vehicles_csv(current_user: dict = Depends(get_current_user)):
         "Insurance Policy Number", "PUC Expiry", "PUCC Number", 
         "Fitness Upto", "Registered At", "Source", "Last Synced", 
         "FASTag Company", "FASTag Balance", "FASTag Status", "Remark", 
-        "Sold Status", "Sold Date"
+        " Status", "Sold Date"
     ]
     
     # Helper function to clean date strings
@@ -2335,41 +2335,33 @@ async def get_document_history(document_id: str, current_user: dict = Depends(ge
    
 @api_router.post("/upload-document")
 async def upload_document(file: UploadFile = File(...)):
-
     try:
-
-        if file.content_type.startswith("image"):
-
-            result = cloudinary.uploader.upload(
-                file.file,
-                folder="vehicle-documents",
-                resource_type="image",
-                transformation=[
-                    {
-                        "quality": "auto",
-                        "fetch_format": "auto",
-                        "width": 1200,
-                        "crop": "limit"
-                    }
-                ]
-            )
-
+        # Get file extension
+        file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else 'pdf'
+        
+        # Determine resource type based on file extension
+        if file_extension in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            resource_type = "image"
         else:
-
-            result = cloudinary.uploader.upload(
-                file.file,
-                folder="vehicle-documents",
-                resource_type="raw"
-            )
-
+            resource_type = "raw"
+        
+        # Upload to Cloudinary
+        result = cloudinary.uploader.upload(
+            file.file,
+            folder="vehicle-documents",
+            resource_type=resource_type,
+            transformation=[
+                {"quality": "auto", "fetch_format": "auto", "width": 1200, "crop": "limit"}
+            ] if resource_type == "image" else None
+        )
+        
         return {
             "url": result["secure_url"],
-            "public_id": result["public_id"]
+            "public_id": result["public_id"],
+            "file_type": file_extension  # Return the file type
         }
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))   
-
+        raise HTTPException(status_code=500, detail=str(e))
 # Add these endpoints after your existing document endpoints
 
 @api_router.post("/vehicles/{vehicle_id}/upload-rc")
@@ -2525,6 +2517,7 @@ async def upload_document_file(
         logger.error(f"Document upload error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @api_router.delete("/vehicles/{vehicle_id}/delete-document/{document_id}")
 async def delete_document_file(
     vehicle_id: str,
@@ -2673,7 +2666,7 @@ async def create_sold_agreement(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Create a sold vehicle agreement with optional document upload
+    Create or update a sold vehicle agreement with optional document upload
     """
     try:
         # Find the vehicle
@@ -2685,238 +2678,232 @@ async def create_sold_agreement(
         if not vehicle.get("sold", False):
             raise HTTPException(status_code=400, detail="Vehicle is not marked as sold")
         
-        # Create agreement record
-        agreement_id = str(uuid.uuid4())
-        agreement = SoldVehicleAgreement(
-            id=agreement_id,
-            vehicle_id=vehicle_id,
-            vehicle_registration=vehicle["registration_number"],
-            buyer_name=data.get("buyer_name"),
-            buyer_phone=data.get("buyer_phone"),
-            agreement_date=datetime.fromisoformat(data.get("agreement_date", datetime.now(timezone.utc).isoformat())),
-            agreement_url=data.get("agreement_url"),
-            agreement_public_id=data.get("agreement_public_id"),
-            agreement_file_type=data.get("agreement_file_type"),
-            notes=data.get("notes"),
-            created_by=current_user["user_id"]
+        # Check if agreement already exists
+        existing = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False}
         )
         
-        agreement_dict = agreement.model_dump()
-        agreement_dict["created_at"] = agreement_dict["created_at"].isoformat()
-        agreement_dict["agreement_date"] = agreement_dict["agreement_date"].isoformat()
-        
-        await db.sold_vehicle_agreements.insert_one(agreement_dict)
-        
-        # Update vehicle with agreement reference
-        await db.vehicles.update_one(
-            {"id": vehicle_id},
-            {"$set": {
-                "sold_agreement_id": agreement_id,
-                "sold_date": datetime.now(timezone.utc).isoformat(),
-                "sold_agreement_created": True
-            }}
-        )
-        
-        return {
-            "success": True,
-            "agreement_id": agreement_id,
-            "message": "Sold vehicle agreement created successfully"
-        }
+        if existing:
+            # Update existing agreement
+            update_data = {
+                "buyer_name": data.get("buyer_name"),
+                "buyer_phone": data.get("buyer_phone"),
+                "agreement_date": datetime.fromisoformat(data.get("agreement_date", datetime.now(timezone.utc).isoformat())),
+                "notes": data.get("notes"),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": current_user["user_id"]
+            }
+            
+            await db.sold_vehicle_agreements.update_one(
+                {"id": existing["id"]},
+                {"$set": update_data}
+            )
+            
+            return {
+                "success": True,
+                "agreement_id": existing["id"],
+                "message": "Sold vehicle agreement updated successfully"
+            }
+        else:
+            # Create new agreement
+            agreement_id = str(uuid.uuid4())
+            agreement = {
+                "id": agreement_id,
+                "vehicle_id": vehicle_id,
+                "vehicle_registration": vehicle["registration_number"],
+                "buyer_name": data.get("buyer_name"),
+                "buyer_phone": data.get("buyer_phone"),
+                "agreement_date": datetime.fromisoformat(data.get("agreement_date", datetime.now(timezone.utc).isoformat())),
+                "agreement_url": data.get("agreement_url"),
+                "agreement_public_id": data.get("agreement_public_id"),
+                "agreement_file_type": data.get("agreement_file_type"),
+                "notes": data.get("notes"),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": current_user["user_id"],
+                "is_deleted": False
+            }
+            
+            await db.sold_vehicle_agreements.insert_one(agreement)
+            
+            # Update vehicle with agreement reference
+            await db.vehicles.update_one(
+                {"id": vehicle_id},
+                {"$set": {
+                    "sold_agreement_id": agreement_id,
+                    "sold_date": datetime.now(timezone.utc).isoformat(),
+                    "sold_agreement_created": True
+                }}
+            )
+            
+            return {
+                "success": True,
+                "agreement_id": agreement_id,
+                "message": "Sold vehicle agreement created successfully"
+            }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error creating sold agreement: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create agreement: {str(e)}")
+ 
 
+ 
+    
 @api_router.post("/vehicles/{vehicle_id}/upload-agreement")
-async def upload_sold_agreement_document(
-    vehicle_id: str,
+async def upload_agreement_document(
+    vehicle_id: str, 
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Upload agreement document for sold vehicle
-    """
+    """Upload agreement document for sold vehicle"""
     try:
-        # Find the vehicle
-        vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
-        if not vehicle:
-            raise HTTPException(status_code=404, detail="Vehicle not found")
+        # Validate file type
+        if file.content_type != "application/pdf":
+            raise HTTPException(status_code=400, detail="Only PDF files are allowed")
         
-        # Check if vehicle is marked as sold
-        if not vehicle.get("sold", False):
-            raise HTTPException(status_code=400, detail="Vehicle is not marked as sold")
+        # Validate file size (10MB max)
+        file_content = await file.read()
+        if len(file_content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size must be less than 10MB")
         
-        # Get file extension
-        file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
-        
-        # Determine resource type
-        if file_extension in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf']:
-            resource_type = "auto"
-        else:
-            resource_type = "raw"
+        # Reset file pointer
+        await file.seek(0)
         
         # Upload to Cloudinary
-        result = cloudinary.uploader.upload(
+        upload_result = cloudinary.uploader.upload(
             file.file,
-            folder=f"vehicles/{vehicle_id}/sold_agreements",
-            resource_type=resource_type,
-            transformation=[
-                {"quality": "auto", "fetch_format": "auto"}
-            ] if resource_type == "image" else None
+            resource_type="raw",
+            folder=f"sold_agreements/{vehicle_id}"
         )
         
-        # Update the agreement record if it exists
-        agreement = await db.sold_vehicle_agreements.find_one(
-            {"vehicle_id": vehicle_id, "is_deleted": False},
-            sort=[("created_at", -1)]
+        agreement_url = upload_result.get("secure_url")
+        public_id = upload_result.get("public_id")
+        
+        # Find existing agreement
+        existing = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False}
         )
         
-        if agreement:
+        if existing:
+            # Update existing agreement with document URL
             await db.sold_vehicle_agreements.update_one(
-                {"id": agreement["id"]},
+                {"id": existing["id"]},
                 {"$set": {
-                    "agreement_url": result["secure_url"],
-                    "agreement_public_id": result["public_id"],
-                    "agreement_file_type": file_extension,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "agreement_url": agreement_url,
+                    "agreement_public_id": public_id,
+                    "agreement_file_type": "pdf",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": current_user["user_id"]
                 }}
             )
+        else:
+            # Create agreement with document
+            agreement_id = str(uuid.uuid4())
+            vehicle = await db.vehicles.find_one({"id": vehicle_id})
+            
+            agreement = {
+                "id": agreement_id,
+                "vehicle_id": vehicle_id,
+                "vehicle_registration": vehicle["registration_number"] if vehicle else "Unknown",
+                "agreement_url": agreement_url,
+                "agreement_public_id": public_id,
+                "agreement_file_type": "pdf",
+                "agreement_date": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": current_user["user_id"],
+                "is_deleted": False
+            }
+            
+            await db.sold_vehicle_agreements.insert_one(agreement)
         
         return {
             "success": True,
-            "url": result["secure_url"],
-            "public_id": result["public_id"],
-            "file_type": file_extension,
+            "url": agreement_url,
             "message": "Agreement document uploaded successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Agreement upload error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+        logger.error(f"Error uploading agreement: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to upload document: {str(e)}")
+    
 @api_router.get("/vehicles/{vehicle_id}/sold-agreement")
-async def get_sold_agreement(
-    vehicle_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get sold vehicle agreement details
-    """
+async def get_sold_agreement(vehicle_id: str, current_user: dict = Depends(get_current_user)):
+    """Get sold agreement details for a vehicle"""
     try:
         agreement = await db.sold_vehicle_agreements.find_one(
-            {"vehicle_id": vehicle_id, "is_deleted": False},
+            {"vehicle_id": vehicle_id, "is_deleted": False}, 
             {"_id": 0}
         )
         
         if not agreement:
-            return {
-                "success": True,
-                "has_agreement": False,
-                "message": "No agreement found for this vehicle"
-            }
+            return {"has_agreement": False}
         
-        # Convert datetime to string
-        if agreement.get("agreement_date"):
-            agreement["agreement_date"] = agreement["agreement_date"].isoformat() if isinstance(agreement["agreement_date"], datetime) else agreement["agreement_date"]
-        if agreement.get("created_at"):
-            agreement["created_at"] = agreement["created_at"].isoformat() if isinstance(agreement["created_at"], datetime) else agreement["created_at"]
+        # Also get vehicle sold status
+        vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "sold": 1})
         
         return {
-            "success": True,
             "has_agreement": True,
-            "agreement": agreement
+            "agreement": agreement,
+            "vehicle_sold": vehicle.get("sold", False) if vehicle else False
         }
         
     except Exception as e:
-        logger.error(f"Error fetching sold agreement: {e}")
+        logger.error(f"Error fetching agreement: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 @api_router.get("/vehicles/{vehicle_id}/download-agreement")
 async def download_sold_agreement(
     vehicle_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Download sold vehicle agreement document
-    """
+    """Download sold agreement PDF"""
     try:
         agreement = await db.sold_vehicle_agreements.find_one(
             {"vehicle_id": vehicle_id, "is_deleted": False}
         )
         
-        if not agreement:
-            raise HTTPException(status_code=404, detail="No agreement found")
+        if not agreement or not agreement.get("agreement_url"):
+            raise HTTPException(status_code=404, detail="Agreement not found")
         
-        file_url = agreement.get("agreement_url")
-        if not file_url:
-            raise HTTPException(status_code=404, detail="No document uploaded")
+        agreement_url = agreement["agreement_url"]
         
-        # Get vehicle details
-        vehicle = await db.vehicles.find_one(
-            {"id": vehicle_id}, 
-            {"_id": 0, "registration_number": 1}
-        )
-        registration = vehicle["registration_number"].replace("/", "_").replace(" ", "_").replace("-", "_")
-        
-        logger.info(f"Downloading agreement document from: {file_url}")
-        
+        # Fetch the file from Cloudinary
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(file_url)
+            response = await client.get(agreement_url)
             
             if response.status_code != 200:
-                logger.error(f"Failed to fetch file from Cloudinary: {response.status_code}")
-                raise HTTPException(status_code=404, detail="File not found on Cloudinary")
+                logger.error(f"Failed to fetch agreement from Cloudinary: {response.status_code}")
+                raise HTTPException(status_code=404, detail="Agreement file not found")
             
-            file_type = agreement.get("agreement_file_type", "pdf")
+            vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "registration_number": 1})
+            registration = vehicle.get("registration_number", "unknown").replace("/", "_").replace(" ", "_").replace("-", "_")
+            filename = f"{registration}_sold_agreement.pdf"
             
-            # Determine content type
-            if file_type == 'pdf':
-                content_type = 'application/pdf'
-                filename = f"{registration}_sold_agreement.pdf"
-            elif file_type in ['jpg', 'jpeg']:
-                content_type = 'image/jpeg'
-                filename = f"{registration}_sold_agreement.jpg"
-            elif file_type == 'png':
-                content_type = 'image/png'
-                filename = f"{registration}_sold_agreement.png"
-            elif file_type == 'gif':
-                content_type = 'image/gif'
-                filename = f"{registration}_sold_agreement.gif"
-            else:
-                content_type = 'application/octet-stream'
-                filename = f"{registration}_sold_agreement.{file_type}"
-            
-            logger.info(f"Serving file with content-type: {content_type}, filename: {filename}")
-            
-            # Return the file directly
             return StreamingResponse(
                 iter([response.content]),
-                media_type=content_type,
+                media_type="application/pdf",
                 headers={
                     "Content-Disposition": f"attachment; filename={filename}",
                     "Content-Length": str(len(response.content)),
-                    "Cache-Control": "no-cache",
-                    "Access-Control-Expose-Headers": "Content-Disposition"
+                    "Cache-Control": "no-cache"
                 }
             )
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Agreement download error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
-
-
+        logger.error(f"Error downloading agreement: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to download: {str(e)}")
+    
 @api_router.delete("/vehicles/{vehicle_id}/sold-agreement")
 async def delete_sold_agreement(
     vehicle_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Delete sold vehicle agreement (soft delete)
-    """
+    """Delete sold vehicle agreement"""
     try:
         agreement = await db.sold_vehicle_agreements.find_one(
             {"vehicle_id": vehicle_id, "is_deleted": False}
@@ -2925,16 +2912,21 @@ async def delete_sold_agreement(
         if not agreement:
             raise HTTPException(status_code=404, detail="No agreement found")
         
-        # Soft delete
+        # Delete file from Cloudinary if exists
+        if agreement.get("agreement_public_id"):
+            try:
+                cloudinary.uploader.destroy(agreement["agreement_public_id"], resource_type="raw")
+            except Exception as e:
+                logger.warning(f"Failed to delete from Cloudinary: {e}")
+        
+        # Soft delete the agreement
         await db.sold_vehicle_agreements.update_one(
             {"id": agreement["id"]},
-            {"$set": {"is_deleted": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
-        
-        # Remove agreement reference from vehicle
-        await db.vehicles.update_one(
-            {"id": vehicle_id},
-            {"$unset": {"sold_agreement_id": "", "sold_agreement_created": ""}}
+            {"$set": {
+                "is_deleted": True, 
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": current_user["user_id"]
+            }}
         )
         
         return {"success": True, "message": "Agreement deleted successfully"}
@@ -2943,6 +2935,86 @@ async def delete_sold_agreement(
         logger.error(f"Agreement delete error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.patch("/vehicles/{vehicle_id}/mark-unsold")
+async def mark_vehicle_unsold(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Mark vehicle as unsold and delete all associated sold data"""
+    try:
+        # Update vehicle sold status
+        result = await db.vehicles.update_one(
+            {"id": vehicle_id, "is_deleted": False},
+            {"$set": {
+                "sold": False,
+                "sold_date": None,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": current_user["user_id"]
+            }}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        # Find and delete agreement
+        agreement = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False}
+        )
+        
+        if agreement:
+            # Delete file from Cloudinary if exists
+            if agreement.get("agreement_public_id"):
+                try:
+                    cloudinary.uploader.destroy(agreement["agreement_public_id"], resource_type="raw")
+                except Exception as e:
+                    logger.warning(f"Failed to delete from Cloudinary: {e}")
+            
+            # Delete agreement
+            await db.sold_vehicle_agreements.update_one(
+                {"id": agreement["id"]},
+                {"$set": {
+                    "is_deleted": True,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": current_user["user_id"]
+                }}
+            )
+        
+        return {"success": True, "message": "Vehicle marked as unsold successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error marking as unsold: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.patch("/vehicles/{vehicle_id}/sold-status")
+async def update_vehicle_sold_status(
+    vehicle_id: str,
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update the sold status of a vehicle"""
+    sold_status = data.get("sold", False)
+    
+    result = await db.vehicles.update_one(
+        {"id": vehicle_id, "is_deleted": False},
+        {"$set": {
+            "sold": sold_status,
+            "sold_date": datetime.now(timezone.utc).isoformat() if sold_status else None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": current_user["user_id"]
+        }}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    return {
+        "success": True,
+        "message": f"Vehicle sold status updated to {sold_status}",
+        "sold": sold_status
+    }
 
 @api_router.get("/vehicles/{vehicle_id}/download-rc")
 async def download_rc_document(
@@ -3155,6 +3227,42 @@ async def delete_document_version(
         "message": "Document version deleted successfully"
     }    
 
+@api_router.delete("/vehicle-documents/{document_id}")
+async def delete_vehicle_document(
+    document_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete a vehicle document (soft delete all versions)
+    """
+    try:
+        # Find the document
+        document = await db.vehicle_documents.find_one({"id": document_id, "is_deleted": False})
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Soft delete the document
+        await db.vehicle_documents.update_one(
+            {"id": document_id},
+            {
+                "$set": {
+                    "is_deleted": True,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": current_user["user_id"]
+                }
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "Document deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting vehicle document: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")\
 
 @api_router.get("/export/vehicle-documents/excel")
 async def export_vehicle_documents_excel(

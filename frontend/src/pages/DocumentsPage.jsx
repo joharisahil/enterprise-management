@@ -4,10 +4,8 @@ import api from '../utils/api';
 import { toast } from 'sonner';
 import {
   FileText, Plus, Clock, AlertCircle, Edit, Trash2, Eye, Phone, Download, Info,
-  Calendar, AlertOctagon, AlertTriangle, CheckCircle, Filter, X, Gauge,
-  TrendingUp, TrendingDown, Activity, Bell, Shield, CalendarDays,
-  Clock3, Clock4, Clock9, Sparkles, Star, Flame, Upload, FileSpreadsheet,
-  History, CalendarRange, AlertCircle as AlertIcon
+  Calendar, AlertOctagon, AlertTriangle, CheckCircle, Filter, X,
+  Flame, Upload, FileSpreadsheet, History
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -26,6 +24,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const documentTypes = ['Insurance', 'PUC', 'Fitness', 'RC', 'Permit', 'Custom'];
 
@@ -449,10 +457,25 @@ const PastDocumentForm = ({
   onSubmit,
   submitText,
   uploading,
-  uploadedFile
+  uploadedFile,
+  getValidityWarning
 }) => {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      {/* Info Alert */}
+      <Alert className="bg-blue-50 border-blue-200">
+        <Info className="h-4 w-4 text-blue-600" />
+        <AlertDescription className="text-blue-700 text-sm">
+          <strong>Past Document Rules:</strong>
+          <ul className="list-disc pl-4 mt-1 space-y-1">
+            <li>Past documents will NOT become the current document</li>
+            <li>Expiry date must be in the past (already expired)</li>
+            <li>Expiry date must be before the current document's start date</li>
+            <li>This is for historical records only</li>
+          </ul>
+        </AlertDescription>
+      </Alert>
+
       {validationError && (
         <Alert className="bg-red-50 border-red-200">
           <AlertCircle className="h-4 w-4 text-red-600" />
@@ -561,6 +584,21 @@ const PastDocumentForm = ({
         </div>
       </div>
 
+      {/* Validity Warning */}
+      {formData.issue_date && formData.expiry_date && getValidityWarning && (
+        (() => {
+          const warning = getValidityWarning(formData.document_type, formData.issue_date, formData.expiry_date);
+          return warning ? (
+            <Alert className="bg-yellow-50 border-yellow-200">
+              <AlertCircle className="h-4 w-4 text-yellow-600" />
+              <AlertDescription className="text-yellow-700 text-sm">
+                {warning}
+              </AlertDescription>
+            </Alert>
+          ) : null;
+        })()
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label>
@@ -627,6 +665,139 @@ const PastDocumentForm = ({
   );
 };
 
+// Delete Document Dialog Component
+const DeleteDocumentDialog = ({ open, onOpenChange, document, onConfirm }) => {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirm = async () => {
+    setDeleting(true);
+    await onConfirm();
+    setDeleting(false);
+    onOpenChange(false);
+  };
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2 text-rose-600">
+            <Trash2 size={20} />
+            Delete Document
+          </AlertDialogTitle>
+          <AlertDialogDescription className="space-y-3">
+            <p>Are you sure you want to delete this document?</p>
+            {document && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText size={16} className="text-blue-600" />
+                  <p className="font-mono font-medium">
+                    {document.document_type === 'Custom' ? document.custom_document_name : document.document_type}
+                  </p>
+                  <Badge variant="outline" className="ml-auto">v{document.version}</Badge>
+                </div>
+                <p className="text-sm text-slate-600 mb-1">
+                  {document.vehicle_registration || document.vehicle_id} • {document.policy_number}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Expires: {new Date(document.expiry_date).toLocaleDateString()}
+                </p>
+              </div>
+            )}
+            <div className="mt-2 text-sm">
+              <p className="font-medium text-slate-700">This will:</p>
+              <ul className="list-disc pl-5 mt-1 space-y-1 text-slate-600">
+                <li>Permanently delete this document from the system</li>
+                <li>Remove all versions and history</li>
+                <li>This action cannot be undone</li>
+              </ul>
+            </div>
+            <p className="text-sm text-rose-600 font-medium mt-2">
+              ⚠️ Warning: This will delete all versions of this document.
+            </p>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirm}
+            className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
+            disabled={deleting}
+          >
+            {deleting ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                Deleting...
+              </>
+            ) : (
+              'Delete Document'
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+};
+
+// Delete Version Dialog Component
+const DeleteVersionDialog = ({ open, onOpenChange, version, onConfirm }) => {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirm = async () => {
+    setDeleting(true);
+    await onConfirm();
+    setDeleting(false);
+    onOpenChange(false);
+  };
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+            <Trash2 size={20} />
+            Delete Document Version
+          </AlertDialogTitle>
+          <AlertDialogDescription className="space-y-3">
+            <p>Are you sure you want to delete version {version?.versionNumber}?</p>
+            {version?.version && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText size={16} className="text-blue-600" />
+                  <p className="font-mono font-medium">
+                    Version {version.versionNumber}
+                  </p>
+                  {version.version.is_current && (
+                    <Badge className="bg-emerald-100 text-emerald-700">Current</Badge>
+                  )}
+                </div>
+                <p className="text-sm text-slate-600 mb-1">
+                  Policy: {version.version.policy_number}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Expires: {new Date(version.version.expiry_date).toLocaleDateString()}
+                </p>
+              </div>
+            )}
+            <p className="text-sm text-amber-600 font-medium mt-2">
+              This action cannot be undone.
+            </p>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirm}
+            className="bg-amber-600 hover:bg-amber-700"
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting...' : 'Delete Version'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+};
+
 export const DocumentsPage = () => {
   const [vehicles, setVehicles] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -650,6 +821,10 @@ export const DocumentsPage = () => {
   const [exporting, setExporting] = useState(false);
   const [pastDocumentValidationError, setPastDocumentValidationError] = useState("");
   const [currentActiveDocument, setCurrentActiveDocument] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState(null);
+  const [versionDeleteDialogOpen, setVersionDeleteDialogOpen] = useState(false);
+  const [versionToDelete, setVersionToDelete] = useState(null);
   const [expiryStats, setExpiryStats] = useState({
     expired: 0,
     critical: 0,
@@ -790,7 +965,7 @@ export const DocumentsPage = () => {
     try {
       const response = await api.get(`/vehicle-documents?vehicle_id=${vehicleId}&current_only=true`);
       const docs = response.data.data;
-      const activeDoc = docs.find(doc => doc.document_type === documentType && doc.is_current);
+      const activeDoc = docs.find(doc => doc.document_type === documentType && doc.is_current === true);
       return activeDoc || null;
     } catch (error) {
       console.error("Error checking current document:", error);
@@ -798,55 +973,86 @@ export const DocumentsPage = () => {
     }
   };
 
+  const getValidityWarning = (documentType, issueDate, expiryDate) => {
+    if (!issueDate || !expiryDate) return null;
+    
+    const issue = new Date(issueDate);
+    const expiry = new Date(expiryDate);
+    const diffMonths = (expiry.getFullYear() - issue.getFullYear()) * 12 + (expiry.getMonth() - issue.getMonth());
+    const diffYears = diffMonths / 12;
+
+    switch (documentType) {
+      case 'Insurance':
+        if (diffMonths !== 12) {
+          return `⚠️ Insurance is typically valid for 1 year. This document is valid for ${diffYears.toFixed(1)} years.`;
+        }
+        break;
+      case 'PUC':
+        if (diffMonths !== 6) {
+          return `⚠️ PUC certificate is typically valid for 6 months. This document is valid for ${diffMonths} months.`;
+        }
+        break;
+      case 'Fitness':
+        if (diffMonths !== 12) {
+          return `⚠️ Fitness certificate is typically valid for 1 year. This document is valid for ${diffYears.toFixed(1)} years.`;
+        }
+        break;
+      case 'Permit':
+        if (diffMonths !== 60) {
+          return `⚠️ Permit is typically valid for 5 years. This document is valid for ${diffYears.toFixed(1)} years.`;
+        }
+        break;
+      case 'RC':
+        if (diffMonths !== 180) {
+          return `⚠️ RC is typically valid for 15 years. This document is valid for ${diffYears.toFixed(1)} years.`;
+        }
+        break;
+      default:
+        return null;
+    }
+    return null;
+  };
+
   const validatePastDocument = async (vehicleId, documentType, issueDate, expiryDate) => {
-    // Check if there's a current active document
+    if (!issueDate || !expiryDate) {
+      setPastDocumentValidationError("Both issue date and expiry date are required");
+      return false;
+    }
+
+    const issue = new Date(issueDate);
+    const expiry = new Date(expiryDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (expiry <= issue) {
+      setPastDocumentValidationError(
+        `Expiry date (${expiry.toLocaleDateString()}) must be after issue date (${issue.toLocaleDateString()})`
+      );
+      return false;
+    }
+
+    if (expiry > today) {
+      setPastDocumentValidationError(
+        `This document expires in the future (${expiry.toLocaleDateString()}). ` +
+        `Past documents should have already expired. Please use the "Add Document" button instead to add this as a renewal.`
+      );
+      return false;
+    }
+
     const currentDoc = await checkCurrentActiveDocument(vehicleId, documentType);
     
     if (currentDoc) {
-      const currentExpiry = new Date(currentDoc.expiry_date);
-      const newIssue = new Date(issueDate);
-      const newExpiry = new Date(expiryDate);
-      const today = new Date();
-
-      // Check if expiry date is in the future
-      if (newExpiry > today) {
+      const currentIssue = new Date(currentDoc.issue_date);
+      
+      if (expiry > currentIssue) {
         setPastDocumentValidationError(
-          `This document expires in the future (${newExpiry.toLocaleDateString()}). ` +
-          `Please use the "Add Document" button instead to add this as a renewal.`
+          `❌ Date Conflict: This past document expires on ${expiry.toLocaleDateString()}, ` +
+          `which is after the current active document started on ${currentIssue.toLocaleDateString()}. ` +
+          `This would create an overlap. Please ensure the past document's expiry date is before ` +
+          `the current document's issue date.`
         );
         return false;
       }
-
-      // Check if the new document overlaps with the current active document
-      if (newExpiry > currentExpiry) {
-        setPastDocumentValidationError(
-          `Cannot add this past document. Its expiry date (${newExpiry.toLocaleDateString()}) ` +
-          `is after the current active document's expiry (${currentExpiry.toLocaleDateString()}). ` +
-          `This would make it the current document. Please use the "Add Document" button instead.`
-        );
-        return false;
-      }
-
-      // Check if the new document's date range conflicts
-      if (newExpiry > currentExpiry) {
-        setPastDocumentValidationError(
-          `Date conflict: This document's expiry (${newExpiry.toLocaleDateString()}) ` +
-          `overlaps with the current active document.`
-        );
-        return false;
-      }
-    }
-
-    // Check if expiry date is after today (should be past for past documents)
-    const today = new Date();
-    const newExpiry = new Date(expiryDate);
-    
-    if (newExpiry > today) {
-      setPastDocumentValidationError(
-        `This document expires in the future (${newExpiry.toLocaleDateString()}). ` +
-        `Past documents should have expired already. Use the "Add Document" button instead.`
-      );
-      return false;
     }
 
     setPastDocumentValidationError("");
@@ -1027,7 +1233,7 @@ export const DocumentsPage = () => {
 
   const handlePastVehicleChange = async (vehicleId) => {
     setPastDocumentFormData(prev => ({ ...prev, vehicle_id: vehicleId }));
-    
+
     if (vehicleId && pastDocumentFormData.document_type) {
       const currentDoc = await checkCurrentActiveDocument(vehicleId, pastDocumentFormData.document_type);
       setCurrentActiveDocument(currentDoc);
@@ -1036,7 +1242,7 @@ export const DocumentsPage = () => {
 
   const handlePastDocumentTypeChange = async (docType) => {
     setPastDocumentFormData(prev => ({ ...prev, document_type: docType }));
-    
+
     if (pastDocumentFormData.vehicle_id && docType) {
       const currentDoc = await checkCurrentActiveDocument(pastDocumentFormData.vehicle_id, docType);
       setCurrentActiveDocument(currentDoc);
@@ -1045,7 +1251,7 @@ export const DocumentsPage = () => {
 
   const handlePastIssueDateChange = async (date) => {
     setPastDocumentFormData(prev => ({ ...prev, issue_date: date }));
-    
+
     if (pastDocumentFormData.vehicle_id && pastDocumentFormData.document_type && date && pastDocumentFormData.expiry_date) {
       await validatePastDocument(
         pastDocumentFormData.vehicle_id,
@@ -1058,7 +1264,7 @@ export const DocumentsPage = () => {
 
   const handlePastExpiryDateChange = async (date) => {
     setPastDocumentFormData(prev => ({ ...prev, expiry_date: date }));
-    
+
     if (pastDocumentFormData.vehicle_id && pastDocumentFormData.document_type && pastDocumentFormData.issue_date && date) {
       await validatePastDocument(
         pastDocumentFormData.vehicle_id,
@@ -1111,11 +1317,12 @@ export const DocumentsPage = () => {
         headers: { "Content-Type": "multipart/form-data" }
       });
 
-      const { url } = res.data;
+      const { url, file_type } = res.data;
       setUploadedFile(url);
       setFormData(prev => ({
         ...prev,
-        file_url: url
+        file_url: url,
+        file_type: file_type
       }));
 
       toast.success("Document uploaded successfully");
@@ -1144,11 +1351,12 @@ export const DocumentsPage = () => {
         headers: { "Content-Type": "multipart/form-data" }
       });
 
-      const { url } = res.data;
+      const { url, file_type } = res.data;
       setPastUploadedFile(url);
       setPastDocumentFormData(prev => ({
         ...prev,
-        file_url: url
+        file_url: url,
+        file_type: file_type
       }));
 
       toast.success("Document uploaded successfully");
@@ -1159,20 +1367,26 @@ export const DocumentsPage = () => {
     }
   };
 
-  const downloadFile = async (url, name) => {
+  const downloadFile = async (url, name, fileType = null) => {
     try {
       const response = await fetch(url);
       const blob = await response.blob();
 
-      let extension = "jpg";
-      const contentType = response.headers.get("content-type");
+      let extension = 'pdf';
 
-      if (
-        contentType?.includes("pdf") ||
-        url.toLowerCase().includes(".pdf") ||
-        url.includes("/raw/")
-      ) {
-        extension = "pdf";
+      if (fileType) {
+        if (fileType === 'pdf') extension = 'pdf';
+        else if (fileType === 'jpg' || fileType === 'jpeg') extension = 'jpg';
+        else if (fileType === 'png') extension = 'png';
+        else if (fileType === 'gif') extension = 'gif';
+      } else if (url.toLowerCase().includes('.pdf') || url.includes('/raw/')) {
+        extension = 'pdf';
+      } else {
+        const contentType = response.headers.get("content-type");
+        if (contentType?.includes("pdf")) extension = 'pdf';
+        else if (contentType?.includes("jpeg") || contentType?.includes("jpg")) extension = 'jpg';
+        else if (contentType?.includes("png")) extension = 'png';
+        else if (contentType?.includes("gif")) extension = 'gif';
       }
 
       const blobUrl = window.URL.createObjectURL(blob);
@@ -1183,7 +1397,10 @@ export const DocumentsPage = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
+
+      toast.success(`Downloaded as ${name}.${extension}`);
     } catch (error) {
+      console.error("Download error:", error);
       toast.error("Download failed");
     }
   };
@@ -1324,7 +1541,6 @@ export const DocumentsPage = () => {
       fetchData();
     } catch (error) {
       console.error("API Error:", error);
-
       let errorMessage = 'Failed to update document';
 
       if (error.response) {
@@ -1334,14 +1550,10 @@ export const DocumentsPage = () => {
             errorMessage = errorData.detail.map(err => err.msg).join(', ');
           } else if (errorData.detail) {
             errorMessage = errorData.detail;
-          } else if (typeof errorData === 'string') {
-            errorMessage = errorData;
           }
         } else if (error.response.data?.detail) {
           errorMessage = error.response.data.detail;
         }
-      } else if (error.message) {
-        errorMessage = error.message;
       }
 
       toast.error(errorMessage);
@@ -1385,7 +1597,6 @@ export const DocumentsPage = () => {
       return;
     }
 
-    // Validate again before submission
     const isValid = await validatePastDocument(
       pastDocumentFormData.vehicle_id,
       pastDocumentFormData.document_type,
@@ -1405,7 +1616,8 @@ export const DocumentsPage = () => {
         issue_date: new Date(pastDocumentFormData.issue_date).toISOString(),
         expiry_date: new Date(pastDocumentFormData.expiry_date).toISOString(),
         premium: pastDocumentFormData.premium ? parseFloat(pastDocumentFormData.premium) : null,
-        is_current: false // Past documents should never be current
+        is_current: false,
+        status: "Expired"
       };
 
       await api.post('/vehicle-documents', submitData);
@@ -1420,30 +1632,21 @@ export const DocumentsPage = () => {
     }
   };
 
-  const handleDeleteVersion = async (versionId, versionNumber) => {
-    if (!window.confirm(`Are you sure you want to delete version ${versionNumber}?`)) return;
-
-    try {
-      await api.delete(`/vehicle-documents/${versionId}/version`);
-      toast.success(`Version ${versionNumber} deleted successfully`);
-
-      if (selectedDocHistory) {
-        const response = await api.get(`/vehicle-documents/${selectedDocHistory.history[0].id}/history`);
-        setSelectedDocHistory(response.data);
-      }
-
-      fetchData();
-    } catch (error) {
-      console.error("Delete error:", error);
-      toast.error(error.response?.data?.detail || 'Failed to delete version');
-    }
+  const handleDeleteDocument = (doc) => {
+    const vehicle = vehicles.find(v => v.id === doc.vehicle_id);
+    const docWithVehicle = {
+      ...doc,
+      vehicle_registration: vehicle?.registration_number || doc.vehicle_id
+    };
+    setDocumentToDelete(docWithVehicle);
+    setDeleteDialogOpen(true);
   };
 
-  const handleDeleteDocument = async (docId) => {
-    if (!window.confirm('Are you sure you want to delete this document? This will delete all versions.')) return;
+  const confirmDeleteDocument = async () => {
+    if (!documentToDelete) return;
 
     try {
-      await api.delete(`/vehicle-documents/${docId}`);
+      await api.delete(`/vehicle-documents/${documentToDelete.id}`);
       toast.success('Document deleted successfully');
       fetchData();
 
@@ -1454,6 +1657,30 @@ export const DocumentsPage = () => {
     } catch (error) {
       console.error("Delete error:", error);
       toast.error(error.response?.data?.detail || 'Failed to delete document');
+    }
+  };
+
+  const handleDeleteVersion = (version, versionNumber) => {
+    setVersionToDelete({ version, versionNumber });
+    setVersionDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteVersion = async () => {
+    if (!versionToDelete) return;
+
+    try {
+      await api.delete(`/vehicle-documents/${versionToDelete.version.id}/version`);
+      toast.success(`Version ${versionToDelete.versionNumber} deleted successfully`);
+
+      if (selectedDocHistory) {
+        const response = await api.get(`/vehicle-documents/${selectedDocHistory.history[0].id}/history`);
+        setSelectedDocHistory(response.data);
+      }
+
+      fetchData();
+    } catch (error) {
+      console.error("Delete error:", error);
+      toast.error(error.response?.data?.detail || 'Failed to delete version');
     }
   };
 
@@ -1551,7 +1778,6 @@ export const DocumentsPage = () => {
       toast.success('Excel file downloaded successfully');
     } catch (error) {
       console.error('Export error:', error);
-
       let errorMessage = 'Failed to export documents';
       if (error.response) {
         if (error.response.data instanceof Blob) {
@@ -1566,7 +1792,6 @@ export const DocumentsPage = () => {
           errorMessage = error.response.data?.detail || errorMessage;
         }
       }
-
       toast.error(errorMessage);
     } finally {
       setExporting(false);
@@ -1585,7 +1810,7 @@ export const DocumentsPage = () => {
 
   return (
     <div className="p-8 space-y-6" data-testid="documents-page">
-      {/* Header with Export Button */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-slate-900 tracking-tight mb-2" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
@@ -1628,6 +1853,7 @@ export const DocumentsPage = () => {
                 submitText="Add Past Document"
                 uploading={uploading}
                 uploadedFile={pastUploadedFile}
+                getValidityWarning={getValidityWarning}
               />
             </DialogContent>
           </Dialog>
@@ -1846,7 +2072,7 @@ export const DocumentsPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog */}
+      {/* View History Dialog */}
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1884,7 +2110,7 @@ export const DocumentsPage = () => {
                               size="sm"
                               variant="ghost"
                               className="h-6 w-6 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                              onClick={() => handleDeleteVersion(version.id, version.version)}
+                              onClick={() => handleDeleteVersion(version, version.version)}
                               title="Delete this version"
                             >
                               <Trash2 size={12} />
@@ -1944,7 +2170,7 @@ export const DocumentsPage = () => {
                               </Button>
                               <Button
                                 size="sm"
-                                onClick={() => downloadFile(version.file_url, version.policy_number)}
+                                onClick={() => downloadFile(version.file_url, version.policy_number, version.file_type)}
                               >
                                 <Download size={14} className="mr-1" />
                                 Download
@@ -2090,7 +2316,7 @@ export const DocumentsPage = () => {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => downloadFile(doc.file_url, doc.policy_number)}
+                              onClick={() => downloadFile(doc.file_url, doc.policy_number, doc.file_type)}
                               className="h-8"
                             >
                               <Download size={14} />
@@ -2142,13 +2368,13 @@ export const DocumentsPage = () => {
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                                onClick={() => handleDeleteDocument(doc.id)}
+                                onClick={() => handleDeleteDocument(doc)}
                                 data-testid={`delete-doc-${doc.id}`}
                               >
                                 <Trash2 size={16} />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Delete All Versions</TooltipContent>
+                            <TooltipContent>Delete Document</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                       </div>
@@ -2177,6 +2403,22 @@ export const DocumentsPage = () => {
           </p>
         </motion.div>
       )}
+
+      {/* Delete Document Dialog */}
+      <DeleteDocumentDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        document={documentToDelete}
+        onConfirm={confirmDeleteDocument}
+      />
+
+      {/* Delete Version Dialog */}
+      <DeleteVersionDialog
+        open={versionDeleteDialogOpen}
+        onOpenChange={setVersionDeleteDialogOpen}
+        version={versionToDelete}
+        onConfirm={confirmDeleteVersion}
+      />
     </div>
   );
 };

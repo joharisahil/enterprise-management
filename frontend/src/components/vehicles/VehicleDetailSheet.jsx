@@ -448,68 +448,113 @@ export const VehicleDetailSheet = ({
     }
   };
 
-  // Document Download handler
-  const handleDocumentDownload = async (documentId) => {
-    try {
-      const document = localVehicleReport?.documents?.find((d) => d.id === documentId);
-      const docType = document?.document_type || 'document';
+// Document Download handler - FIXED VERSION
+const handleDocumentDownload = async (documentId) => {
+  try {
+    const document = localVehicleReport?.documents?.find((d) => d.id === documentId);
+    const docType = document?.document_type || 'document';
+    const fileType = document?.file_type; // Get the stored file type
 
-      setDownloadingDocument((prev) => ({ ...prev, [documentId]: true }));
+    setDownloadingDocument((prev) => ({ ...prev, [documentId]: true }));
 
-      const token = localStorage.getItem('token');
-      const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
-      const downloadUrl = `${baseURL}/vehicles/${localVehicleData.id}/download-document/${documentId}`;
+    const token = localStorage.getItem('token');
+    const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
+    const downloadUrl = `${baseURL}/vehicles/${localVehicleData.id}/download-document/${documentId}`;
 
-      console.log('Downloading document from:', downloadUrl);
+    console.log('Downloading document from:', downloadUrl);
+    console.log('Document file type:', fileType);
 
-      const response = await fetch(downloadUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "*/*",
-        },
-      });
+    const response = await fetch(downloadUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "*/*",
+      },
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Download failed:', response.status, errorText);
-        throw new Error(`Download failed: ${response.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Download failed:', response.status, errorText);
+      throw new Error(`Download failed: ${response.status}`);
+    }
+
+    const contentDisposition = response.headers.get("Content-Disposition");
+    
+    // Determine file extension
+    let extension = 'pdf'; // Default
+    
+    // First priority: Use stored file_type from document
+    if (fileType) {
+      if (fileType === 'pdf') extension = 'pdf';
+      else if (fileType === 'jpg' || fileType === 'jpeg') extension = 'jpg';
+      else if (fileType === 'png') extension = 'png';
+      else if (fileType === 'gif') extension = 'gif';
+      else extension = fileType;
+    }
+    // Second priority: Check content type header
+    else {
+      const contentType = response.headers.get("content-type");
+      if (contentType?.includes("pdf")) {
+        extension = 'pdf';
+      } else if (contentType?.includes("jpeg") || contentType?.includes("jpg")) {
+        extension = 'jpg';
+      } else if (contentType?.includes("png")) {
+        extension = 'png';
+      } else if (contentType?.includes("gif")) {
+        extension = 'gif';
       }
+    }
+    
+    // Check URL for extension as fallback
+    if (extension === 'pdf') {
+      const url = document?.file_url || '';
+      if (url.includes('.jpg') || url.includes('.jpeg')) extension = 'jpg';
+      else if (url.includes('.png')) extension = 'png';
+      else if (url.includes('.gif')) extension = 'gif';
+    }
 
-      const contentDisposition = response.headers.get("Content-Disposition");
-      let filename = `${localVehicleData.registration_number.replace(/[^a-zA-Z0-9]/g, "_")}_${docType}.pdf`;
-
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1].replace(/['"]/g, "");
+    // Generate filename
+    let filename = `${localVehicleData.registration_number.replace(/[^a-zA-Z0-9]/g, "_")}_${docType}.${extension}`;
+    
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch && filenameMatch[1]) {
+        // Use the filename from server but ensure it has correct extension
+        let serverFilename = filenameMatch[1].replace(/['"]/g, "");
+        // If the server filename doesn't have the correct extension, add it
+        if (!serverFilename.toLowerCase().endsWith(`.${extension}`)) {
+          const baseName = serverFilename.split('.')[0];
+          filename = `${baseName}.${extension}`;
+        } else {
+          filename = serverFilename;
         }
       }
-
-      const blob = await response.blob();
-
-      if (blob.size === 0) {
-        throw new Error("Downloaded file is empty");
-      }
-
-      // Use window.document instead of document to avoid conflict
-      const url = window.URL.createObjectURL(blob);
-      const link = window.document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      window.document.body.appendChild(link);
-      link.click();
-      window.document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      toast.success('Download started');
-    } catch (error) {
-      console.error('Document download error:', error);
-      toast.error(error.message || 'Failed to download document');
-    } finally {
-      setDownloadingDocument((prev) => ({ ...prev, [documentId]: false }));
     }
-  };
+
+    const blob = await response.blob();
+    
+    if (blob.size === 0) {
+      throw new Error("Downloaded file is empty");
+    }
+
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    window.document.body.appendChild(link);
+    link.click();
+    window.document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    toast.success(`Downloaded as ${filename}`);
+  } catch (error) {
+    console.error('Document download error:', error);
+    toast.error(error.message || 'Failed to download document');
+  } finally {
+    setDownloadingDocument((prev) => ({ ...prev, [documentId]: false }));
+  }
+};
 
   const handleRcDelete = async () => {
     try {
@@ -526,54 +571,58 @@ export const VehicleDetailSheet = ({
     }
   };
 
-  const handleDocumentUpload = async (documentId, documentType) => {
-    const fileInput = documentFileInputRefs[documentId];
-    const file = fileInput?.files[0];
-    if (!file) return;
+const handleDocumentUpload = async (documentId, documentType) => {
+  const fileInput = documentFileInputRefs[documentId];
+  const file = fileInput?.files[0];
+  if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size must be less than 5MB');
-      return;
+  if (file.size > 5 * 1024 * 1024) {
+    toast.error('File size must be less than 5MB');
+    return;
+  }
+
+  setUploadingDocument((prev) => ({ ...prev, [documentId]: true }));
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await api.post(
+      `/vehicles/${localVehicleData.id}/upload-document/${documentId}`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+
+    // Get file extension from the uploaded file
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    
+    toast.success(`${documentType} document uploaded successfully`);
+
+    if (localVehicleReport) {
+      const updatedDocuments = localVehicleReport.documents.map((doc) => {
+        if (doc.id === documentId) {
+          return {
+            ...doc,
+            file_url: response.data.url,
+            file_public_id: response.data.public_id,
+            file_type: fileExtension, // Store the file extension
+            file_uploaded_at: new Date().toISOString(),
+          };
+        }
+        return doc;
+      });
+
+      setLocalVehicleReport({
+        ...localVehicleReport,
+        documents: updatedDocuments,
+      });
     }
-
-    setUploadingDocument((prev) => ({ ...prev, [documentId]: true }));
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await api.post(
-        `/vehicles/${localVehicleData.id}/upload-document/${documentId}`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
-
-      toast.success(`${documentType} document uploaded successfully`);
-
-      if (localVehicleReport) {
-        const updatedDocuments = localVehicleReport.documents.map((doc) => {
-          if (doc.id === documentId) {
-            return {
-              ...doc,
-              file_url: response.data.url,
-              file_public_id: response.data.public_id,
-              file_uploaded_at: new Date().toISOString(),
-            };
-          }
-          return doc;
-        });
-
-        setLocalVehicleReport({
-          ...localVehicleReport,
-          documents: updatedDocuments,
-        });
-      }
-    } catch (error) {
-      toast.error(error.response?.data?.detail || `Failed to upload ${documentType} document`);
-    } finally {
-      setUploadingDocument((prev) => ({ ...prev, [documentId]: false }));
-      if (fileInput) fileInput.value = '';
-    }
-  };
+  } catch (error) {
+    toast.error(error.response?.data?.detail || `Failed to upload ${documentType} document`);
+  } finally {
+    setUploadingDocument((prev) => ({ ...prev, [documentId]: false }));
+    if (fileInput) fileInput.value = '';
+  }
+};
 
   const handleDocumentDelete = async (documentId, documentType) => {
     try {
