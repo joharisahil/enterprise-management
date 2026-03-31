@@ -349,40 +349,69 @@ export const VehiclesPage = () => {
     console.log('✅ [VehiclesPage] Vehicle status toggled');
   };
 
-  const handleRefreshFromSurepass = async () => {
-    console.log('🔄 [VehiclesPage] handleRefreshFromSurepass called');
-    if (!selectedVehicle) {
-      console.warn('⚠️ [VehiclesPage] No selected vehicle to refresh');
-      return;
-    }
+const handleRefreshFromSurepass = async () => {
+  console.log('🔄 [VehiclesPage] handleRefreshFromSurepass called');
+  if (!selectedVehicle) return;
 
-    if (!window.confirm(
-      'Refresh expired documents from Surepass? This will only update expired insurance/PUC documents.'
-    )) {
-      console.log('❌ [VehiclesPage] User cancelled refresh');
-      return;
-    }
+  // ✅ Step 1: Check locally if any key document is expired BEFORE hitting Surepass
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-    try {
-      console.log('🔄 [VehiclesPage] Calling API: POST /vehicles/${selectedVehicle.id}/sync-documents');
-      const response = await api.post(`/vehicles/${selectedVehicle.id}/sync-documents`);
-
-      if (response.data.documents_created.length > 0) {
-        console.log('✅ [VehiclesPage] Documents updated:', response.data.documents_created);
-        toast.success(`Updated ${response.data.documents_created.join(' and ')} document(s)`);
-        setViewDialogOpen(false);
-        setTimeout(() => {
-          handleView(selectedVehicle);
-        }, 500);
-      } else {
-        console.log('ℹ️ [VehiclesPage] No documents needed update');
-        toast.info('All documents are valid. No update needed.');
-      }
-    } catch (err) {
-      console.error('❌ [VehiclesPage] Error syncing documents:', err);
-      toast.error(err.response?.data?.detail || 'Failed to sync documents');
-    }
+  const isExpired = (dateStr) => {
+    if (!dateStr) return false;
+    return new Date(dateStr) < today;
   };
+
+  const anyExpired =
+    isExpired(selectedVehicle.insurance_expiry) ||
+    isExpired(selectedVehicle.puc_expiry) ||
+    isExpired(selectedVehicle.fit_up_to) ||
+    (selectedVehicle.tax_upto && selectedVehicle.tax_upto !== 'LIFETIME' && isExpired(selectedVehicle.tax_upto));
+
+  if (!anyExpired) {
+    // ✅ Nothing expired — just reload from DB
+    console.log('✅ [VehiclesPage] No expired documents, refreshing from DB only');
+    try {
+      await Promise.all([
+        fetchVehicleReport(selectedVehicle.id),
+        fetchFastagPasses(selectedVehicle.id),
+      ]);
+      toast.success('Vehicle data is up to date');
+    } catch (error) {
+      console.error('❌ [VehiclesPage] Error refreshing:', error);
+      toast.error('Failed to refresh data');
+    }
+    return;
+  }
+
+  // ✅ Step 2: Something expired — hit Surepass sync
+  console.log('⚠️ [VehiclesPage] Expired documents found, syncing from Surepass...');
+  toast.info('Expired documents found, syncing from Surepass...');
+
+  try {
+    const response = await api.post(`/vehicles/${selectedVehicle.id}/sync-documents`);
+
+    if (response.data.documents_created?.length > 0) {
+      console.log('✅ [VehiclesPage] Documents synced:', response.data.documents_created);
+      toast.success(`Synced: ${response.data.documents_created.join(', ')}`);
+    } else {
+      toast.info('Documents checked, no updates available from Surepass');
+    }
+
+    // ✅ Always reload from DB after sync attempt
+    await Promise.all([
+      fetchVehicleReport(selectedVehicle.id),
+      fetchFastagPasses(selectedVehicle.id),
+    ]);
+
+    // ✅ Also update selectedVehicle with fresh data
+    const updatedVehicles = await fetchVehicles();
+
+  } catch (err) {
+    console.error('❌ [VehiclesPage] Error syncing documents:', err);
+    toast.error(err.response?.data?.detail || 'Failed to sync documents');
+  }
+};
 
   const handleFetchChallansClick = () => {
     console.log('🚨 [VehiclesPage] handleFetchChallansClick called');
