@@ -6,7 +6,7 @@ class TrackingService:
     def __init__(self, db):
         self.db = db
         self.base_url = "http://43.204.20.184/webservice"
-        self.username = "umraodivyanshu@gmail.com"
+        self.username = "HSCPL"
         self.password = "123456"
         self.project_id = 16
         self.token = None
@@ -91,7 +91,7 @@ class TrackingService:
                     f"{self.base_url}?token=getTokenBaseLiveData&ProjectId={self.project_id}",
                     headers={"auth-code": token},
                     json={
-                        "company_names": "Divyanshu Umrao",
+                        "company_names": "H S Construction",
                         "imei_nos": imeis,
                         "format": "json"
                     }
