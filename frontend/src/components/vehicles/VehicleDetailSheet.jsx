@@ -448,68 +448,113 @@ export const VehicleDetailSheet = ({
     }
   };
 
-  // Document Download handler
-  const handleDocumentDownload = async (documentId) => {
-    try {
-      const document = localVehicleReport?.documents?.find((d) => d.id === documentId);
-      const docType = document?.document_type || 'document';
+// Document Download handler - FIXED VERSION
+const handleDocumentDownload = async (documentId) => {
+  try {
+    const document = localVehicleReport?.documents?.find((d) => d.id === documentId);
+    const docType = document?.document_type || 'document';
+    const fileType = document?.file_type; // Get the stored file type
 
-      setDownloadingDocument((prev) => ({ ...prev, [documentId]: true }));
+    setDownloadingDocument((prev) => ({ ...prev, [documentId]: true }));
 
-      const token = localStorage.getItem('token');
-      const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
-      const downloadUrl = `${baseURL}/vehicles/${localVehicleData.id}/download-document/${documentId}`;
+    const token = localStorage.getItem('token');
+    const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
+    const downloadUrl = `${baseURL}/vehicles/${localVehicleData.id}/download-document/${documentId}`;
 
-      console.log('Downloading document from:', downloadUrl);
+    console.log('Downloading document from:', downloadUrl);
+    console.log('Document file type:', fileType);
 
-      const response = await fetch(downloadUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "*/*",
-        },
-      });
+    const response = await fetch(downloadUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "*/*",
+      },
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Download failed:', response.status, errorText);
-        throw new Error(`Download failed: ${response.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Download failed:', response.status, errorText);
+      throw new Error(`Download failed: ${response.status}`);
+    }
+
+    const contentDisposition = response.headers.get("Content-Disposition");
+    
+    // Determine file extension
+    let extension = 'pdf'; // Default
+    
+    // First priority: Use stored file_type from document
+    if (fileType) {
+      if (fileType === 'pdf') extension = 'pdf';
+      else if (fileType === 'jpg' || fileType === 'jpeg') extension = 'jpg';
+      else if (fileType === 'png') extension = 'png';
+      else if (fileType === 'gif') extension = 'gif';
+      else extension = fileType;
+    }
+    // Second priority: Check content type header
+    else {
+      const contentType = response.headers.get("content-type");
+      if (contentType?.includes("pdf")) {
+        extension = 'pdf';
+      } else if (contentType?.includes("jpeg") || contentType?.includes("jpg")) {
+        extension = 'jpg';
+      } else if (contentType?.includes("png")) {
+        extension = 'png';
+      } else if (contentType?.includes("gif")) {
+        extension = 'gif';
       }
+    }
+    
+    // Check URL for extension as fallback
+    if (extension === 'pdf') {
+      const url = document?.file_url || '';
+      if (url.includes('.jpg') || url.includes('.jpeg')) extension = 'jpg';
+      else if (url.includes('.png')) extension = 'png';
+      else if (url.includes('.gif')) extension = 'gif';
+    }
 
-      const contentDisposition = response.headers.get("Content-Disposition");
-      let filename = `${localVehicleData.registration_number.replace(/[^a-zA-Z0-9]/g, "_")}_${docType}.pdf`;
-
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1].replace(/['"]/g, "");
+    // Generate filename
+    let filename = `${localVehicleData.registration_number.replace(/[^a-zA-Z0-9]/g, "_")}_${docType}.${extension}`;
+    
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch && filenameMatch[1]) {
+        // Use the filename from server but ensure it has correct extension
+        let serverFilename = filenameMatch[1].replace(/['"]/g, "");
+        // If the server filename doesn't have the correct extension, add it
+        if (!serverFilename.toLowerCase().endsWith(`.${extension}`)) {
+          const baseName = serverFilename.split('.')[0];
+          filename = `${baseName}.${extension}`;
+        } else {
+          filename = serverFilename;
         }
       }
-
-      const blob = await response.blob();
-
-      if (blob.size === 0) {
-        throw new Error("Downloaded file is empty");
-      }
-
-      // Use window.document instead of document to avoid conflict
-      const url = window.URL.createObjectURL(blob);
-      const link = window.document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      window.document.body.appendChild(link);
-      link.click();
-      window.document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      toast.success('Download started');
-    } catch (error) {
-      console.error('Document download error:', error);
-      toast.error(error.message || 'Failed to download document');
-    } finally {
-      setDownloadingDocument((prev) => ({ ...prev, [documentId]: false }));
     }
-  };
+
+    const blob = await response.blob();
+    
+    if (blob.size === 0) {
+      throw new Error("Downloaded file is empty");
+    }
+
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    window.document.body.appendChild(link);
+    link.click();
+    window.document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    toast.success(`Downloaded as ${filename}`);
+  } catch (error) {
+    console.error('Document download error:', error);
+    toast.error(error.message || 'Failed to download document');
+  } finally {
+    setDownloadingDocument((prev) => ({ ...prev, [documentId]: false }));
+  }
+};
 
   const handleRcDelete = async () => {
     try {
@@ -526,54 +571,58 @@ export const VehicleDetailSheet = ({
     }
   };
 
-  const handleDocumentUpload = async (documentId, documentType) => {
-    const fileInput = documentFileInputRefs[documentId];
-    const file = fileInput?.files[0];
-    if (!file) return;
+const handleDocumentUpload = async (documentId, documentType) => {
+  const fileInput = documentFileInputRefs[documentId];
+  const file = fileInput?.files[0];
+  if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size must be less than 5MB');
-      return;
+  if (file.size > 5 * 1024 * 1024) {
+    toast.error('File size must be less than 5MB');
+    return;
+  }
+
+  setUploadingDocument((prev) => ({ ...prev, [documentId]: true }));
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await api.post(
+      `/vehicles/${localVehicleData.id}/upload-document/${documentId}`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+
+    // Get file extension from the uploaded file
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    
+    toast.success(`${documentType} document uploaded successfully`);
+
+    if (localVehicleReport) {
+      const updatedDocuments = localVehicleReport.documents.map((doc) => {
+        if (doc.id === documentId) {
+          return {
+            ...doc,
+            file_url: response.data.url,
+            file_public_id: response.data.public_id,
+            file_type: fileExtension, // Store the file extension
+            file_uploaded_at: new Date().toISOString(),
+          };
+        }
+        return doc;
+      });
+
+      setLocalVehicleReport({
+        ...localVehicleReport,
+        documents: updatedDocuments,
+      });
     }
-
-    setUploadingDocument((prev) => ({ ...prev, [documentId]: true }));
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await api.post(
-        `/vehicles/${localVehicleData.id}/upload-document/${documentId}`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
-
-      toast.success(`${documentType} document uploaded successfully`);
-
-      if (localVehicleReport) {
-        const updatedDocuments = localVehicleReport.documents.map((doc) => {
-          if (doc.id === documentId) {
-            return {
-              ...doc,
-              file_url: response.data.url,
-              file_public_id: response.data.public_id,
-              file_uploaded_at: new Date().toISOString(),
-            };
-          }
-          return doc;
-        });
-
-        setLocalVehicleReport({
-          ...localVehicleReport,
-          documents: updatedDocuments,
-        });
-      }
-    } catch (error) {
-      toast.error(error.response?.data?.detail || `Failed to upload ${documentType} document`);
-    } finally {
-      setUploadingDocument((prev) => ({ ...prev, [documentId]: false }));
-      if (fileInput) fileInput.value = '';
-    }
-  };
+  } catch (error) {
+    toast.error(error.response?.data?.detail || `Failed to upload ${documentType} document`);
+  } finally {
+    setUploadingDocument((prev) => ({ ...prev, [documentId]: false }));
+    if (fileInput) fileInput.value = '';
+  }
+};
 
   const handleDocumentDelete = async (documentId, documentType) => {
     try {
@@ -881,48 +930,101 @@ export const VehicleDetailSheet = ({
             </TabsContent>
 
             {/* Documents Tab */}
-            <TabsContent value="documents" className="mt-4">
-              {!localVehicleReport?.documents?.length ? (
-                <div className="text-center py-12 bg-slate-50 rounded-lg"><FileText size={48} className="mx-auto text-slate-300 mb-3" /><p>No documents found</p></div>
-              ) : (
-                <div className="space-y-3">
-                  {localVehicleReport.documents.map((doc) => {
-                    const daysLeft = getDaysLeft(doc.expiry_date);
-                    return (
-                      <Card key={doc.id}>
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <h4 className="font-semibold">{doc.document_type === 'Custom' ? doc.custom_document_name : doc.document_type}</h4>
-                                {doc.is_current && <Badge className="bg-emerald-100 text-emerald-700 text-xs">Current</Badge>}
-                                {doc.source === 'surepass' && <Badge className="bg-blue-100 text-blue-700 text-xs">Surepass</Badge>}
-                              </div>
-                              <p className="text-sm text-slate-600">{doc.policy_number}</p>
-                              <p className="text-xs text-slate-500">{doc.provider}</p>
-                              <p className="text-xs text-slate-500 mt-1">Expires: {new Date(doc.expiry_date).toLocaleDateString()}</p>
-                            </div>
-                            <div className="text-right">
-                              {getStatusBadge(daysLeft)}
-                              {doc.premium && <p className="text-sm font-semibold mt-2">₹{doc.premium.toLocaleString()}</p>}
-                            </div>
-                          </div>
-
-                          <div className="mt-3 pt-3 border-t border-slate-100">
-                            <div className="flex gap-2">
-                              <input type="file" ref={(ref) => { if (ref && documentFileInputRefs[doc.id] !== ref) setDocumentFileInputRefs(prev => ({ ...prev, [doc.id]: ref })); }} onChange={() => handleDocumentUpload(doc.id, doc.document_type)} accept="image/*,application/pdf" className="hidden" id={`doc-upload-${doc.id}`} />
-                              <Button size="sm" variant="outline" className="flex-1" onClick={() => document.getElementById(`doc-upload-${doc.id}`).click()} disabled={uploadingDocument[doc.id]}>{uploadingDocument[doc.id] ? 'Uploading...' : <><Upload size={12} className="mr-1" /> Upload</>}</Button>
-                              {doc.file_url && (<><Button size="sm" variant="outline" className="flex-1" onClick={() => handleDocumentDownload(doc.id)} disabled={downloadingDocument[doc.id]}><Download size={12} className="mr-1" /> Download</Button><Button size="sm" variant="outline" className="flex-1 text-rose-600" onClick={() => { setDocumentToDelete({ id: doc.id, document_type: doc.document_type, policy_number: doc.policy_number }); setShowDocumentDeleteDialog(true); }}><Trash2 size={12} className="mr-1" /> Delete</Button></>)}
-                            </div>
-                            {doc.file_url && <div className="mt-2 text-xs text-emerald-600 bg-emerald-50 p-2 rounded"><CheckCircle size={12} className="inline mr-1" /> Document uploaded</div>}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+{/* Documents Tab */}
+<TabsContent value="documents" className="mt-4">
+  {!localVehicleReport?.documents?.length ? (
+    <div className="text-center py-12 bg-slate-50 rounded-lg"><FileText size={48} className="mx-auto text-slate-300 mb-3" /><p>No documents found</p></div>
+  ) : (
+    <div className="space-y-3">
+      {localVehicleReport.documents.map((doc) => {
+        const daysLeft = getDaysLeft(doc.expiry_date);
+        return (
+          <Card key={doc.id} className={doc.is_past_document ? 'border-slate-200 opacity-80' : ''}>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="font-semibold">{doc.document_type === 'Custom' ? doc.custom_document_name : doc.document_type}</h4>
+                    {doc.is_current && (
+                      <Badge className="bg-emerald-100 text-emerald-700 text-xs">Current</Badge>
+                    )}
+                    {doc.is_past_document && (
+                      <Badge className="bg-slate-100 text-slate-600 border border-slate-300 text-xs">Past Record</Badge>
+                    )}
+                    {doc.source === 'surepass' && (
+                      <Badge className="bg-blue-100 text-blue-700 text-xs">Surepass</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-slate-600">{doc.policy_number}</p>
+                  <p className="text-xs text-slate-500">{doc.provider}</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Issue: {doc.issue_date ? new Date(doc.issue_date).toLocaleDateString() : 'N/A'} •{' '}
+                    Expires: {new Date(doc.expiry_date).toLocaleDateString()}
+                  </p>
                 </div>
-              )}
-            </TabsContent>
+                <div className="text-right">
+                  {getStatusBadge(daysLeft)}
+                  {doc.premium && <p className="text-sm font-semibold mt-2">₹{doc.premium.toLocaleString()}</p>}
+                </div>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <div className="flex gap-2">
+                  <input
+                    type="file"
+                    ref={(ref) => { if (ref && documentFileInputRefs[doc.id] !== ref) setDocumentFileInputRefs(prev => ({ ...prev, [doc.id]: ref })); }}
+                    onChange={() => handleDocumentUpload(doc.id, doc.document_type)}
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    id={`doc-upload-${doc.id}`}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => document.getElementById(`doc-upload-${doc.id}`).click()}
+                    disabled={uploadingDocument[doc.id]}
+                  >
+                    {uploadingDocument[doc.id] ? 'Uploading...' : <><Upload size={12} className="mr-1" /> Upload</>}
+                  </Button>
+                  {doc.file_url && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleDocumentDownload(doc.id)}
+                        disabled={downloadingDocument[doc.id]}
+                      >
+                        <Download size={12} className="mr-1" /> Download
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-rose-600"
+                        onClick={() => {
+                          setDocumentToDelete({ id: doc.id, document_type: doc.document_type, policy_number: doc.policy_number });
+                          setShowDocumentDeleteDialog(true);
+                        }}
+                      >
+                        <Trash2 size={12} className="mr-1" /> Delete
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {doc.file_url && (
+                  <div className="mt-2 text-xs text-emerald-600 bg-emerald-50 p-2 rounded">
+                    <CheckCircle size={12} className="inline mr-1" /> Document uploaded
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  )}
+</TabsContent>
 
             {/* Challans Tab */}
             <TabsContent value="challans" className="mt-4">

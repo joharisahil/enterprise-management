@@ -765,7 +765,7 @@ async def export_vehicles_csv(current_user: dict = Depends(get_current_user)):
         "Insurance Policy Number", "PUC Expiry", "PUCC Number", 
         "Fitness Upto", "Registered At", "Source", "Last Synced", 
         "FASTag Company", "FASTag Balance", "FASTag Status", "Remark", 
-        "Sold Status", "Sold Date"
+        " Status", "Sold Date"
     ]
     
     # Helper function to clean date strings
@@ -1360,43 +1360,39 @@ async def sync_vehicle_documents(
     vehicle_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Sync documents for an existing vehicle - ONLY if documents are expired
-    """
-    # Find the vehicle
     vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
-    
+
     registration_number = vehicle["registration_number"]
-    
-    # Check if any documents are expired or need update
-    current_docs = await db.vehicle_documents.find({
-        "vehicle_id": vehicle_id,
-        "is_current": True,
-        "is_deleted": False
-    }).to_list(10)
-    
-    needs_sync = False
-    for doc in current_docs:
-        if doc["document_type"] in ["Insurance", "PUC"]:
-            expiry = doc.get("expiry_date")
-            if expiry:
-                if isinstance(expiry, str):
-                    expiry_date = datetime.fromisoformat(expiry.replace('Z', '+00:00'))
-                else:
-                    expiry_date = expiry
-                
-                # If expired or expiring within 7 days
-                if expiry_date < datetime.now(timezone.utc):
-                    needs_sync = True
-                    logger.info(f"Document {doc['document_type']} is expired, syncing...")
-                    break
-                elif (expiry_date - datetime.now(timezone.utc)).days <= 7:
-                    needs_sync = True
-                    logger.info(f"Document {doc['document_type']} expires in {(expiry_date - datetime.now(timezone.utc)).days} days, syncing...")
-                    break
-    
+    today = datetime.now(timezone.utc)
+
+    def is_expired(date_value):
+        if not date_value:
+            return False
+        try:
+            if isinstance(date_value, str):
+                dt = datetime.fromisoformat(date_value.replace('Z', '+00:00'))
+            else:
+                dt = date_value
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt < today
+        except:
+            return False
+
+    def is_valid(date_value):
+        """Check if document is valid (not expired)"""
+        return not is_expired(date_value)
+
+    # Check all 4 document types on the vehicle record
+    needs_sync = (
+        is_expired(vehicle.get("insurance_expiry")) or
+        is_expired(vehicle.get("puc_expiry")) or
+        is_expired(vehicle.get("fit_up_to")) or
+        (vehicle.get("tax_upto") and vehicle.get("tax_upto") != "LIFETIME" and is_expired(vehicle.get("tax_upto")))
+    )
+
     if not needs_sync:
         return {
             "success": True,
@@ -1405,17 +1401,15 @@ async def sync_vehicle_documents(
             "documents_created": [],
             "message": "All documents are valid. No sync needed."
         }
-    
+
     # Fetch latest data from Surepass
     result = await surepass_service.fetch_vehicle_details(registration_number)
-    
+
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to fetch vehicle details"))
-    
-    # Parse the data
+
     parsed_data = surepass_service.parse_vehicle_data(result)
-    
-    # Helper function for date parsing
+
     def parse_date(date_value):
         if not date_value:
             return None
@@ -1428,131 +1422,194 @@ async def sync_vehicle_documents(
             except (ValueError, AttributeError):
                 return date_value
         return date_value
-    
+
+    def determine_status(expiry_value):
+        if not expiry_value:
+            return "Active"
+        try:
+            if isinstance(expiry_value, str):
+                dt = datetime.fromisoformat(expiry_value.replace('Z', '+00:00'))
+            else:
+                dt = expiry_value
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return "Expired" if dt < today else "Active"
+        except:
+            return "Active"
+
+    async def version_document(vehicle_id, doc_type, new_doc_data):
+        existing = await db.vehicle_documents.find_one({
+            "vehicle_id": vehicle_id,
+            "document_type": doc_type,
+            "is_current": True,
+            "is_deleted": False
+        })
+
+        if existing:
+            await db.vehicle_documents.update_one(
+                {"id": existing["id"]},
+                {"$set": {
+                    "is_current": False,
+                    "is_past_document": True,
+                    "updated_at": today.isoformat()
+                }}
+            )
+            new_doc_data["previous_version_id"] = existing["id"]
+            new_doc_data["version"] = existing.get("version", 0) + 1
+        else:
+            new_doc_data["version"] = 1
+
+        new_doc_data["id"] = str(uuid.uuid4())
+        new_doc_data["is_current"] = True
+        new_doc_data["is_past_document"] = False
+        new_doc_data["created_at"] = today.isoformat()
+        new_doc_data["updated_at"] = today.isoformat()
+        new_doc_data["created_by"] = current_user["user_id"]
+        new_doc_data["is_deleted"] = False
+
+        await db.vehicle_documents.insert_one(new_doc_data)
+        return new_doc_data["id"]
+
     documents_updated = []
-    
-    # Update Insurance Document if expired
-    if parsed_data.get("insurance_expiry") and parsed_data.get("insurance_company"):
-        # Check if insurance document exists and is expired
-        existing_insurance = await db.vehicle_documents.find_one({
-            "vehicle_id": vehicle_id,
-            "document_type": "Insurance",
-            "is_current": True,
-            "is_deleted": False
-        })
+    vehicle_update = {
+        "last_synced": today.isoformat(),
+        "updated_at": today.isoformat(),
+    }
+
+    # ✅ Insurance — sync if expired in vehicle record AND valid in Surepass data
+    if parsed_data.get("insurance_expiry"):
+        vehicle_insurance_expired = is_expired(vehicle.get("insurance_expiry"))
+        surepass_insurance_valid = is_valid(parsed_data.get("insurance_expiry"))
         
-        # Determine document status
-        insurance_status = "Active"
-        insurance_expiry = parsed_data.get("insurance_expiry")
-        if insurance_expiry:
-            try:
-                if isinstance(insurance_expiry, str):
-                    expiry_date = datetime.fromisoformat(insurance_expiry.replace('Z', '+00:00'))
-                else:
-                    expiry_date = insurance_expiry
-                
-                if expiry_date < datetime.now(timezone.utc):
-                    insurance_status = "Expired"
-            except:
-                pass
-        
-        insurance_data = {
-            "vehicle_id": vehicle_id,
-            "document_type": "Insurance",
-            "policy_number": parsed_data.get("insurance_policy_number", f"INS-{registration_number}"),
-            "provider": parsed_data.get("insurance_company", "Unknown"),
-            "issue_date": parse_date(parsed_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
-            "expiry_date": parse_date(parsed_data.get("insurance_expiry")),
-            "status": insurance_status,
-            "version": (existing_insurance.get("version", 0) + 1) if existing_insurance else 1,
-            "is_current": True,
-            "source": "surepass",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "created_by": current_user["user_id"]
-        }
-        
-        if existing_insurance:
-            # Mark old as not current
-            await db.vehicle_documents.update_many(
-                {"vehicle_id": vehicle_id, "document_type": "Insurance", "is_current": True},
-                {"$set": {"is_current": False}}
-            )
+        if vehicle_insurance_expired and surepass_insurance_valid:
+            # Also verify the current document in DB is expired
+            existing_insurance = await db.vehicle_documents.find_one({
+                "vehicle_id": vehicle_id,
+                "document_type": "Insurance",
+                "is_current": True,
+                "is_deleted": False
+            })
+            doc_expired = existing_insurance is None or is_expired(existing_insurance.get("expiry_date"))
             
-            insurance_data["previous_version_id"] = existing_insurance["id"]
+            if doc_expired:
+                insurance_doc = {
+                    "vehicle_id": vehicle_id,
+                    "document_type": "Insurance",
+                    "policy_number": parsed_data.get("insurance_policy_number") or f"INS-{registration_number}",
+                    "provider": parsed_data.get("insurance_company") or "Unknown",
+                    "issue_date": parse_date(parsed_data.get("date_of_registration")) or today.isoformat(),
+                    "expiry_date": parse_date(parsed_data.get("insurance_expiry")),
+                    "status": "Active",  # Since Surepass data shows valid
+                    "source": "surepass",
+                }
+                await version_document(vehicle_id, "Insurance", insurance_doc)
+                documents_updated.append("Insurance")
+                vehicle_update["insurance_expiry"] = parse_date(parsed_data.get("insurance_expiry"))
+                vehicle_update["insurance_company"] = parsed_data.get("insurance_company")
+                vehicle_update["insurance_policy_number"] = parsed_data.get("insurance_policy_number")
+                logger.info(f"Updated Insurance for {registration_number} from expired to valid")
+            else:
+                logger.info(f"Insurance already valid in DB for {registration_number}, skipping")
+        else:
+            if vehicle_insurance_expired and not surepass_insurance_valid:
+                logger.info(f"Insurance expired in both vehicle record and Surepass for {registration_number}, skipping")
+            elif not vehicle_insurance_expired:
+                logger.info(f"Insurance not expired in vehicle record for {registration_number}, skipping")
+
+    # ✅ PUC — sync if expired in vehicle record AND valid in Surepass data
+    if parsed_data.get("puc_expiry"):
+        vehicle_puc_expired = is_expired(vehicle.get("puc_expiry"))
+        surepass_puc_valid = is_valid(parsed_data.get("puc_expiry"))
         
-        insurance_data["id"] = str(uuid.uuid4())
-        await db.vehicle_documents.insert_one(insurance_data)
-        documents_updated.append("Insurance")
-        logger.info(f"Updated Insurance document for vehicle {registration_number}")
-    
-    # Update PUC Document if expired
-    if parsed_data.get("puc_expiry") and parsed_data.get("pucc_number"):
-        existing_puc = await db.vehicle_documents.find_one({
-            "vehicle_id": vehicle_id,
-            "document_type": "PUC",
-            "is_current": True,
-            "is_deleted": False
-        })
-        
-        # Determine document status
-        puc_status = "Active"
-        puc_expiry = parsed_data.get("puc_expiry")
-        if puc_expiry:
-            try:
-                if isinstance(puc_expiry, str):
-                    expiry_date = datetime.fromisoformat(puc_expiry.replace('Z', '+00:00'))
-                else:
-                    expiry_date = puc_expiry
-                
-                if expiry_date < datetime.now(timezone.utc):
-                    puc_status = "Expired"
-            except:
-                pass
-        
-        puc_data = {
-            "vehicle_id": vehicle_id,
-            "document_type": "PUC",
-            "policy_number": parsed_data.get("pucc_number", f"PUC-{registration_number}"),
-            "provider": parsed_data.get("registered_at", "RTO"),
-            "issue_date": parse_date(parsed_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
-            "expiry_date": parse_date(parsed_data.get("puc_expiry")),
-            "status": puc_status,
-            "version": (existing_puc.get("version", 0) + 1) if existing_puc else 1,
-            "is_current": True,
-            "source": "surepass",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "created_by": current_user["user_id"]
-        }
-        
-        if existing_puc:
-            # Mark old as not current
-            await db.vehicle_documents.update_many(
-                {"vehicle_id": vehicle_id, "document_type": "PUC", "is_current": True},
-                {"$set": {"is_current": False}}
-            )
+        if vehicle_puc_expired and surepass_puc_valid:
+            existing_puc = await db.vehicle_documents.find_one({
+                "vehicle_id": vehicle_id,
+                "document_type": "PUC",
+                "is_current": True,
+                "is_deleted": False
+            })
+            doc_expired = existing_puc is None or is_expired(existing_puc.get("expiry_date"))
             
-            puc_data["previous_version_id"] = existing_puc["id"]
+            if doc_expired:
+                puc_doc = {
+                    "vehicle_id": vehicle_id,
+                    "document_type": "PUC",
+                    "policy_number": parsed_data.get("pucc_number") or f"PUC-{registration_number}",
+                    "provider": parsed_data.get("registered_at") or "RTO",
+                    "issue_date": parse_date(parsed_data.get("date_of_registration")) or today.isoformat(),
+                    "expiry_date": parse_date(parsed_data.get("puc_expiry")),
+                    "status": "Active",  # Since Surepass data shows valid
+                    "source": "surepass",
+                }
+                await version_document(vehicle_id, "PUC", puc_doc)
+                documents_updated.append("PUC")
+                vehicle_update["puc_expiry"] = parse_date(parsed_data.get("puc_expiry"))
+                vehicle_update["pucc_number"] = parsed_data.get("pucc_number")
+                logger.info(f"Updated PUC for {registration_number} from expired to valid")
+            else:
+                logger.info(f"PUC already valid in DB for {registration_number}, skipping")
+        else:
+            if vehicle_puc_expired and not surepass_puc_valid:
+                logger.info(f"PUC expired in both vehicle record and Surepass for {registration_number}, skipping")
+            elif not vehicle_puc_expired:
+                logger.info(f"PUC not expired in vehicle record for {registration_number}, skipping")
+
+    # ✅ Fitness — sync if expired in vehicle record AND valid in Surepass data
+    if parsed_data.get("fit_up_to"):
+        vehicle_fitness_expired = is_expired(vehicle.get("fit_up_to"))
+        surepass_fitness_valid = is_valid(parsed_data.get("fit_up_to"))
         
-        puc_data["id"] = str(uuid.uuid4())
-        await db.vehicle_documents.insert_one(puc_data)
-        documents_updated.append("PUC")
-        logger.info(f"Updated PUC document for vehicle {registration_number}")
-    
-    # Update vehicle's last_synced timestamp
-    await db.vehicles.update_one(
-        {"id": vehicle_id},
-        {"$set": {"last_synced": datetime.now(timezone.utc).isoformat()}}
-    )
-    
+        if vehicle_fitness_expired and surepass_fitness_valid:
+            existing_fitness = await db.vehicle_documents.find_one({
+                "vehicle_id": vehicle_id,
+                "document_type": "Fitness",
+                "is_current": True,
+                "is_deleted": False
+            })
+            doc_expired = existing_fitness is None or is_expired(existing_fitness.get("expiry_date"))
+            
+            if doc_expired:
+                fitness_doc = {
+                    "vehicle_id": vehicle_id,
+                    "document_type": "Fitness",
+                    "policy_number": f"FIT-{registration_number}",
+                    "provider": parsed_data.get("registered_at") or "RTO",
+                    "issue_date": parse_date(parsed_data.get("date_of_registration")) or today.isoformat(),
+                    "expiry_date": parse_date(parsed_data.get("fit_up_to")),
+                    "status": "Active",  # Since Surepass data shows valid
+                    "source": "surepass",
+                }
+                await version_document(vehicle_id, "Fitness", fitness_doc)
+                documents_updated.append("Fitness")
+                vehicle_update["fit_up_to"] = parse_date(parsed_data.get("fit_up_to"))
+                logger.info(f"Updated Fitness for {registration_number} from expired to valid")
+            else:
+                logger.info(f"Fitness already valid in DB for {registration_number}, skipping")
+        else:
+            if vehicle_fitness_expired and not surepass_fitness_valid:
+                logger.info(f"Fitness expired in both vehicle record and Surepass for {registration_number}, skipping")
+            elif not vehicle_fitness_expired:
+                logger.info(f"Fitness not expired in vehicle record for {registration_number}, skipping")
+
+    # ✅ Update vehicle record only with fields that were actually synced
+    if documents_updated:
+        await db.vehicles.update_one(
+            {"id": vehicle_id},
+            {"$set": vehicle_update}
+        )
+
     return {
         "success": True,
         "vehicle_id": vehicle_id,
         "registration_number": registration_number,
         "documents_created": documents_updated,
-        "message": f"Updated {len(documents_updated)} documents: {', '.join(documents_updated) if documents_updated else 'No updates needed'}"
+        "message": (
+            f"Updated {len(documents_updated)} document(s) from expired to valid: {', '.join(documents_updated)}"
+            if documents_updated
+            else "No expired documents had valid replacements from Surepass"
+        )
     }
+
 
 @api_router.post("/vehicles/from-surepass")
 async def create_vehicle_from_surepass(
@@ -1847,15 +1904,11 @@ async def create_vehicle_document(
     document_data: VehicleDocumentCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Create a new vehicle document with versioning
-    """
     try:
-        # Check if vehicle exists
         vehicle = await db.vehicles.find_one({"id": document_data.vehicle_id, "is_deleted": False})
         if not vehicle:
             raise HTTPException(status_code=404, detail="Vehicle not found")
-        
+
         # Check for existing current version
         existing_doc = await db.vehicle_documents.find_one({
             "vehicle_id": document_data.vehicle_id,
@@ -1863,20 +1916,49 @@ async def create_vehicle_document(
             "is_current": True,
             "is_deleted": False
         })
-        
-        # Create new document ID
+
+        # ✅ If is_current is explicitly False, this is a past document
+        is_past_document = document_data.is_current == False
+
+        if is_past_document:
+            # Validate: past document expiry must be before the current doc's issue date
+            if existing_doc:
+                current_issue_date = existing_doc.get("issue_date")
+                if current_issue_date:
+                    if isinstance(current_issue_date, str):
+                        current_issue_dt = datetime.fromisoformat(current_issue_date.replace('Z', '+00:00'))
+                    else:
+                        current_issue_dt = current_issue_date
+
+                    # Make timezone-aware if naive
+                    if current_issue_dt.tzinfo is None:
+                        current_issue_dt = current_issue_dt.replace(tzinfo=timezone.utc)
+
+                    expiry_date = document_data.expiry_date
+                    if isinstance(expiry_date, str):
+                        expiry_dt = datetime.fromisoformat(expiry_date.replace('Z', '+00:00'))
+                    else:
+                        expiry_dt = expiry_date
+
+                    if expiry_dt.tzinfo is None:
+                        expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
+
+                    if expiry_dt >= current_issue_dt:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Past document expiry date ({expiry_dt.strftime('%Y-%m-%d')}) must be before the current document's issue date ({current_issue_dt.strftime('%Y-%m-%d')})"
+                        )
+
         document_id = str(uuid.uuid4())
-        
-        # Convert datetime fields to ISO format
+
         issue_date = document_data.issue_date
         if isinstance(issue_date, datetime):
             issue_date = issue_date.isoformat()
-        
+
         expiry_date = document_data.expiry_date
         if isinstance(expiry_date, datetime):
             expiry_date = expiry_date.isoformat()
-        
-        # Create document dict
+
         document_dict = {
             "id": document_id,
             "vehicle_id": document_data.vehicle_id,
@@ -1895,18 +1977,19 @@ async def create_vehicle_document(
             "file_type": document_data.file_type,
             "file_uploaded_at": document_data.file_uploaded_at.isoformat() if document_data.file_uploaded_at else None,
             "file_uploaded_by": document_data.file_uploaded_by,
-            "version": (existing_doc.get("version", 0) + 1) if existing_doc else 1,
-            "is_current": True,
-            "previous_version_id": existing_doc["id"] if existing_doc else None,
+            "version": (existing_doc.get("version", 0) + 1) if existing_doc and not is_past_document else 1,
+            "is_current": False if is_past_document else True,   # ✅ past = never current
+            "is_past_document": is_past_document,                 # ✅ new flag
+            "previous_version_id": existing_doc["id"] if existing_doc and not is_past_document else None,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "created_by": current_user["user_id"],
             "updated_by": current_user["user_id"],
             "is_deleted": False
         }
-        
-        # If there's an existing current document, mark it as not current
-        if existing_doc:
+
+        # Only mark existing doc as not current if this is NOT a past document
+        if existing_doc and not is_past_document:
             await db.vehicle_documents.update_many(
                 {
                     "vehicle_id": document_data.vehicle_id,
@@ -1915,17 +1998,17 @@ async def create_vehicle_document(
                 },
                 {"$set": {"is_current": False, "updated_at": datetime.now(timezone.utc).isoformat()}}
             )
-        
-        # Insert new document
+
         await db.vehicle_documents.insert_one(document_dict)
-        
+
         return {
             "success": True,
             "document_id": document_id,
             "version": document_dict["version"],
-            "message": "Document created successfully"
+            "is_past_document": is_past_document,
+            "message": "Past document added successfully" if is_past_document else "Document created successfully"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -2335,41 +2418,33 @@ async def get_document_history(document_id: str, current_user: dict = Depends(ge
    
 @api_router.post("/upload-document")
 async def upload_document(file: UploadFile = File(...)):
-
     try:
-
-        if file.content_type.startswith("image"):
-
-            result = cloudinary.uploader.upload(
-                file.file,
-                folder="vehicle-documents",
-                resource_type="image",
-                transformation=[
-                    {
-                        "quality": "auto",
-                        "fetch_format": "auto",
-                        "width": 1200,
-                        "crop": "limit"
-                    }
-                ]
-            )
-
+        # Get file extension
+        file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else 'pdf'
+        
+        # Determine resource type based on file extension
+        if file_extension in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            resource_type = "image"
         else:
-
-            result = cloudinary.uploader.upload(
-                file.file,
-                folder="vehicle-documents",
-                resource_type="raw"
-            )
-
+            resource_type = "raw"
+        
+        # Upload to Cloudinary
+        result = cloudinary.uploader.upload(
+            file.file,
+            folder="vehicle-documents",
+            resource_type=resource_type,
+            transformation=[
+                {"quality": "auto", "fetch_format": "auto", "width": 1200, "crop": "limit"}
+            ] if resource_type == "image" else None
+        )
+        
         return {
             "url": result["secure_url"],
-            "public_id": result["public_id"]
+            "public_id": result["public_id"],
+            "file_type": file_extension  # Return the file type
         }
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))   
-
+        raise HTTPException(status_code=500, detail=str(e))
 # Add these endpoints after your existing document endpoints
 
 @api_router.post("/vehicles/{vehicle_id}/upload-rc")
@@ -2525,6 +2600,7 @@ async def upload_document_file(
         logger.error(f"Document upload error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @api_router.delete("/vehicles/{vehicle_id}/delete-document/{document_id}")
 async def delete_document_file(
     vehicle_id: str,
@@ -2673,7 +2749,7 @@ async def create_sold_agreement(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Create a sold vehicle agreement with optional document upload
+    Create or update a sold vehicle agreement with optional document upload
     """
     try:
         # Find the vehicle
@@ -2685,238 +2761,232 @@ async def create_sold_agreement(
         if not vehicle.get("sold", False):
             raise HTTPException(status_code=400, detail="Vehicle is not marked as sold")
         
-        # Create agreement record
-        agreement_id = str(uuid.uuid4())
-        agreement = SoldVehicleAgreement(
-            id=agreement_id,
-            vehicle_id=vehicle_id,
-            vehicle_registration=vehicle["registration_number"],
-            buyer_name=data.get("buyer_name"),
-            buyer_phone=data.get("buyer_phone"),
-            agreement_date=datetime.fromisoformat(data.get("agreement_date", datetime.now(timezone.utc).isoformat())),
-            agreement_url=data.get("agreement_url"),
-            agreement_public_id=data.get("agreement_public_id"),
-            agreement_file_type=data.get("agreement_file_type"),
-            notes=data.get("notes"),
-            created_by=current_user["user_id"]
+        # Check if agreement already exists
+        existing = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False}
         )
         
-        agreement_dict = agreement.model_dump()
-        agreement_dict["created_at"] = agreement_dict["created_at"].isoformat()
-        agreement_dict["agreement_date"] = agreement_dict["agreement_date"].isoformat()
-        
-        await db.sold_vehicle_agreements.insert_one(agreement_dict)
-        
-        # Update vehicle with agreement reference
-        await db.vehicles.update_one(
-            {"id": vehicle_id},
-            {"$set": {
-                "sold_agreement_id": agreement_id,
-                "sold_date": datetime.now(timezone.utc).isoformat(),
-                "sold_agreement_created": True
-            }}
-        )
-        
-        return {
-            "success": True,
-            "agreement_id": agreement_id,
-            "message": "Sold vehicle agreement created successfully"
-        }
+        if existing:
+            # Update existing agreement
+            update_data = {
+                "buyer_name": data.get("buyer_name"),
+                "buyer_phone": data.get("buyer_phone"),
+                "agreement_date": datetime.fromisoformat(data.get("agreement_date", datetime.now(timezone.utc).isoformat())),
+                "notes": data.get("notes"),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": current_user["user_id"]
+            }
+            
+            await db.sold_vehicle_agreements.update_one(
+                {"id": existing["id"]},
+                {"$set": update_data}
+            )
+            
+            return {
+                "success": True,
+                "agreement_id": existing["id"],
+                "message": "Sold vehicle agreement updated successfully"
+            }
+        else:
+            # Create new agreement
+            agreement_id = str(uuid.uuid4())
+            agreement = {
+                "id": agreement_id,
+                "vehicle_id": vehicle_id,
+                "vehicle_registration": vehicle["registration_number"],
+                "buyer_name": data.get("buyer_name"),
+                "buyer_phone": data.get("buyer_phone"),
+                "agreement_date": datetime.fromisoformat(data.get("agreement_date", datetime.now(timezone.utc).isoformat())),
+                "agreement_url": data.get("agreement_url"),
+                "agreement_public_id": data.get("agreement_public_id"),
+                "agreement_file_type": data.get("agreement_file_type"),
+                "notes": data.get("notes"),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": current_user["user_id"],
+                "is_deleted": False
+            }
+            
+            await db.sold_vehicle_agreements.insert_one(agreement)
+            
+            # Update vehicle with agreement reference
+            await db.vehicles.update_one(
+                {"id": vehicle_id},
+                {"$set": {
+                    "sold_agreement_id": agreement_id,
+                    "sold_date": datetime.now(timezone.utc).isoformat(),
+                    "sold_agreement_created": True
+                }}
+            )
+            
+            return {
+                "success": True,
+                "agreement_id": agreement_id,
+                "message": "Sold vehicle agreement created successfully"
+            }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error creating sold agreement: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create agreement: {str(e)}")
+ 
 
+ 
+    
 @api_router.post("/vehicles/{vehicle_id}/upload-agreement")
-async def upload_sold_agreement_document(
-    vehicle_id: str,
+async def upload_agreement_document(
+    vehicle_id: str, 
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Upload agreement document for sold vehicle
-    """
+    """Upload agreement document for sold vehicle"""
     try:
-        # Find the vehicle
-        vehicle = await db.vehicles.find_one({"id": vehicle_id, "is_deleted": False})
-        if not vehicle:
-            raise HTTPException(status_code=404, detail="Vehicle not found")
+        # Validate file type
+        if file.content_type != "application/pdf":
+            raise HTTPException(status_code=400, detail="Only PDF files are allowed")
         
-        # Check if vehicle is marked as sold
-        if not vehicle.get("sold", False):
-            raise HTTPException(status_code=400, detail="Vehicle is not marked as sold")
+        # Validate file size (10MB max)
+        file_content = await file.read()
+        if len(file_content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size must be less than 10MB")
         
-        # Get file extension
-        file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
-        
-        # Determine resource type
-        if file_extension in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf']:
-            resource_type = "auto"
-        else:
-            resource_type = "raw"
+        # Reset file pointer
+        await file.seek(0)
         
         # Upload to Cloudinary
-        result = cloudinary.uploader.upload(
+        upload_result = cloudinary.uploader.upload(
             file.file,
-            folder=f"vehicles/{vehicle_id}/sold_agreements",
-            resource_type=resource_type,
-            transformation=[
-                {"quality": "auto", "fetch_format": "auto"}
-            ] if resource_type == "image" else None
+            resource_type="raw",
+            folder=f"sold_agreements/{vehicle_id}"
         )
         
-        # Update the agreement record if it exists
-        agreement = await db.sold_vehicle_agreements.find_one(
-            {"vehicle_id": vehicle_id, "is_deleted": False},
-            sort=[("created_at", -1)]
+        agreement_url = upload_result.get("secure_url")
+        public_id = upload_result.get("public_id")
+        
+        # Find existing agreement
+        existing = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False}
         )
         
-        if agreement:
+        if existing:
+            # Update existing agreement with document URL
             await db.sold_vehicle_agreements.update_one(
-                {"id": agreement["id"]},
+                {"id": existing["id"]},
                 {"$set": {
-                    "agreement_url": result["secure_url"],
-                    "agreement_public_id": result["public_id"],
-                    "agreement_file_type": file_extension,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "agreement_url": agreement_url,
+                    "agreement_public_id": public_id,
+                    "agreement_file_type": "pdf",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": current_user["user_id"]
                 }}
             )
+        else:
+            # Create agreement with document
+            agreement_id = str(uuid.uuid4())
+            vehicle = await db.vehicles.find_one({"id": vehicle_id})
+            
+            agreement = {
+                "id": agreement_id,
+                "vehicle_id": vehicle_id,
+                "vehicle_registration": vehicle["registration_number"] if vehicle else "Unknown",
+                "agreement_url": agreement_url,
+                "agreement_public_id": public_id,
+                "agreement_file_type": "pdf",
+                "agreement_date": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": current_user["user_id"],
+                "is_deleted": False
+            }
+            
+            await db.sold_vehicle_agreements.insert_one(agreement)
         
         return {
             "success": True,
-            "url": result["secure_url"],
-            "public_id": result["public_id"],
-            "file_type": file_extension,
+            "url": agreement_url,
             "message": "Agreement document uploaded successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Agreement upload error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+        logger.error(f"Error uploading agreement: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to upload document: {str(e)}")
+    
 @api_router.get("/vehicles/{vehicle_id}/sold-agreement")
-async def get_sold_agreement(
-    vehicle_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get sold vehicle agreement details
-    """
+async def get_sold_agreement(vehicle_id: str, current_user: dict = Depends(get_current_user)):
+    """Get sold agreement details for a vehicle"""
     try:
         agreement = await db.sold_vehicle_agreements.find_one(
-            {"vehicle_id": vehicle_id, "is_deleted": False},
+            {"vehicle_id": vehicle_id, "is_deleted": False}, 
             {"_id": 0}
         )
         
         if not agreement:
-            return {
-                "success": True,
-                "has_agreement": False,
-                "message": "No agreement found for this vehicle"
-            }
+            return {"has_agreement": False}
         
-        # Convert datetime to string
-        if agreement.get("agreement_date"):
-            agreement["agreement_date"] = agreement["agreement_date"].isoformat() if isinstance(agreement["agreement_date"], datetime) else agreement["agreement_date"]
-        if agreement.get("created_at"):
-            agreement["created_at"] = agreement["created_at"].isoformat() if isinstance(agreement["created_at"], datetime) else agreement["created_at"]
+        # Also get vehicle sold status
+        vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "sold": 1})
         
         return {
-            "success": True,
             "has_agreement": True,
-            "agreement": agreement
+            "agreement": agreement,
+            "vehicle_sold": vehicle.get("sold", False) if vehicle else False
         }
         
     except Exception as e:
-        logger.error(f"Error fetching sold agreement: {e}")
+        logger.error(f"Error fetching agreement: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 @api_router.get("/vehicles/{vehicle_id}/download-agreement")
 async def download_sold_agreement(
     vehicle_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Download sold vehicle agreement document
-    """
+    """Download sold agreement PDF"""
     try:
         agreement = await db.sold_vehicle_agreements.find_one(
             {"vehicle_id": vehicle_id, "is_deleted": False}
         )
         
-        if not agreement:
-            raise HTTPException(status_code=404, detail="No agreement found")
+        if not agreement or not agreement.get("agreement_url"):
+            raise HTTPException(status_code=404, detail="Agreement not found")
         
-        file_url = agreement.get("agreement_url")
-        if not file_url:
-            raise HTTPException(status_code=404, detail="No document uploaded")
+        agreement_url = agreement["agreement_url"]
         
-        # Get vehicle details
-        vehicle = await db.vehicles.find_one(
-            {"id": vehicle_id}, 
-            {"_id": 0, "registration_number": 1}
-        )
-        registration = vehicle["registration_number"].replace("/", "_").replace(" ", "_").replace("-", "_")
-        
-        logger.info(f"Downloading agreement document from: {file_url}")
-        
+        # Fetch the file from Cloudinary
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(file_url)
+            response = await client.get(agreement_url)
             
             if response.status_code != 200:
-                logger.error(f"Failed to fetch file from Cloudinary: {response.status_code}")
-                raise HTTPException(status_code=404, detail="File not found on Cloudinary")
+                logger.error(f"Failed to fetch agreement from Cloudinary: {response.status_code}")
+                raise HTTPException(status_code=404, detail="Agreement file not found")
             
-            file_type = agreement.get("agreement_file_type", "pdf")
+            vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "registration_number": 1})
+            registration = vehicle.get("registration_number", "unknown").replace("/", "_").replace(" ", "_").replace("-", "_")
+            filename = f"{registration}_sold_agreement.pdf"
             
-            # Determine content type
-            if file_type == 'pdf':
-                content_type = 'application/pdf'
-                filename = f"{registration}_sold_agreement.pdf"
-            elif file_type in ['jpg', 'jpeg']:
-                content_type = 'image/jpeg'
-                filename = f"{registration}_sold_agreement.jpg"
-            elif file_type == 'png':
-                content_type = 'image/png'
-                filename = f"{registration}_sold_agreement.png"
-            elif file_type == 'gif':
-                content_type = 'image/gif'
-                filename = f"{registration}_sold_agreement.gif"
-            else:
-                content_type = 'application/octet-stream'
-                filename = f"{registration}_sold_agreement.{file_type}"
-            
-            logger.info(f"Serving file with content-type: {content_type}, filename: {filename}")
-            
-            # Return the file directly
             return StreamingResponse(
                 iter([response.content]),
-                media_type=content_type,
+                media_type="application/pdf",
                 headers={
                     "Content-Disposition": f"attachment; filename={filename}",
                     "Content-Length": str(len(response.content)),
-                    "Cache-Control": "no-cache",
-                    "Access-Control-Expose-Headers": "Content-Disposition"
+                    "Cache-Control": "no-cache"
                 }
             )
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Agreement download error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
-
-
+        logger.error(f"Error downloading agreement: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to download: {str(e)}")
+    
 @api_router.delete("/vehicles/{vehicle_id}/sold-agreement")
 async def delete_sold_agreement(
     vehicle_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """
-    Delete sold vehicle agreement (soft delete)
-    """
+    """Delete sold vehicle agreement"""
     try:
         agreement = await db.sold_vehicle_agreements.find_one(
             {"vehicle_id": vehicle_id, "is_deleted": False}
@@ -2925,16 +2995,21 @@ async def delete_sold_agreement(
         if not agreement:
             raise HTTPException(status_code=404, detail="No agreement found")
         
-        # Soft delete
+        # Delete file from Cloudinary if exists
+        if agreement.get("agreement_public_id"):
+            try:
+                cloudinary.uploader.destroy(agreement["agreement_public_id"], resource_type="raw")
+            except Exception as e:
+                logger.warning(f"Failed to delete from Cloudinary: {e}")
+        
+        # Soft delete the agreement
         await db.sold_vehicle_agreements.update_one(
             {"id": agreement["id"]},
-            {"$set": {"is_deleted": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
-        
-        # Remove agreement reference from vehicle
-        await db.vehicles.update_one(
-            {"id": vehicle_id},
-            {"$unset": {"sold_agreement_id": "", "sold_agreement_created": ""}}
+            {"$set": {
+                "is_deleted": True, 
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": current_user["user_id"]
+            }}
         )
         
         return {"success": True, "message": "Agreement deleted successfully"}
@@ -2943,6 +3018,86 @@ async def delete_sold_agreement(
         logger.error(f"Agreement delete error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.patch("/vehicles/{vehicle_id}/mark-unsold")
+async def mark_vehicle_unsold(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Mark vehicle as unsold and delete all associated sold data"""
+    try:
+        # Update vehicle sold status
+        result = await db.vehicles.update_one(
+            {"id": vehicle_id, "is_deleted": False},
+            {"$set": {
+                "sold": False,
+                "sold_date": None,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": current_user["user_id"]
+            }}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        
+        # Find and delete agreement
+        agreement = await db.sold_vehicle_agreements.find_one(
+            {"vehicle_id": vehicle_id, "is_deleted": False}
+        )
+        
+        if agreement:
+            # Delete file from Cloudinary if exists
+            if agreement.get("agreement_public_id"):
+                try:
+                    cloudinary.uploader.destroy(agreement["agreement_public_id"], resource_type="raw")
+                except Exception as e:
+                    logger.warning(f"Failed to delete from Cloudinary: {e}")
+            
+            # Delete agreement
+            await db.sold_vehicle_agreements.update_one(
+                {"id": agreement["id"]},
+                {"$set": {
+                    "is_deleted": True,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": current_user["user_id"]
+                }}
+            )
+        
+        return {"success": True, "message": "Vehicle marked as unsold successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error marking as unsold: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.patch("/vehicles/{vehicle_id}/sold-status")
+async def update_vehicle_sold_status(
+    vehicle_id: str,
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update the sold status of a vehicle"""
+    sold_status = data.get("sold", False)
+    
+    result = await db.vehicles.update_one(
+        {"id": vehicle_id, "is_deleted": False},
+        {"$set": {
+            "sold": sold_status,
+            "sold_date": datetime.now(timezone.utc).isoformat() if sold_status else None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": current_user["user_id"]
+        }}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    return {
+        "success": True,
+        "message": f"Vehicle sold status updated to {sold_status}",
+        "sold": sold_status
+    }
 
 @api_router.get("/vehicles/{vehicle_id}/download-rc")
 async def download_rc_document(
@@ -3155,6 +3310,42 @@ async def delete_document_version(
         "message": "Document version deleted successfully"
     }    
 
+@api_router.delete("/vehicle-documents/{document_id}")
+async def delete_vehicle_document(
+    document_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete a vehicle document (soft delete all versions)
+    """
+    try:
+        # Find the document
+        document = await db.vehicle_documents.find_one({"id": document_id, "is_deleted": False})
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Soft delete the document
+        await db.vehicle_documents.update_one(
+            {"id": document_id},
+            {
+                "$set": {
+                    "is_deleted": True,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": current_user["user_id"]
+                }
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "Document deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting vehicle document: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")\
 
 @api_router.get("/export/vehicle-documents/excel")
 async def export_vehicle_documents_excel(
