@@ -1385,7 +1385,7 @@ async def sync_vehicle_documents(
         """Check if document is valid (not expired)"""
         return not is_expired(date_value)
 
-    # Check all 4 document types on the vehicle record
+    # Check all 5 document types on the vehicle record
     needs_sync = (
         is_expired(vehicle.get("insurance_expiry")) or
         is_expired(vehicle.get("puc_expiry")) or
@@ -1482,7 +1482,6 @@ async def sync_vehicle_documents(
         surepass_insurance_valid = is_valid(parsed_data.get("insurance_expiry"))
         
         if vehicle_insurance_expired and surepass_insurance_valid:
-            # Also verify the current document in DB is expired
             existing_insurance = await db.vehicle_documents.find_one({
                 "vehicle_id": vehicle_id,
                 "document_type": "Insurance",
@@ -1499,7 +1498,7 @@ async def sync_vehicle_documents(
                     "provider": parsed_data.get("insurance_company") or "Unknown",
                     "issue_date": parse_date(parsed_data.get("date_of_registration")) or today.isoformat(),
                     "expiry_date": parse_date(parsed_data.get("insurance_expiry")),
-                    "status": "Active",  # Since Surepass data shows valid
+                    "status": "Active",
                     "source": "surepass",
                 }
                 await version_document(vehicle_id, "Insurance", insurance_doc)
@@ -1508,13 +1507,6 @@ async def sync_vehicle_documents(
                 vehicle_update["insurance_company"] = parsed_data.get("insurance_company")
                 vehicle_update["insurance_policy_number"] = parsed_data.get("insurance_policy_number")
                 logger.info(f"Updated Insurance for {registration_number} from expired to valid")
-            else:
-                logger.info(f"Insurance already valid in DB for {registration_number}, skipping")
-        else:
-            if vehicle_insurance_expired and not surepass_insurance_valid:
-                logger.info(f"Insurance expired in both vehicle record and Surepass for {registration_number}, skipping")
-            elif not vehicle_insurance_expired:
-                logger.info(f"Insurance not expired in vehicle record for {registration_number}, skipping")
 
     # ✅ PUC — sync if expired in vehicle record AND valid in Surepass data
     if parsed_data.get("puc_expiry"):
@@ -1538,7 +1530,7 @@ async def sync_vehicle_documents(
                     "provider": parsed_data.get("registered_at") or "RTO",
                     "issue_date": parse_date(parsed_data.get("date_of_registration")) or today.isoformat(),
                     "expiry_date": parse_date(parsed_data.get("puc_expiry")),
-                    "status": "Active",  # Since Surepass data shows valid
+                    "status": "Active",
                     "source": "surepass",
                 }
                 await version_document(vehicle_id, "PUC", puc_doc)
@@ -1546,13 +1538,6 @@ async def sync_vehicle_documents(
                 vehicle_update["puc_expiry"] = parse_date(parsed_data.get("puc_expiry"))
                 vehicle_update["pucc_number"] = parsed_data.get("pucc_number")
                 logger.info(f"Updated PUC for {registration_number} from expired to valid")
-            else:
-                logger.info(f"PUC already valid in DB for {registration_number}, skipping")
-        else:
-            if vehicle_puc_expired and not surepass_puc_valid:
-                logger.info(f"PUC expired in both vehicle record and Surepass for {registration_number}, skipping")
-            elif not vehicle_puc_expired:
-                logger.info(f"PUC not expired in vehicle record for {registration_number}, skipping")
 
     # ✅ Fitness — sync if expired in vehicle record AND valid in Surepass data
     if parsed_data.get("fit_up_to"):
@@ -1576,20 +1561,46 @@ async def sync_vehicle_documents(
                     "provider": parsed_data.get("registered_at") or "RTO",
                     "issue_date": parse_date(parsed_data.get("date_of_registration")) or today.isoformat(),
                     "expiry_date": parse_date(parsed_data.get("fit_up_to")),
-                    "status": "Active",  # Since Surepass data shows valid
+                    "status": "Active",
                     "source": "surepass",
                 }
                 await version_document(vehicle_id, "Fitness", fitness_doc)
                 documents_updated.append("Fitness")
                 vehicle_update["fit_up_to"] = parse_date(parsed_data.get("fit_up_to"))
                 logger.info(f"Updated Fitness for {registration_number} from expired to valid")
-            else:
-                logger.info(f"Fitness already valid in DB for {registration_number}, skipping")
-        else:
-            if vehicle_fitness_expired and not surepass_fitness_valid:
-                logger.info(f"Fitness expired in both vehicle record and Surepass for {registration_number}, skipping")
-            elif not vehicle_fitness_expired:
-                logger.info(f"Fitness not expired in vehicle record for {registration_number}, skipping")
+
+    # ✅ NEW: Tax Document — sync if expired in vehicle record AND valid in Surepass data
+    if parsed_data.get("tax_upto"):
+        # Check if tax_upto is not LIFETIME (which means it's a date)
+        vehicle_tax = vehicle.get("tax_upto")
+        if vehicle_tax and vehicle_tax != "LIFETIME":
+            vehicle_tax_expired = is_expired(vehicle_tax)
+            surepass_tax_valid = is_valid(parsed_data.get("tax_upto"))
+            
+            if vehicle_tax_expired and surepass_tax_valid:
+                existing_tax = await db.vehicle_documents.find_one({
+                    "vehicle_id": vehicle_id,
+                    "document_type": "Tax",
+                    "is_current": True,
+                    "is_deleted": False
+                })
+                doc_expired = existing_tax is None or is_expired(existing_tax.get("expiry_date"))
+                
+                if doc_expired:
+                    tax_doc = {
+                        "vehicle_id": vehicle_id,
+                        "document_type": "Tax",
+                        "policy_number": f"TAX-{registration_number}",
+                        "provider": parsed_data.get("registered_at") or "RTO",
+                        "issue_date": parse_date(parsed_data.get("date_of_registration")) or today.isoformat(),
+                        "expiry_date": parse_date(parsed_data.get("tax_upto")),
+                        "status": "Active",
+                        "source": "surepass",
+                    }
+                    await version_document(vehicle_id, "Tax", tax_doc)
+                    documents_updated.append("Tax")
+                    vehicle_update["tax_upto"] = parse_date(parsed_data.get("tax_upto"))
+                    logger.info(f"Updated Tax for {registration_number} from expired to valid")
 
     # ✅ Update vehicle record only with fields that were actually synced
     if documents_updated:
@@ -1610,7 +1621,6 @@ async def sync_vehicle_documents(
         )
     }
 
-
 @api_router.post("/vehicles/from-surepass")
 async def create_vehicle_from_surepass(
     vehicle_data: dict,
@@ -1618,7 +1628,7 @@ async def create_vehicle_from_surepass(
 ):
     """
     Create or update vehicle from Surepass data
-    ALWAYS creates insurance and PUC documents regardless of expiry status
+    ALWAYS creates insurance, PUC, Fitness, and Tax documents regardless of expiry status
     """
     registration_number = vehicle_data.get("registration_number")
     
@@ -1722,7 +1732,6 @@ async def create_vehicle_from_surepass(
         insurance_expiry = vehicle_data.get("insurance_expiry")
         try:
             if isinstance(insurance_expiry, str):
-                # Handle format like "2027-01-24T00:00:00"
                 if 'T' in insurance_expiry:
                     expiry_date = datetime.fromisoformat(insurance_expiry)
                 else:
@@ -1730,7 +1739,6 @@ async def create_vehicle_from_surepass(
             else:
                 expiry_date = insurance_expiry
             
-            # Make timezone-aware if naive
             if expiry_date.tzinfo is None:
                 expiry_date = expiry_date.replace(tzinfo=timezone.utc)
             
@@ -1741,26 +1749,24 @@ async def create_vehicle_from_surepass(
             expiry_date = None
         
         insurance_data = {
-    "id": str(uuid.uuid4()),
-    "vehicle_id": vehicle_id,
-    "document_type": "Insurance",
-    "policy_number": vehicle_data.get("insurance_policy_number", f"INS-{registration_number}"),
-    "provider": vehicle_data.get("insurance_company", "Unknown"),
-    "issue_date": parse_date(vehicle_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
-    "expiry_date": parse_date(vehicle_data.get("insurance_expiry")),
-    "status": insurance_status,
-    "version": 1,
-    "is_current": True,
-    "source": "surepass",
-    "created_at": datetime.now(timezone.utc).isoformat(),
-    "updated_at": datetime.now(timezone.utc).isoformat(),
-    "is_deleted": False  # Add this line
-}
-
+            "id": str(uuid.uuid4()),
+            "vehicle_id": vehicle_id,
+            "document_type": "Insurance",
+            "policy_number": vehicle_data.get("insurance_policy_number", f"INS-{registration_number}"),
+            "provider": vehicle_data.get("insurance_company", "Unknown"),
+            "issue_date": parse_date(vehicle_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
+            "expiry_date": parse_date(vehicle_data.get("insurance_expiry")),
+            "status": insurance_status,
+            "version": 1,
+            "is_current": True,
+            "source": "surepass",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "is_deleted": False
+        }
         
         logger.info(f"Insurance data prepared: {json.dumps(insurance_data, default=str)}")
         
-        # Check if insurance document already exists and update it
         existing_insurance = await db.vehicle_documents.find_one({
             "vehicle_id": vehicle_id,
             "document_type": "Insurance",
@@ -1768,7 +1774,6 @@ async def create_vehicle_from_surepass(
         })
         
         if existing_insurance:
-            # Mark old as not current
             await db.vehicle_documents.update_many(
                 {"vehicle_id": vehicle_id, "document_type": "Insurance", "is_current": True},
                 {"$set": {"is_current": False}}
@@ -1785,12 +1790,10 @@ async def create_vehicle_from_surepass(
     if vehicle_data.get("puc_expiry"):
         logger.info(f"Creating PUC document for {registration_number}")
         
-        # Parse expiry date for status determination
         puc_status = "Active"
         puc_expiry = vehicle_data.get("puc_expiry")
         try:
             if isinstance(puc_expiry, str):
-                # Handle format like "2026-04-27T00:00:00"
                 if 'T' in puc_expiry:
                     expiry_date = datetime.fromisoformat(puc_expiry)
                 else:
@@ -1798,7 +1801,6 @@ async def create_vehicle_from_surepass(
             else:
                 expiry_date = puc_expiry
             
-            # Make timezone-aware if naive
             if expiry_date.tzinfo is None:
                 expiry_date = expiry_date.replace(tzinfo=timezone.utc)
             
@@ -1809,25 +1811,24 @@ async def create_vehicle_from_surepass(
             expiry_date = None
         
         puc_data = {
-    "id": str(uuid.uuid4()),
-    "vehicle_id": vehicle_id,
-    "document_type": "PUC",
-    "policy_number": vehicle_data.get("pucc_number", f"PUC-{registration_number}"),
-    "provider": vehicle_data.get("registered_at", "RTO"),
-    "issue_date": parse_date(vehicle_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
-    "expiry_date": parse_date(vehicle_data.get("puc_expiry")),
-    "status": puc_status,
-    "version": 1,
-    "is_current": True,
-    "source": "surepass",
-    "created_at": datetime.now(timezone.utc).isoformat(),
-    "updated_at": datetime.now(timezone.utc).isoformat(),
-    "is_deleted": False  # Add this line
-}
+            "id": str(uuid.uuid4()),
+            "vehicle_id": vehicle_id,
+            "document_type": "PUC",
+            "policy_number": vehicle_data.get("pucc_number", f"PUC-{registration_number}"),
+            "provider": vehicle_data.get("registered_at", "RTO"),
+            "issue_date": parse_date(vehicle_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
+            "expiry_date": parse_date(vehicle_data.get("puc_expiry")),
+            "status": puc_status,
+            "version": 1,
+            "is_current": True,
+            "source": "surepass",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "is_deleted": False
+        }
         
         logger.info(f"PUC data prepared: {json.dumps(puc_data, default=str)}")
         
-        # Check if PUC document already exists and update it
         existing_puc = await db.vehicle_documents.find_one({
             "vehicle_id": vehicle_id,
             "document_type": "PUC",
@@ -1835,7 +1836,6 @@ async def create_vehicle_from_surepass(
         })
         
         if existing_puc:
-            # Mark old as not current
             await db.vehicle_documents.update_many(
                 {"vehicle_id": vehicle_id, "document_type": "PUC", "is_current": True},
                 {"$set": {"is_current": False}}
@@ -1846,7 +1846,133 @@ async def create_vehicle_from_surepass(
         result = await db.vehicle_documents.insert_one(puc_data)
         logger.info(f"Created PUC document with ID: {puc_data['id']}, insert result: {result.inserted_id}")
     else:
-        logger.info(f"No PUC expiry data found for {registration_number}")
+        logger.info(f"No PUC expiry data found for {registration_number}")    
+    
+    # ============ ALWAYS CREATE FITNESS DOCUMENT ============
+    if vehicle_data.get("fit_up_to"):
+        logger.info(f"Creating Fitness document for {registration_number}")
+        
+        fitness_status = "Active"
+        fitness_expiry = vehicle_data.get("fit_up_to")
+        try:
+            if isinstance(fitness_expiry, str):
+                if 'T' in fitness_expiry:
+                    expiry_date = datetime.fromisoformat(fitness_expiry)
+                else:
+                    expiry_date = datetime.fromisoformat(fitness_expiry)
+            else:
+                expiry_date = fitness_expiry
+            
+            if expiry_date.tzinfo is None:
+                expiry_date = expiry_date.replace(tzinfo=timezone.utc)
+            
+            if expiry_date < datetime.now(timezone.utc):
+                fitness_status = "Expired"
+        except Exception as e:
+            logger.error(f"Error parsing fitness expiry: {e}")
+            expiry_date = None
+        
+        fitness_data = {
+            "id": str(uuid.uuid4()),
+            "vehicle_id": vehicle_id,
+            "document_type": "Fitness",
+            "policy_number": f"FIT-{registration_number}",
+            "provider": vehicle_data.get("registered_at", "RTO"),
+            "issue_date": parse_date(vehicle_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
+            "expiry_date": parse_date(vehicle_data.get("fit_up_to")),
+            "status": fitness_status,
+            "version": 1,
+            "is_current": True,
+            "source": "surepass",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "is_deleted": False
+        }
+        
+        logger.info(f"Fitness data prepared: {json.dumps(fitness_data, default=str)}")
+        
+        existing_fitness = await db.vehicle_documents.find_one({
+            "vehicle_id": vehicle_id,
+            "document_type": "Fitness",
+            "is_current": True
+        })
+        
+        if existing_fitness:
+            await db.vehicle_documents.update_many(
+                {"vehicle_id": vehicle_id, "document_type": "Fitness", "is_current": True},
+                {"$set": {"is_current": False}}
+            )
+            fitness_data["previous_version_id"] = existing_fitness["id"]
+            fitness_data["version"] = existing_fitness.get("version", 0) + 1
+        
+        result = await db.vehicle_documents.insert_one(fitness_data)
+        logger.info(f"Created Fitness document with ID: {fitness_data['id']}, insert result: {result.inserted_id}")
+    else:
+        logger.info(f"No fitness expiry data found for {registration_number}")
+    
+    # ============ ALWAYS CREATE TAX DOCUMENT (if not LIFETIME) ============
+    if vehicle_data.get("tax_upto") and vehicle_data.get("tax_upto") != "LIFETIME":
+        logger.info(f"Creating Tax document for {registration_number}")
+        
+        tax_status = "Active"
+        tax_expiry = vehicle_data.get("tax_upto")
+        try:
+            if isinstance(tax_expiry, str):
+                if 'T' in tax_expiry:
+                    expiry_date = datetime.fromisoformat(tax_expiry)
+                else:
+                    expiry_date = datetime.fromisoformat(tax_expiry)
+            else:
+                expiry_date = tax_expiry
+            
+            if expiry_date.tzinfo is None:
+                expiry_date = expiry_date.replace(tzinfo=timezone.utc)
+            
+            if expiry_date < datetime.now(timezone.utc):
+                tax_status = "Expired"
+        except Exception as e:
+            logger.error(f"Error parsing tax expiry: {e}")
+            expiry_date = None
+        
+        tax_data = {
+            "id": str(uuid.uuid4()),
+            "vehicle_id": vehicle_id,
+            "document_type": "Tax",
+            "policy_number": f"TAX-{registration_number}",
+            "provider": vehicle_data.get("registered_at", "RTO"),
+            "issue_date": parse_date(vehicle_data.get("date_of_registration")) or datetime.now(timezone.utc).isoformat(),
+            "expiry_date": parse_date(vehicle_data.get("tax_upto")),
+            "status": tax_status,
+            "version": 1,
+            "is_current": True,
+            "source": "surepass",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "is_deleted": False
+        }
+        
+        logger.info(f"Tax data prepared: {json.dumps(tax_data, default=str)}")
+        
+        existing_tax = await db.vehicle_documents.find_one({
+            "vehicle_id": vehicle_id,
+            "document_type": "Tax",
+            "is_current": True
+        })
+        
+        if existing_tax:
+            await db.vehicle_documents.update_many(
+                {"vehicle_id": vehicle_id, "document_type": "Tax", "is_current": True},
+                {"$set": {"is_current": False}}
+            )
+            tax_data["previous_version_id"] = existing_tax["id"]
+            tax_data["version"] = existing_tax.get("version", 0) + 1
+        
+        result = await db.vehicle_documents.insert_one(tax_data)
+        logger.info(f"Created Tax document with ID: {tax_data['id']}, insert result: {result.inserted_id}")
+    elif vehicle_data.get("tax_upto") == "LIFETIME":
+        logger.info(f"Vehicle {registration_number} has lifetime tax, skipping Tax document creation")
+    else:
+        logger.info(f"No tax expiry data found for {registration_number}")
     
     logger.info(f"=== FINISHED CREATING VEHICLE {registration_number} ===")
     

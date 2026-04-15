@@ -10,10 +10,10 @@ logger = logging.getLogger(__name__)
 class SurepassService:
     def __init__(self):
         self.api_key = os.getenv("SURPASS_API_KEY")
-        self.api_url = os.getenv("SURPASS_API_URL", "https://sandbox.surepass.app/api/v1/rc/rc-v2")
-        self.challan_api_url = os.getenv("SURPASS_CHALLAN_API_URL", "https://sandbox.surepass.io/api/v1/rc/rc-related/challan-advanced")
-        self.fastag_verification_url = os.getenv("SURPASS_FASTAG_VERIFICATION_URL", "https://sandbox.surepass.io/api/v1/fastag/fastag-verification-v2")
-        self.fastag_balance_url = os.getenv("SURPASS_FASTAG_BALANCE_URL", "https://sandbox.surepass.io/api/v1/fastag/rc-to-fastag-balance")
+        self.api_url = os.getenv("SURPASS_API_URL", "https://kyc-api.surepass.app/api/v1/rc/rc-v2")
+        self.challan_api_url = os.getenv("SURPASS_CHALLAN_API_URL", "https://kyc-api.surepass.app/api/v1/rc/rc-related/challan-advanced")
+        self.fastag_verification_url = os.getenv("SURPASS_FASTAG_VERIFICATION_URL", "https://kyc-api.surepass.app/api/v1/fastag/fastag-verification-v2")
+        self.fastag_balance_url = os.getenv("SURPASS_FASTAG_BALANCE_URL", "https://kyc-api.surepass.app/api/v1/fastag/rc-to-fastag-balance")
         
     async def fetch_vehicle_details(self, registration_number: str) -> Dict[str, Any]:
         """

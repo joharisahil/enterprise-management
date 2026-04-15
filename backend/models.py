@@ -55,6 +55,7 @@ class DocumentType(str, Enum):
     FITNESS = "Fitness"
     RC = "RC"
     PERMIT = "Permit"
+    TAX = "Tax"
     CUSTOM = "Custom"
 
 class ServiceType(str, Enum):
