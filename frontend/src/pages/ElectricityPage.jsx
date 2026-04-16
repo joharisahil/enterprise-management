@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PhoneNumberInput from '@/components/ui/PhoneNumberInput';
+import ElectricityBillFetcher from '@/components/electricity/ElectricityBillFetcher';
 
 const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
@@ -32,6 +33,7 @@ export const ElectricityPage = () => {
   const [editSolarDialogOpen, setEditSolarDialogOpen] = useState(false);
   const [selectedElecBill, setSelectedElecBill] = useState(null);
   const [selectedSolarMeter, setSelectedSolarMeter] = useState(null);
+  const [operatorCodes, setOperatorCodes] = useState([]);
 
   // File upload states for electricity
   const [elecSelectedFile, setElecSelectedFile] = useState(null);
@@ -99,6 +101,21 @@ export const ElectricityPage = () => {
       setLoading(false);
     }
   };
+
+  const fetchOperatorCodes = async () => {
+  try {
+    const response = await api.get('/electricity-bills/operator-codes');
+    setOperatorCodes(response.data.data);
+  } catch (error) {
+    console.error('Failed to fetch operator codes:', error);
+  }
+};
+
+// Add to useEffect
+useEffect(() => {
+  fetchData();
+  fetchOperatorCodes();
+}, [selectedProperty]);
 
   // File handling functions for electricity
   const handleElecFileSelect = (e) => {
@@ -1256,7 +1273,8 @@ export const ElectricityPage = () => {
 
         {/* Electricity Bills Tab */}
         <TabsContent value="electricity" className="space-y-6">
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
+  <div className="flex gap-2">
             <Dialog open={elecDialogOpen} onOpenChange={(open) => { setElecDialogOpen(open); if (!open) resetElecForm(); }}>
               <DialogTrigger asChild>
                 <Button className="bg-blue-800 hover:bg-blue-900">
@@ -1456,6 +1474,14 @@ export const ElectricityPage = () => {
                 </form>
               </DialogContent>
             </Dialog>
+            {selectedProperty !== 'all' && (
+      <ElectricityBillFetcher 
+        propertyId={selectedProperty}
+        onSuccess={fetchData}
+        operatorCodes={operatorCodes}
+      />
+    )}
+          </div>
           </div>
 
           <div className="space-y-4">

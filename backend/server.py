@@ -328,6 +328,180 @@ async def delete_property_tax(tax_id: str, current_user: dict = Depends(get_curr
 
 # ==================== ELECTRICITY BILL ROUTES ====================
 
+@api_router.post("/electricity-bills/fetch-from-surepass")
+async def fetch_electricity_bill_from_surepass(
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Fetch electricity bill details from Surepass API using consumer ID
+    """
+    consumer_id = data.get("consumer_id", "").strip()
+    operator_code = data.get("operator_code", "").upper().strip()
+    property_id = data.get("property_id")
+    
+    if not consumer_id:
+        raise HTTPException(status_code=400, detail="Consumer ID is required")
+    
+    if not operator_code:
+        raise HTTPException(status_code=400, detail="Operator code is required (e.g., 'MH' for Maharashtra)")
+    
+    if not property_id:
+        raise HTTPException(status_code=400, detail="Property ID is required")
+    
+    # Verify property exists
+    property = await db.properties.find_one({"id": property_id, "is_deleted": False})
+    if not property:
+        raise HTTPException(status_code=404, detail="Property not found")
+    
+    logger.info(f"Fetching electricity bill for consumer: {consumer_id}, operator: {operator_code}")
+    
+    # Call Surepass API
+    result = await surepass_service.fetch_electricity_bill(consumer_id, operator_code)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to fetch electricity bill details"))
+    
+    bill_data = result["data"]
+    
+    # Log the API call
+    try:
+        log_entry = {
+            "id": str(uuid.uuid4()),
+            "property_id": property_id,
+            "consumer_id": consumer_id,
+            "operator_code": operator_code,
+            "request_timestamp": datetime.now(timezone.utc).isoformat(),
+            "response_data": bill_data,
+            "is_successful": True,
+            "created_by": current_user["user_id"]
+        }
+        await db.electricity_verification_logs.insert_one(log_entry)
+    except Exception as e:
+        logger.warning(f"Could not log electricity verification: {e}")
+    
+    return {
+        "success": True,
+        "property_id": property_id,
+        "property_name": property["name"],
+        "bill_data": bill_data,
+        "message": "Electricity bill details fetched successfully"
+    }
+
+
+@api_router.post("/electricity-bills/save-from-surepass")
+async def save_electricity_bill_from_surepass(
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Save electricity bill from Surepass data to the database
+    """
+    property_id = data.get("property_id")
+    bill_data = data.get("bill_data", {})
+    
+    if not property_id:
+        raise HTTPException(status_code=400, detail="Property ID is required")
+    
+    if not bill_data:
+        raise HTTPException(status_code=400, detail="Bill data is required")
+    
+    # Verify property exists
+    property = await db.properties.find_one({"id": property_id, "is_deleted": False})
+    if not property:
+        raise HTTPException(status_code=404, detail="Property not found")
+    
+    # Get billing period (default to current month if not provided)
+    billing_period_start = data.get("billing_period_start")
+    billing_period_end = data.get("billing_period_end")
+    due_date = data.get("due_date")
+    
+    # Parse dates or use defaults
+    today = datetime.now(timezone.utc)
+    if not billing_period_start:
+        billing_period_start = today.replace(day=1).isoformat()
+    if not billing_period_end:
+        # Last day of current month
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+        billing_period_end = (next_month - timedelta(days=1)).isoformat()
+    if not due_date:
+        due_date = (today + timedelta(days=15)).isoformat()
+    
+    # Create electricity bill
+    bill_id = str(uuid.uuid4())
+    
+    # Parse the date strings
+    billing_period_start_dt = datetime.fromisoformat(billing_period_start) if isinstance(billing_period_start, str) else billing_period_start
+    billing_period_end_dt = datetime.fromisoformat(billing_period_end) if isinstance(billing_period_end, str) else billing_period_end
+    due_date_dt = datetime.fromisoformat(due_date) if isinstance(due_date, str) else due_date
+    
+    bill_dict = {
+        "id": bill_id,
+        "property_id": property_id,
+        "billing_period_start": billing_period_start_dt.isoformat(),
+        "billing_period_end": billing_period_end_dt.isoformat(),
+        "previous_reading": data.get("previous_reading", 0),
+        "current_reading": data.get("current_reading", 0),
+        "units_consumed": data.get("units_consumed", 0),
+        "slab_charges": data.get("slab_charges", 0),
+        "fixed_charges": data.get("fixed_charges", 0),
+        "taxes": data.get("taxes", 0),
+        "penalty": data.get("penalty", 0),
+        "total_amount": bill_data.get("bill_amount", 0),
+        "due_date": due_date_dt.isoformat(),
+        "payment_date": None,
+        "status": "Unpaid",
+        "bill_url": bill_data.get("document_link"),
+        "phone_number": bill_data.get("mobile"),
+        "consumer_id": bill_data.get("consumer_id"),
+        "operator_code": bill_data.get("operator_code"),
+        "consumer_name": bill_data.get("full_name"),
+        "consumer_address": bill_data.get("address"),
+        "source": "surepass",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": current_user["user_id"],
+        "is_deleted": False
+    }
+    
+    await db.electricity_bills.insert_one(bill_dict)
+    
+    return {
+        "success": True,
+        "bill_id": bill_id,
+        "message": "Electricity bill saved successfully"
+    }
+
+
+@api_router.get("/electricity-bills/operator-codes")
+async def get_electricity_operator_codes(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get list of electricity operator codes
+    """
+    operator_codes = [
+        {"code": "MH", "name": "Maharashtra", "state": "Maharashtra"},
+        {"code": "DL", "name": "Delhi", "state": "Delhi"},
+        {"code": "GJ", "name": "Gujarat", "state": "Gujarat"},
+        {"code": "TN", "name": "Tamil Nadu", "state": "Tamil Nadu"},
+        {"code": "KA", "name": "Karnataka", "state": "Karnataka"},
+        {"code": "UP", "name": "Uttar Pradesh", "state": "Uttar Pradesh"},
+        {"code": "WB", "name": "West Bengal", "state": "West Bengal"},
+        {"code": "RJ", "name": "Rajasthan", "state": "Rajasthan"},
+        {"code": "MP", "name": "Madhya Pradesh", "state": "Madhya Pradesh"},
+        {"code": "AP", "name": "Andhra Pradesh", "state": "Andhra Pradesh"},
+        {"code": "TS", "name": "Telangana", "state": "Telangana"},
+        {"code": "KL", "name": "Kerala", "state": "Kerala"},
+        {"code": "PB", "name": "Punjab", "state": "Punjab"},
+        {"code": "HR", "name": "Haryana", "state": "Haryana"},
+        {"code": "BR", "name": "Bihar", "state": "Bihar"},
+    ]
+    return {"data": operator_codes}
+
 @api_router.post("/electricity-bills")
 async def create_electricity_bill(bill_data: ElectricityBillCreate, current_user: dict = Depends(get_current_user)):
     bill_id = str(uuid.uuid4())
@@ -2955,10 +3129,7 @@ async def create_sold_agreement(
     except Exception as e:
         logger.error(f"Error creating sold agreement: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create agreement: {str(e)}")
- 
-
- 
-    
+     
 @api_router.post("/vehicles/{vehicle_id}/upload-agreement")
 async def upload_agreement_document(
     vehicle_id: str, 
@@ -3195,7 +3366,6 @@ async def mark_vehicle_unsold(
     except Exception as e:
         logger.error(f"Error marking as unsold: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @api_router.patch("/vehicles/{vehicle_id}/sold-status")
 async def update_vehicle_sold_status(
@@ -3806,8 +3976,7 @@ async def export_current_view_excel(
     except Exception as e:
         logger.error(f"Error exporting current view: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to export documents: {str(e)}")
-
-        
+       
 @api_router.post("/challans")
 async def create_challan(challan_data: ChallanCreate, current_user: dict = Depends(get_current_user)):
     challan_id = str(uuid.uuid4())

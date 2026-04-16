@@ -574,3 +574,94 @@ class SurepassService:
                 "success": False,
                 "error": str(e)
             }
+        
+    # Add to surepass.py inside SurepassService class
+
+    async def fetch_electricity_bill(self, consumer_id: str, operator_code: str) -> Dict[str, Any]:
+        """
+        Fetch electricity bill details from Surepass API
+    
+        Args:
+            consumer_id: Electricity consumer ID/number
+            operator_code: State operator code (e.g., "MH" for Maharashtra)
+    
+        Returns:
+            Dictionary with bill details
+        """
+        if not self.api_key:
+            raise HTTPException(status_code=500, detail="Surepass API key not configured")
+    
+        electricity_api_url = os.getenv("SURPASS_ELECTRICITY_API_URL", "https://kyc-api.surepass.app/api/v1/utility/electricity/")
+    
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+    
+        payload = {
+            "id_number": consumer_id,
+            "operator_code": operator_code
+        }
+    
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    electricity_api_url,
+                    json=payload,
+                    headers=headers
+                )
+            
+                if response.status_code != 200:
+                    logger.error(f"Electricity bill API error: {response.status_code} - {response.text}")
+                    return {
+                        "success": False,
+                        "error": f"API returned status {response.status_code}",
+                        "data": None
+                    }
+            
+                data = response.json()
+            
+                if data.get("success"):
+                    # Parse the bill amount (remove commas)
+                    bill_amount_str = data.get("data", {}).get("bill_amount", "0")
+                    bill_amount = float(bill_amount_str.replace(",", "")) if bill_amount_str else 0
+                
+                    return {
+                        "success": True,
+                        "data": {
+                            "consumer_id": data.get("data", {}).get("customer_id"),
+                            "full_name": data.get("data", {}).get("full_name"),
+                            "address": data.get("data", {}).get("address"),
+                            "mobile": data.get("data", {}).get("mobile"),
+                            "email": data.get("data", {}).get("user_email"),
+                            "bill_amount": bill_amount,
+                            "bill_number": data.get("data", {}).get("bill_number"),
+                            "operator_code": data.get("data", {}).get("operator_code"),
+                            "state": data.get("data", {}).get("state"),
+                            "document_link": data.get("data", {}).get("document_link"),
+                            "client_id": data.get("data", {}).get("client_id")
+                        },
+                        "raw_response": data
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": data.get("message", "Unknown error"),
+                        "data": None
+                    }
+                
+        except httpx.TimeoutException:
+            logger.error("Electricity bill API timeout")
+            return {
+                "success": False,
+                "error": "API request timeout",
+                "data": None
+            }
+        except Exception as e:
+            logger.error(f"Electricity bill API exception: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "data": None
+            }
+                      

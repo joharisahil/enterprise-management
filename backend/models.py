@@ -109,6 +109,18 @@ class PropertyBase(BaseModel):
     address: str
     geo_location: Optional[dict] = None  # {"lat": float, "lng": float}
     area_sqft: float
+    # Electricity bill fields
+    consumer_id: Optional[str] = Field(None, description="Electricity consumer ID/account number")
+    operator_code: Optional[str] = Field(None, description="State/operator code (e.g., MH, DL, GJ)")
+    consumer_name: Optional[str] = Field(None, description="Name as per electricity bill")
+    electricity_board: Optional[str] = Field(None, description="Electricity board name (e.g., MSEB, TATA Power)")
+    circle: Optional[str] = Field(None, description="Electricity circle")
+    division: Optional[str] = Field(None, description="Electricity division")
+    sub_division: Optional[str] = Field(None, description="Electricity sub-division")
+    meter_number: Optional[str] = Field(None, description="Electricity meter number")
+    sanctioned_load_kw: Optional[float] = Field(None, description="Sanctioned load in kW")
+    connection_type: Optional[str] = Field(None, description="Connection type (e.g., Residential, Commercial, Industrial)")
+    tariff_category: Optional[str] = Field(None, description="Tariff category/rate category")
 
 class PropertyCreate(PropertyBase):
     pass
@@ -210,6 +222,19 @@ class ElectricityBillCreate(ElectricityBillBase):
 class ElectricityBill(ElectricityBillBase, TimestampModel):
     model_config = ConfigDict(extra="ignore")
     id: str
+
+class ElectricityVerificationLog(BaseModel):
+    """Track electricity bill verification API calls"""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    property_id: str
+    consumer_id: str
+    operator_code: str
+    request_timestamp: datetime
+    response_data: dict
+    is_successful: bool = True
+    error_message: Optional[str] = None
+    created_by: Optional[str] = None
 
 # Solar Meter Models
 class SolarMeterBase(BaseModel):
