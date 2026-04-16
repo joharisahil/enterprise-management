@@ -1,5 +1,5 @@
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timezone , timedelta
 
 
 class TrackingService:
@@ -157,11 +157,12 @@ class TrackingService:
                 "battery": v.get("battery_percentage"),
                 "external_voltage": self.safe_float(v.get("ExternalVolt")),  
                 "gps_time": v.get("GPSActualTime"),
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "expire_at": datetime.now(timezone.utc) + timedelta(days=20)##this 20 sets day expire value
 
             }
 
-            print("📍 Record to save:", record)
+            ##print("📍 Record to save:", record)
 
             try:
                 # 🔹 DUPLICATE CHECK
@@ -191,3 +192,42 @@ class TrackingService:
 
             except Exception as e:
                 print(f"❌ DB Error for IMEI {imei}:", e)
+    
+    async def setup_ttl_index(self):
+        """Create TTL index to auto-delete records after 28 days"""
+        try:
+            # Create TTL index on expire_at field
+            await self.db.vehicle_history.create_index(
+                [("expire_at", 1)],
+                expireAfterSeconds=0,  # 0 means delete when expire_at time is reached
+                name="ttl_expire_at_28d"
+            )
+            print("✅ TTL index created - records will auto-delete after 28 days")
+        except Exception as e:
+            print("❌ Failed to create TTL index:", e)
+    
+    # in case needed for some debugging
+    # async def cleanup_old_records(self, days=20):
+    #     """Delete old records and print result"""
+    #     try:
+    #         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            
+    #         # ✅ ADD THESE DEBUG PRINTS
+    #         print(f"🧹 Running cleanup check... (cutoff: {cutoff.strftime('%Y-%m-%d %H:%M:%S')})")
+            
+    #         # Count old records before deletion
+    #         old_count = await self.db.vehicle_history.count_documents({"expire_at": {"$lt": cutoff}})
+    #         total_count = await self.db.vehicle_history.count_documents({})
+            
+    #         print(f"📊 Total records: {total_count}, Old records: {old_count}")
+            
+    #         if old_count > 0:
+    #             result = await self.db.vehicle_history.delete_many(
+    #                 {"expire_at": {"$lt": cutoff}}
+    #             )
+    #             print(f"🗑️ Deleted {result.deleted_count} old records (older than {days} days)")
+    #         else:
+    #             print(f"✨ No old records to delete (TTL may have already deleted them)")
+            
+    #     except Exception as e:
+    #         print(f"❌ Cleanup error: {e}")

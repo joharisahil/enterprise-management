@@ -113,6 +113,9 @@ async def tracking_background_task():
             print(f"[TRACKING] Fetching data... Interval: {interval}s")
 
             await tracking_service.fetch_live_data()
+            # for debugging
+            # await tracking_service.cleanup_old_records(days=0) 
+            
 
             await asyncio.sleep(interval)
 
@@ -128,7 +131,7 @@ async def lifespan(app: FastAPI):
 
     automation_service = AutomationService(db)
     tracking_service = TrackingService(db)
-
+    await tracking_service.setup_ttl_index()
     task1 = asyncio.create_task(automation_background_task())
     task2 = asyncio.create_task(tracking_background_task())
 
