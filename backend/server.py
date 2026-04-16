@@ -154,6 +154,7 @@ async def lifespan(app: FastAPI):
             pass
 
         client.close()
+
 app = FastAPI(lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 

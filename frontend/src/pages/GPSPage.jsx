@@ -158,7 +158,7 @@ export const GPSPage = () => {
   useEffect(() => {
     if (!selectedImei) return;
     fetchLive();
-    const id = setInterval(fetchLive, 10000);
+    const id = setInterval(fetchLive, 60000);
     return () => clearInterval(id);
   }, [selectedImei]);
 
@@ -166,7 +166,7 @@ export const GPSPage = () => {
     if (!selectedImei) return;
     fetchTimeline();
     fetchHistory();
-    const id = setInterval(fetchTimeline, 45000);
+    const id = setInterval(fetchTimeline, 60000);
     return () => clearInterval(id);
   }, [selectedImei]);
 
