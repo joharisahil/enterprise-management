@@ -423,56 +423,53 @@ const handleRefreshFromSurepass = async () => {
     console.log('🚨 [VehiclesPage] Fetch challans dialog opened');
   };
 
-  const handleConfirmFetchChallans = async () => {
+const handleConfirmFetchChallans = async () => {
     console.log('✅ [VehiclesPage] handleConfirmFetchChallans called');
     if (!selectedVehicle) return;
 
     setFetchingChallans(true);
 
     try {
-      console.log('🚨 [VehiclesPage] Calling API: POST /surepass/fetch-challans for vehicle:', selectedVehicle.registration_number);
-      const response = await api.post('/surepass/fetch-challans', {
-        registration_number: selectedVehicle.registration_number,
-      });
+        console.log('🚨 [VehiclesPage] Calling API: POST /surepass/fetch-challans for vehicle:', selectedVehicle.registration_number);
+        const response = await api.post('/surepass/fetch-challans', {
+            registration_number: selectedVehicle.registration_number,
+        });
 
-      console.log('🚨 [VehiclesPage] Fetch challans response:', {
-        challans_imported: response.data.challans_imported,
-        challans_found: response.data.challans_found
-      });
+        console.log('🚨 [VehiclesPage] Fetch challans response:', {
+            challans_imported: response.data.challans_imported,
+            challans_updated: response.data.challans_updated,
+            challans_found: response.data.challans_found
+        });
 
-      if (response.data.challans_imported > 0) {
-        toast.success(`✅ Imported ${response.data.challans_imported} new challans`);
-
-        if (response.data.challans_imported <= 5 && response.data.challans.length > 0) {
-          const message = response.data.challans
-            .map((c) => `• ${c.challan_number}: ₹${c.amount} (${c.status})`)
-            .join('\n');
-          toast.info(`Imported challans:\n${message}`, {
-            duration: 5000,
-            style: { whiteSpace: 'pre-line' },
-          });
+        if (response.data.challans_imported > 0) {
+            toast.success(`✅ Imported ${response.data.challans_imported} new challans`);
+        }
+        
+        if (response.data.challans_updated > 0) {
+            toast.success(`✅ Updated ${response.data.challans_updated} challans (Unpaid → Paid)`);
+        }
+        
+        if (response.data.challans_imported === 0 && response.data.challans_updated === 0 && response.data.challans_found > 0) {
+            toast.info(`📋 Found ${response.data.challans_found} challans, all already up to date`);
+        } else if (response.data.challans_found === 0) {
+            toast.info('✅ No challans found for this vehicle');
         }
 
+        // Refresh the vehicle data to show updated challans
         setViewDialogOpen(false);
         setTimeout(() => {
-          handleView(selectedVehicle);
+            handleView(selectedVehicle);
         }, 500);
-      } else if (response.data.challans_found > 0) {
-        toast.info(`📋 Found ${response.data.challans_found} challans, but all already exist`);
-      } else {
-        toast.info('✅ No challans found for this vehicle');
-      }
 
-      setFetchChallansDialogOpen(false);
+        setFetchChallansDialogOpen(false);
     } catch (err) {
-      console.error('❌ [VehiclesPage] Error fetching challans:', err);
-      toast.error(err.response?.data?.detail || 'Failed to fetch challans');
+        console.error('❌ [VehiclesPage] Error fetching challans:', err);
+        toast.error(err.response?.data?.detail || 'Failed to fetch challans');
     } finally {
-      setFetchingChallans(false);
-      console.log('🚨 [VehiclesPage] Fetch challans completed');
+        setFetchingChallans(false);
+        console.log('🚨 [VehiclesPage] Fetch challans completed');
     }
-  };
-
+};
   const handleClearFilters = () => {
     console.log('🧹 [VehiclesPage] handleClearFilters called');
     setSearchQuery('');

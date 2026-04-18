@@ -2422,6 +2422,8 @@ async def fetch_challans_from_surepass(
 ):
     """
     Fetch challan details for a vehicle from Surepass API
+    Updates existing challans (changes Unpaid to Paid if needed)
+    Adds new challans if not present
     """
     registration_number = data.get("registration_number", "").upper().strip()
     
@@ -2454,26 +2456,77 @@ async def fetch_challans_from_surepass(
             "registration_number": registration_number,
             "challans_found": 0,
             "challans_imported": 0,
+            "challans_updated": 0,
             "challans": [],
             "message": "No challans found for this vehicle"
         }
     
-    # Parse and filter existing challans
     imported = 0
+    updated = 0
     new_challans = []
+    updated_challans = []
     
     for challan_data in challan_details:
         # Parse the challan data
         parsed_challan = surepass_service.parse_challan_data(challan_data, vehicle["id"])
+        challan_number = parsed_challan["challan_number"]
         
         # Check if challan already exists
         existing = await db.challans.find_one({
-            "challan_number": parsed_challan["challan_number"],
+            "challan_number": challan_number,
             "vehicle_id": vehicle["id"],
             "is_deleted": False
         })
         
-        if not existing:
+        if existing:
+            # 🔥 UPDATE EXISTING CHALLAN - Check if status changed from Unpaid to Paid
+            existing_status = existing.get("status", "Unpaid")
+            new_status = parsed_challan.get("status", "Unpaid")
+            
+            if existing_status == "Unpaid" and new_status == "Paid":
+                # Update the challan status to Paid
+                update_data = {
+                    "status": new_status,
+                    "payment_date": parsed_challan.get("payment_date") or datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": current_user["user_id"]
+                }
+                
+                await db.challans.update_one(
+                    {"id": existing["id"]},
+                    {"$set": update_data}
+                )
+                updated += 1
+                updated_challans.append({
+                    "challan_number": challan_number,
+                    "old_status": existing_status,
+                    "new_status": new_status,
+                    "amount": parsed_challan.get("amount", 0)
+                })
+                logger.info(f"Updated challan {challan_number} status from {existing_status} to {new_status}")
+            else:
+                # Optionally update other fields if needed (like amount, etc.)
+                # Some challans might have updated amounts
+                needs_update = False
+                update_fields = {}
+                
+                if existing.get("amount") != parsed_challan.get("amount"):
+                    update_fields["amount"] = parsed_challan.get("amount", 0)
+                    needs_update = True
+                
+                if existing.get("violation_type") != parsed_challan.get("violation_type"):
+                    update_fields["violation_type"] = parsed_challan.get("violation_type")
+                    needs_update = True
+                
+                if needs_update:
+                    update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    update_fields["updated_by"] = current_user["user_id"]
+                    await db.challans.update_one(
+                        {"id": existing["id"]},
+                        {"$set": update_fields}
+                    )
+                    logger.info(f"Updated challan {challan_number} fields: {list(update_fields.keys())}")
+        else:
             # Create new challan
             challan_id = str(uuid.uuid4())
             challan_dict = {
@@ -2485,15 +2538,13 @@ async def fetch_challans_from_surepass(
                 "is_deleted": False
             }
             
-            # Insert into database - don't store the result with ObjectId
             await db.challans.insert_one(challan_dict)
             imported += 1
-            
-            # Remove any potential _id field before adding to response
             challan_dict.pop('_id', None)
             new_challans.append(challan_dict)
+            logger.info(f"Imported new challan {challan_number}")
     
-    # Log the API call - make sure to handle ObjectId here too
+    # Log the API call
     log_entry = {
         "id": str(uuid.uuid4()),
         "registration_number": registration_number,
@@ -2501,10 +2552,23 @@ async def fetch_challans_from_surepass(
         "response_data": result.get("raw_response", {}),
         "challans_found": len(challan_details),
         "challans_imported": imported,
+        "challans_updated": updated,
         "is_successful": True,
         "created_by": current_user["user_id"]
     }
     await db.rc_verification_logs.insert_one(log_entry)
+    
+    # Build response message
+    message_parts = []
+    if imported > 0:
+        message_parts.append(f"Imported {imported} new challans")
+    if updated > 0:
+        message_parts.append(f"Updated {updated} challans (Unpaid → Paid)")
+    
+    if not message_parts:
+        message = "No new challans found and no status updates needed"
+    else:
+        message = ", ".join(message_parts)
     
     return {
         "success": True,
@@ -2512,10 +2576,12 @@ async def fetch_challans_from_surepass(
         "registration_number": registration_number,
         "challans_found": len(challan_details),
         "challans_imported": imported,
+        "challans_updated": updated,
         "challans": new_challans,
-        "message": f"Imported {imported} new challans out of {len(challan_details)} found"
+        "updated_challans": updated_challans,
+        "message": message
     }
-
+    
 # ==================== VEHICLE TRACKING ROUTES ====================
 
 @api_router.get("/vehicle-tracking/live")
