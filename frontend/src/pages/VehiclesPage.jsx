@@ -934,7 +934,7 @@ const handleExportExcel = async () => {
           }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[9999]">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-amber-600 flex items-center gap-2">
               <AlertTriangle size={20} />
