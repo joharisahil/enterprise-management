@@ -597,12 +597,23 @@ class SurepassService:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
+        # Clean the consumer_id - remove any spaces or special characters
+        cleaned_consumer_id = consumer_id.strip()
+    
+        # Ensure operator_code is uppercase
+        cleaned_operator_code = operator_code.upper().strip()
+         
+          # Validate operator_code length (should be 2 characters like MH, DL, etc.)
+        if len(cleaned_operator_code) != 2:
+            logger.warning(f"Operator code {cleaned_operator_code} is not 2 characters long") 
     
         payload = {
-            "id_number": consumer_id,
-            "operator_code": operator_code
+            "id_number": cleaned_consumer_id,
+            "operator_code": cleaned_operator_code
         }
-    
+        logger.info(f"Electricity bill API request payload: {payload}")
+        logger.info(f"Electricity bill API URL: {electricity_api_url}")
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
@@ -625,11 +636,11 @@ class SurepassService:
                     # Parse the bill amount (remove commas)
                     bill_amount_str = data.get("data", {}).get("bill_amount", "0")
                     bill_amount = float(bill_amount_str.replace(",", "")) if bill_amount_str else 0
-                
+                    customer_id = data.get("data", {}).get("customer_id") or data.get("data", {}).get("consumer_id")
                     return {
                         "success": True,
                         "data": {
-                            "consumer_id": data.get("data", {}).get("customer_id"),
+                            "consumer_id": customer_id,
                             "full_name": data.get("data", {}).get("full_name"),
                             "address": data.get("data", {}).get("address"),
                             "mobile": data.get("data", {}).get("mobile"),

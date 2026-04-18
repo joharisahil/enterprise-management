@@ -24,22 +24,24 @@ export const PropertiesPage = () => {
   const [fetchedBillData, setFetchedBillData] = useState(null);
   const [showBillFetchDialog, setShowBillFetchDialog] = useState(false);
   
-  const [formData, setFormData] = useState({
-    name: '',
-    type: 'Commercial',
-    address: '',
-    area_sqft: '',
-    // New fields for electricity bill fetch
-    consumer_id: '',
-    operator_code: '',
-    // Optional fields
-    electricity_board: '',
-    circle: '',
-    division: '',
-    sub_division: '',
-    consumer_name: '',
-  });
-
+const [formData, setFormData] = useState({
+  name: '',
+  type: 'Commercial',
+  address: '',
+  area_sqft: '',
+  // Electricity bill fields
+  consumer_id: '',
+  operator_code: '',
+  consumer_name: '',
+  electricity_board: '',
+  circle: '',
+  division: '',
+  sub_division: '',
+  meter_number: '',
+  sanctioned_load_kw: '',
+  connection_type: '',
+  tariff_category: '',
+});
   // Bill fetch form data
   const [billFetchData, setBillFetchData] = useState({
     consumer_id: '',
@@ -100,78 +102,104 @@ export const PropertiesPage = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  try {
+    // Include all electricity fields in the payload
+    const payload = {
+      name: formData.name,
+      type: formData.type,
+      address: formData.address,
+      area_sqft: parseFloat(formData.area_sqft),
+      // Electricity fields
+      consumer_id: formData.consumer_id || null,
+      operator_code: formData.operator_code || null,
+      consumer_name: formData.consumer_name || null,
+      electricity_board: formData.electricity_board || null,
+      circle: formData.circle || null,
+      division: formData.division || null,
+      sub_division: formData.sub_division || null,
+      meter_number: formData.meter_number || null,
+      sanctioned_load_kw: formData.sanctioned_load_kw ? parseFloat(formData.sanctioned_load_kw) : null,
+      connection_type: formData.connection_type || null,
+      tariff_category: formData.tariff_category || null,
+    };
     
-    try {
-      await api.post('/properties', {
-        name: formData.name,
-        type: formData.type,
-        address: formData.address,
-        area_sqft: parseFloat(formData.area_sqft)
-      });
-      
-      toast.success('Property created successfully');
-      setDialogOpen(false);
-      resetForm();
-      fetchProperties();
-    } catch (error) {
-      console.error("API Error:", error);
-      toast.error(error.response?.data?.detail || 'Failed to create property');
-    }
-  };
+    await api.post('/properties', payload);
+    
+    toast.success('Property created successfully');
+    setDialogOpen(false);
+    resetForm();
+    fetchProperties();
+  } catch (error) {
+    console.error("API Error:", error);
+    toast.error(error.response?.data?.detail || 'Failed to create property');
+  }
+};
 
-  const handleEdit = (property) => {
-    setSelectedProperty(property);
-    setFormData({
-      name: property.name,
-      type: property.type,
-      address: property.address,
-      area_sqft: property.area_sqft.toString(),
-      consumer_id: property.consumer_id || '',
-      operator_code: property.operator_code || '',
-      electricity_board: property.electricity_board || '',
-      circle: property.circle || '',
-      division: property.division || '',
-      sub_division: property.sub_division || '',
-      consumer_name: property.consumer_name || '',
-    });
-    setEditDialogOpen(true);
-  };
+const handleEdit = (property) => {
+  setSelectedProperty(property);
+  setFormData({
+    name: property.name,
+    type: property.type,
+    address: property.address,
+    area_sqft: property.area_sqft.toString(),
+    consumer_id: property.consumer_id || '',
+    operator_code: property.operator_code || '',
+    consumer_name: property.consumer_name || '',
+    electricity_board: property.electricity_board || '',
+    circle: property.circle || '',
+    division: property.division || '',
+    sub_division: property.sub_division || '',
+    meter_number: property.meter_number || '',
+    sanctioned_load_kw: property.sanctioned_load_kw?.toString() || '',
+    connection_type: property.connection_type || '',
+    tariff_category: property.tariff_category || '',
+  });
+  setEditDialogOpen(true);
+};
 
   const handleView = (property) => {
     setSelectedProperty(property);
     setViewDialogOpen(true);
   };
 
-  const handleUpdate = async (e) => {
-    e.preventDefault();
+const handleUpdate = async (e) => {
+  e.preventDefault();
+  
+  try {
+    const payload = {
+      name: formData.name,
+      type: formData.type,
+      address: formData.address,
+      area_sqft: parseFloat(formData.area_sqft),
+      // Electricity fields
+      consumer_id: formData.consumer_id || null,
+      operator_code: formData.operator_code || null,
+      consumer_name: formData.consumer_name || null,
+      electricity_board: formData.electricity_board || null,
+      circle: formData.circle || null,
+      division: formData.division || null,
+      sub_division: formData.sub_division || null,
+      meter_number: formData.meter_number || null,
+      sanctioned_load_kw: formData.sanctioned_load_kw ? parseFloat(formData.sanctioned_load_kw) : null,
+      connection_type: formData.connection_type || null,
+      tariff_category: formData.tariff_category || null,
+    };
     
-    try {
-      await api.put(`/properties/${selectedProperty.id}`, {
-        name: formData.name,
-        type: formData.type,
-        address: formData.address,
-        area_sqft: parseFloat(formData.area_sqft),
-        consumer_id: formData.consumer_id,
-        operator_code: formData.operator_code,
-        electricity_board: formData.electricity_board,
-        circle: formData.circle,
-        division: formData.division,
-        sub_division: formData.sub_division,
-        consumer_name: formData.consumer_name,
-      });
-      
-      toast.success('Property updated successfully');
-      setEditDialogOpen(false);
-      setSelectedProperty(null);
-      resetForm();
-      fetchProperties();
-    } catch (error) {
-      console.error("API Error:", error);
-      toast.error(error.response?.data?.detail || 'Failed to update property');
-    }
-  };
+    await api.put(`/properties/${selectedProperty.id}`, payload);
+    
+    toast.success('Property updated successfully');
+    setEditDialogOpen(false);
+    setSelectedProperty(null);
+    resetForm();
+    fetchProperties();
+  } catch (error) {
+    console.error("API Error:", error);
+    toast.error(error.response?.data?.detail || 'Failed to update property');
+  }
+};
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this property?')) return;
@@ -186,21 +214,25 @@ export const PropertiesPage = () => {
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      type: 'Commercial',
-      address: '',
-      area_sqft: '',
-      consumer_id: '',
-      operator_code: '',
-      electricity_board: '',
-      circle: '',
-      division: '',
-      sub_division: '',
-      consumer_name: '',
-    });
-  };
+const resetForm = () => {
+  setFormData({
+    name: '',
+    type: 'Commercial',
+    address: '',
+    area_sqft: '',
+    consumer_id: '',
+    operator_code: '',
+    consumer_name: '',
+    electricity_board: '',
+    circle: '',
+    division: '',
+    sub_division: '',
+    meter_number: '',
+    sanctioned_load_kw: '',
+    connection_type: '',
+    tariff_category: '',
+  });
+};
 
   const resetBillFetchForm = () => {
     setBillFetchData({

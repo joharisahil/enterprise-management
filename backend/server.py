@@ -353,6 +353,10 @@ async def fetch_electricity_bill_from_surepass(
     if not property_id:
         raise HTTPException(status_code=400, detail="Property ID is required")
     
+    # Validate operator code format
+    if len(operator_code) != 2:
+        raise HTTPException(status_code=400, detail="Operator code must be 2 characters (e.g., MH, DL, GJ)")
+    
     # Verify property exists
     property = await db.properties.find_one({"id": property_id, "is_deleted": False})
     if not property:
@@ -364,7 +368,9 @@ async def fetch_electricity_bill_from_surepass(
     result = await surepass_service.fetch_electricity_bill(consumer_id, operator_code)
     
     if not result["success"]:
-        raise HTTPException(status_code=400, detail=result.get("error", "Failed to fetch electricity bill details"))
+        error_detail = result.get("error", "Failed to fetch electricity bill details")
+        logger.error(f"Surepass API error: {error_detail}")
+        raise HTTPException(status_code=400, detail=error_detail)
     
     bill_data = result["data"]
     
@@ -391,8 +397,6 @@ async def fetch_electricity_bill_from_surepass(
         "bill_data": bill_data,
         "message": "Electricity bill details fetched successfully"
     }
-
-
 @api_router.post("/electricity-bills/save-from-surepass")
 async def save_electricity_bill_from_surepass(
     data: dict,
