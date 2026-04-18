@@ -88,7 +88,7 @@ const [formData, setFormData] = useState({
         { code: "GJ", name: "Gujarat", state: "Gujarat" },
         { code: "TN", name: "Tamil Nadu", state: "Tamil Nadu" },
         { code: "KA", name: "Karnataka", state: "Karnataka" },
-        { code: "UP", name: "Uttar Pradesh", state: "Uttar Pradesh" },
+        { code: "PUP", name: "Uttar Pradesh", state: "Uttar Pradesh" },
         { code: "WB", name: "West Bengal", state: "West Bengal" },
         { code: "RJ", name: "Rajasthan", state: "Rajasthan" },
         { code: "MP", name: "Madhya Pradesh", state: "Madhya Pradesh" },

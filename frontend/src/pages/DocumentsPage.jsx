@@ -35,7 +35,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-const documentTypes = ['Insurance', 'PUC', 'Fitness', 'RC', 'Permit', 'Custom'];
+const documentTypes = ['Insurance', 'PUC', 'Fitness', 'RC', 'Tax', 'Custom'];
 
 // Expiry status categories
 const EXPIRY_STATUS = {
@@ -285,52 +285,52 @@ const DocumentForm = ({
         </Select>
       </div>
 
-<div className="grid grid-cols-2 gap-4">
-  <div>
-    <Label>Document Type *</Label>
-    <Select
-      value={formData.document_type}
-      onValueChange={onDocumentTypeChange}
-    >
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {documentTypes.map((type) => (
-          <SelectItem key={type} value={type}>{type}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Document Type *</Label>
+          <Select
+            value={formData.document_type}
+            onValueChange={onDocumentTypeChange}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {documentTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-  {formData.document_type === 'Custom' && (
-    <div>
-      <Label>Document Name *</Label>
-      <Input
-        required
-        value={formData.custom_document_name}
-        onChange={(e) => onInputChange('custom_document_name', e.target.value)}
-      />
-    </div>
-  )}
+        {formData.document_type === 'Custom' && (
+          <div>
+            <Label>Document Name *</Label>
+            <Input
+              required
+              value={formData.custom_document_name}
+              onChange={(e) => onInputChange('custom_document_name', e.target.value)}
+            />
+          </div>
+        )}
 
-  <div>
-    <Label>Policy/Document Number <span className="text-slate-400 text-xs">(Optional)</span></Label>
-    <Input
-      value={formData.policy_number}
-      onChange={(e) => onInputChange('policy_number', e.target.value)}
-    />
-  </div>
-</div>
+        <div>
+          <Label>Policy/Document Number <span className="text-slate-400 text-xs">(Optional)</span></Label>
+          <Input
+            value={formData.policy_number}
+            onChange={(e) => onInputChange('policy_number', e.target.value)}
+          />
+        </div>
+      </div>
 
-<div>
-  <Label>Provider <span className="text-slate-400 text-xs">(Optional)</span></Label>
-  <Input
-    value={formData.provider}
-    onChange={(e) => onInputChange('provider', e.target.value)}
-    placeholder="e.g., ICICI Lombard, HDFC Ergo"
-  />
-</div>
+      <div>
+        <Label>Provider <span className="text-slate-400 text-xs">(Optional)</span></Label>
+        <Input
+          value={formData.provider}
+          onChange={(e) => onInputChange('provider', e.target.value)}
+          placeholder="e.g., ICICI Lombard, HDFC Ergo"
+        />
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -512,52 +512,52 @@ const PastDocumentForm = ({
         </Select>
       </div>
 
-<div className="grid grid-cols-2 gap-4">
-  <div>
-    <Label>Document Type *</Label>
-    <Select
-      value={formData.document_type}
-      onValueChange={onDocumentTypeChange}
-    >
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {documentTypes.map((type) => (
-          <SelectItem key={type} value={type}>{type}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Document Type *</Label>
+          <Select
+            value={formData.document_type}
+            onValueChange={onDocumentTypeChange}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {documentTypes.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-  {formData.document_type === 'Custom' && (
-    <div>
-      <Label>Document Name *</Label>
-      <Input
-        required
-        value={formData.custom_document_name}
-        onChange={(e) => onInputChange('custom_document_name', e.target.value)}
-      />
-    </div>
-  )}
+        {formData.document_type === 'Custom' && (
+          <div>
+            <Label>Document Name *</Label>
+            <Input
+              required
+              value={formData.custom_document_name}
+              onChange={(e) => onInputChange('custom_document_name', e.target.value)}
+            />
+          </div>
+        )}
 
-  <div>
-    <Label>Policy/Document Number <span className="text-slate-400 text-xs">(Optional)</span></Label>
-    <Input
-      value={formData.policy_number}
-      onChange={(e) => onInputChange('policy_number', e.target.value)}
-    />
-  </div>
-</div>
+        <div>
+          <Label>Policy/Document Number <span className="text-slate-400 text-xs">(Optional)</span></Label>
+          <Input
+            value={formData.policy_number}
+            onChange={(e) => onInputChange('policy_number', e.target.value)}
+          />
+        </div>
+      </div>
 
-<div>
-  <Label>Provider <span className="text-slate-400 text-xs">(Optional)</span></Label>
-  <Input
-    value={formData.provider}
-    onChange={(e) => onInputChange('provider', e.target.value)}
-    placeholder="e.g., ICICI Lombard, HDFC Ergo"
-  />
-</div>
+      <div>
+        <Label>Provider <span className="text-slate-400 text-xs">(Optional)</span></Label>
+        <Input
+          value={formData.provider}
+          onChange={(e) => onInputChange('provider', e.target.value)}
+          placeholder="e.g., ICICI Lombard, HDFC Ergo"
+        />
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -971,7 +971,7 @@ export const DocumentsPage = () => {
 
   const getValidityWarning = (documentType, issueDate, expiryDate) => {
     if (!issueDate || !expiryDate) return null;
-    
+
     const issue = new Date(issueDate);
     const expiry = new Date(expiryDate);
     const diffMonths = (expiry.getFullYear() - issue.getFullYear()) * 12 + (expiry.getMonth() - issue.getMonth());
@@ -993,7 +993,7 @@ export const DocumentsPage = () => {
           return `⚠️ Fitness certificate is typically valid for 1 year. This document is valid for ${diffYears.toFixed(1)} years.`;
         }
         break;
-      case 'Permit':
+      case 'Tax':
         if (diffMonths !== 60) {
           return `⚠️ Permit is typically valid for 5 years. This document is valid for ${diffYears.toFixed(1)} years.`;
         }
@@ -1036,10 +1036,10 @@ export const DocumentsPage = () => {
     }
 
     const currentDoc = await checkCurrentActiveDocument(vehicleId, documentType);
-    
+
     if (currentDoc) {
       const currentIssue = new Date(currentDoc.issue_date);
-      
+
       if (expiry > currentIssue) {
         setPastDocumentValidationError(
           `❌ Date Conflict: This past document expires on ${expiry.toLocaleDateString()}, ` +
@@ -1109,10 +1109,10 @@ export const DocumentsPage = () => {
           message = 'Fitness certificate is usually valid for 1 year.';
         }
         break;
-      case 'Permit':
+      case 'Tax':
         if (diffMonths !== 60) {
           valid = false;
-          message = 'Permit validity is usually around 5 years.';
+          message = 'Tax validity is usually around 5 years.';
         }
         break;
       case 'RC':
@@ -1174,7 +1174,7 @@ export const DocumentsPage = () => {
     setIsAutoFilling(false);
   };
 
-const handleDocumentTypeChange = async (docType) => {
+  const handleDocumentTypeChange = async (docType) => {
     setIsAutoFilling(true);
     setFormData(prev => ({ ...prev, document_type: docType }));
 
@@ -1193,7 +1193,7 @@ const handleDocumentTypeChange = async (docType) => {
           nextExpiryDate.setMonth(nextExpiryDate.getMonth() + 6);
         } else if (docType === 'Fitness') {
           nextExpiryDate.setFullYear(nextExpiryDate.getFullYear() + 1);
-        } else if (docType === 'Permit') {
+        } else if (docType === 'Tax') {
           nextExpiryDate.setFullYear(nextExpiryDate.getFullYear() + 5);
         } else if (docType === 'RC') {
           nextExpiryDate.setFullYear(nextExpiryDate.getFullYear() + 15);
@@ -1604,7 +1604,7 @@ const handleDocumentTypeChange = async (docType) => {
     }
   };
 
-const handlePastDocumentSubmit = async (e) => {
+  const handlePastDocumentSubmit = async (e) => {
     e.preventDefault();
 
     if (uploading) {
@@ -2242,29 +2242,29 @@ const handlePastDocumentSubmit = async (e) => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         {/* Header with badges */}
-{/* In the documents list, inside the badges row */}
-<div className="flex items-center gap-3 mb-3 flex-wrap">
-  <div className="flex items-center gap-2">
-    <div className="p-2 bg-blue-100 rounded-md">
-      <FileText size={20} className="text-blue-700" />
-    </div>
-    <h3 className="font-semibold text-lg text-slate-900">
-      {doc.document_type === 'Custom' ? doc.custom_document_name : doc.document_type}
-    </h3>
-  </div>
-  <Badge variant="outline">v{doc.version}</Badge>
-  {doc.is_current && (
-    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-      Current
-    </Badge>
-  )}
-  {doc.is_past_document && (
-    <Badge className="bg-slate-100 text-slate-600 border-slate-200">
-      Past Record
-    </Badge>
-  )}
-  <ExpiryStatusBadge daysLeft={daysLeft} />
-</div>
+                        {/* In the documents list, inside the badges row */}
+                        <div className="flex items-center gap-3 mb-3 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 bg-blue-100 rounded-md">
+                              <FileText size={20} className="text-blue-700" />
+                            </div>
+                            <h3 className="font-semibold text-lg text-slate-900">
+                              {doc.document_type === 'Custom' ? doc.custom_document_name : doc.document_type}
+                            </h3>
+                          </div>
+                          <Badge variant="outline">v{doc.version}</Badge>
+                          {doc.is_current && (
+                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                              Current
+                            </Badge>
+                          )}
+                          {doc.is_past_document && (
+                            <Badge className="bg-slate-100 text-slate-600 border-slate-200">
+                              Past Record
+                            </Badge>
+                          )}
+                          <ExpiryStatusBadge daysLeft={daysLeft} />
+                        </div>
 
                         {/* Vehicle and policy info */}
                         <p className="text-sm text-slate-600 mb-3">

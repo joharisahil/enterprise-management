@@ -354,7 +354,7 @@ async def fetch_electricity_bill_from_surepass(
         raise HTTPException(status_code=400, detail="Property ID is required")
     
     # Validate operator code format
-    if len(operator_code) != 2:
+    if len(operator_code) != 3:
         raise HTTPException(status_code=400, detail="Operator code must be 2 characters (e.g., MH, DL, GJ)")
     
     # Verify property exists
@@ -497,7 +497,7 @@ async def get_electricity_operator_codes(
         {"code": "GJ", "name": "Gujarat", "state": "Gujarat"},
         {"code": "TN", "name": "Tamil Nadu", "state": "Tamil Nadu"},
         {"code": "KA", "name": "Karnataka", "state": "Karnataka"},
-        {"code": "UP", "name": "Uttar Pradesh", "state": "Uttar Pradesh"},
+        {"code": "PUP", "name": "Uttar Pradesh", "state": "Uttar Pradesh"},
         {"code": "WB", "name": "West Bengal", "state": "West Bengal"},
         {"code": "RJ", "name": "Rajasthan", "state": "Rajasthan"},
         {"code": "MP", "name": "Madhya Pradesh", "state": "Madhya Pradesh"},
@@ -2225,7 +2225,7 @@ async def create_vehicle_document(
             "is_deleted": False
         })
 
-        # ✅ If is_current is explicitly False, this is a past document
+        # If is_current is explicitly False, this is a past document
         is_past_document = document_data.is_current == False
 
         if is_past_document:
@@ -2238,7 +2238,6 @@ async def create_vehicle_document(
                     else:
                         current_issue_dt = current_issue_date
 
-                    # Make timezone-aware if naive
                     if current_issue_dt.tzinfo is None:
                         current_issue_dt = current_issue_dt.replace(tzinfo=timezone.utc)
 
@@ -2286,8 +2285,8 @@ async def create_vehicle_document(
             "file_uploaded_at": document_data.file_uploaded_at.isoformat() if document_data.file_uploaded_at else None,
             "file_uploaded_by": document_data.file_uploaded_by,
             "version": (existing_doc.get("version", 0) + 1) if existing_doc and not is_past_document else 1,
-            "is_current": False if is_past_document else True,   # ✅ past = never current
-            "is_past_document": is_past_document,                 # ✅ new flag
+            "is_current": False if is_past_document else True,
+            "is_past_document": is_past_document,
             "previous_version_id": existing_doc["id"] if existing_doc and not is_past_document else None,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -2308,6 +2307,32 @@ async def create_vehicle_document(
             )
 
         await db.vehicle_documents.insert_one(document_dict)
+
+        # 🔥 NEW: Update vehicle's main fields if this is a current document
+        if not is_past_document and document_data.is_current != False:
+            vehicle_update = {}
+            doc_type = document_data.document_type
+            
+            if doc_type == "Insurance":
+                vehicle_update["insurance_expiry"] = expiry_date
+                vehicle_update["insurance_company"] = document_data.provider
+                vehicle_update["insurance_policy_number"] = document_data.policy_number
+            elif doc_type == "PUC":
+                vehicle_update["puc_expiry"] = expiry_date
+                vehicle_update["pucc_number"] = document_data.policy_number
+            elif doc_type == "Fitness":
+                vehicle_update["fit_up_to"] = expiry_date
+            elif doc_type == "Tax":
+                vehicle_update["tax_upto"] = expiry_date
+            
+            if vehicle_update:
+                vehicle_update["updated_at"] = datetime.now(timezone.utc).isoformat()
+                vehicle_update["updated_by"] = current_user["user_id"]
+                await db.vehicles.update_one(
+                    {"id": document_data.vehicle_id},
+                    {"$set": vehicle_update}
+                )
+                logger.info(f"Updated vehicle {document_data.vehicle_id} {doc_type} expiry to {expiry_date}")
 
         return {
             "success": True,
@@ -2581,7 +2606,7 @@ async def fetch_challans_from_surepass(
         "updated_challans": updated_challans,
         "message": message
     }
-    
+
 # ==================== VEHICLE TRACKING ROUTES ====================
 
 @api_router.get("/vehicle-tracking/live")
@@ -2768,6 +2793,7 @@ async def get_vehicle_documents(
             pass
     
     return {"data": docs, "total": len(docs)}
+
 @api_router.get("/vehicle-documents/{document_id}/history")
 async def get_document_history(document_id: str, current_user: dict = Depends(get_current_user)):
     # Get current document
@@ -3620,9 +3646,9 @@ async def update_vehicle_document(
     # Remove fields that shouldn't be updated
     update_data.pop("created_at", None)
     update_data.pop("created_by", None)
-    update_data.pop("version", None)  # Don't increment version
-    update_data.pop("is_current", None)  # Keep existing is_current status
-    update_data.pop("previous_version_id", None)  # Keep existing relationship
+    update_data.pop("version", None)
+    update_data.pop("is_current", None)
+    update_data.pop("previous_version_id", None)
     
     # Update the document
     result = await db.vehicle_documents.update_one(
@@ -3632,6 +3658,33 @@ async def update_vehicle_document(
     
     if result.modified_count == 0:
         raise HTTPException(status_code=400, detail="No changes made to document")
+    
+    # 🔥 NEW: Update vehicle's main fields if this is a current document
+    if existing_doc.get("is_current") and not existing_doc.get("is_past_document"):
+        vehicle_update = {}
+        doc_type = existing_doc.get("document_type")
+        expiry_date = update_data.get("expiry_date", existing_doc.get("expiry_date"))
+        
+        if doc_type == "Insurance":
+            vehicle_update["insurance_expiry"] = expiry_date
+            vehicle_update["insurance_company"] = update_data.get("provider", existing_doc.get("provider"))
+            vehicle_update["insurance_policy_number"] = update_data.get("policy_number", existing_doc.get("policy_number"))
+        elif doc_type == "PUC":
+            vehicle_update["puc_expiry"] = expiry_date
+            vehicle_update["pucc_number"] = update_data.get("policy_number", existing_doc.get("policy_number"))
+        elif doc_type == "Fitness":
+            vehicle_update["fit_up_to"] = expiry_date
+        elif doc_type == "Tax":
+            vehicle_update["tax_upto"] = expiry_date
+        
+        if vehicle_update:
+            vehicle_update["updated_at"] = datetime.now(timezone.utc).isoformat()
+            vehicle_update["updated_by"] = current_user["user_id"]
+            await db.vehicles.update_one(
+                {"id": existing_doc["vehicle_id"]},
+                {"$set": vehicle_update}
+            )
+            logger.info(f"Updated vehicle {existing_doc['vehicle_id']} {doc_type} expiry to {expiry_date}")
     
     return {
         "success": True,
