@@ -254,16 +254,63 @@ class SurepassService:
         if not challan_date:
             challan_date = datetime.now()
         
-        # Determine status
-        status = challan_data.get("challan_status", "Pending")
-        # Map to our PaymentStatus enum
-        if status.lower() in ["disposed", "paid", "closed"]:
-            mapped_status = "Paid"
-        else:
-            mapped_status = "Unpaid"
+        # IMPROVED: Determine payment status from multiple possible fields
+        status = "Unpaid"
+        payment_date = None
+        
+        # Check various status fields from the API response
+        challan_status = str(challan_data.get("challan_status", "")).lower()
+        payment_status = str(challan_data.get("payment_status", "")).lower()
+        status_field = str(challan_data.get("status", "")).lower()
+        is_paid = str(challan_data.get("is_paid", "")).lower()
+        
+        # Check if there's a payment date
+        if challan_data.get("payment_date"):
+            try:
+                pay_date_str = challan_data.get("payment_date")
+                if isinstance(pay_date_str, str):
+                    if 'T' in pay_date_str:
+                        payment_date = datetime.fromisoformat(pay_date_str.replace('Z', '+00:00'))
+                    else:
+                        payment_date = datetime.fromisoformat(pay_date_str)
+                else:
+                    payment_date = pay_date_str
+                status = "Paid"
+            except Exception as e:
+                logger.warning(f"Could not parse payment date: {e}")
+        
+        # Check status indicators if no payment date found
+        if status == "Unpaid":
+            # List of status values that indicate paid
+            paid_indicators = ["paid", "disposed", "closed", "settled", "success", "completed"]
+            unpaid_indicators = ["pending", "unpaid", "open", "active"]
+            
+            # Check all possible status fields
+            for status_value in [challan_status, payment_status, status_field, is_paid]:
+                if status_value in paid_indicators:
+                    status = "Paid"
+                    # If we don't have a payment date, use current date as payment date
+                    if not payment_date:
+                        payment_date = datetime.now()
+                    break
+                elif status_value in unpaid_indicators:
+                    status = "Unpaid"
+        
+        # Also check for amount_paid field
+        amount_paid = challan_data.get("amount_paid", 0)
+        if amount_paid and float(amount_paid) > 0:
+            status = "Paid"
+            if not payment_date:
+                payment_date = datetime.now()
         
         # Get challan number (handle different field names)
-        challan_number = challan_data.get("challallan_number") or challan_data.get("challan_number") or f"CH-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        challan_number = (
+            challan_data.get("challallan_number") or 
+            challan_data.get("challan_number") or 
+            challan_data.get("challan_no") or
+            challan_data.get("challanId") or
+            f"CH-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        )
         
         # Get offense details - combine all offenses if multiple
         offense_details = challan_data.get("offense_details", "Traffic Violation")
@@ -284,24 +331,46 @@ class SurepassService:
             except:
                 amount = 0
         
+        # Get location
+        location = (
+            challan_data.get("challan_place") or 
+            challan_data.get("location") or 
+            challan_data.get("place_of_offence") or
+            challan_data.get("address", "")
+        )
+        
+        # Get phone number if available
+        phone_number = (
+            challan_data.get("mobile_number") or 
+            challan_data.get("phone") or 
+            challan_data.get("phone_number")
+        )
+        
+        # Get proof/document URL if available
+        proof_url = (
+            challan_data.get("document_url") or 
+            challan_data.get("challan_image") or
+            challan_data.get("proof_url")
+        )
+        
         return {
             "vehicle_id": vehicle_id,
             "challan_number": challan_number,
             "date": challan_date.isoformat(),
             "violation_type": offense_details,
             "amount": amount,
-            "status": mapped_status,
-            "location": challan_data.get("challan_place", ""),
+            "status": status,
+            "location": location,
             "accused_name": challan_data.get("accused_name", ""),
             "state": challan_data.get("state", ""),
             "rto": challan_data.get("rto", ""),
             "court_challan": challan_data.get("court_challan", False),
             "court_name": challan_data.get("court_name", ""),
             "source": "surepass",
-            "proof_url": None,
-            "phone_number": None,
+            "proof_url": proof_url,
+            "phone_number": phone_number,
             "driver_id": None,
-            "payment_date": None
+            "payment_date": payment_date.isoformat() if payment_date else None
         }
     
     def check_document_status(self, expiry_date) -> Dict[str, Any]:
@@ -575,8 +644,6 @@ class SurepassService:
                 "error": str(e)
             }
         
-    # Add to surepass.py inside SurepassService class
-
     async def fetch_electricity_bill(self, consumer_id: str, operator_code: str) -> Dict[str, Any]:
         """
         Fetch electricity bill details from Surepass API
@@ -603,7 +670,7 @@ class SurepassService:
         # Ensure operator_code is uppercase
         cleaned_operator_code = operator_code.upper().strip()
          
-          # Validate operator_code length (should be 2 characters like MH, DL, etc.)
+        # Validate operator_code length (should be 2 characters like MH, DL, etc.)
         if len(cleaned_operator_code) != 2:
             logger.warning(f"Operator code {cleaned_operator_code} is not 2 characters long") 
     
@@ -675,4 +742,3 @@ class SurepassService:
                 "error": str(e),
                 "data": None
             }
-                      
