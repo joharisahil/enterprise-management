@@ -697,6 +697,7 @@ const handleDocumentUpload = async (documentId, documentType) => {
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-4xl overflow-y-auto">
         <SheetHeader className="sticky top-0 bg-white z-10 pb-4 border-b">
@@ -1290,33 +1291,60 @@ const handleDocumentUpload = async (documentId, documentType) => {
         </div>
 
         {/* Delete Dialogs */}
-        <AlertDialog open={showRcDeleteDialog} onOpenChange={setShowRcDeleteDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete RC Document</AlertDialogTitle>
-              <AlertDialogDescription>Are you sure you want to delete the RC document? This action cannot be undone.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleRcDelete} className="bg-rose-600">Delete</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <AlertDialog open={showDocumentDeleteDialog} onOpenChange={setShowDocumentDeleteDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Document</AlertDialogTitle>
-              <AlertDialogDescription>Are you sure you want to delete this document? This action cannot be undone.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => { setShowDocumentDeleteDialog(false); setDocumentToDelete(null); }}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={async () => { if (documentToDelete) { await handleDocumentDelete(documentToDelete.id, documentToDelete.document_type); } setShowDocumentDeleteDialog(false); setDocumentToDelete(null); }} className="bg-rose-600">Delete</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </SheetContent>
     </Sheet>
+      {/* RC Delete Dialog - OUTSIDE Sheet */}
+    <AlertDialog open={showRcDeleteDialog} onOpenChange={setShowRcDeleteDialog}>
+      <AlertDialogContent className="z-[9999]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete RC Document</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete the RC document? This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleRcDelete} className="bg-rose-600">
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Document Delete Dialog - OUTSIDE Sheet */}
+    <AlertDialog open={showDocumentDeleteDialog} onOpenChange={setShowDocumentDeleteDialog}>
+      <AlertDialogContent className="z-[9999]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Document</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete this document? This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            onClick={() => {
+              setShowDocumentDeleteDialog(false);
+              setDocumentToDelete(null);
+            }}
+          >
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={async () => {
+              if (documentToDelete) {
+                await handleDocumentDelete(documentToDelete.id, documentToDelete.document_type);
+              }
+              setShowDocumentDeleteDialog(false);
+              setDocumentToDelete(null);
+            }}
+            className="bg-rose-600"
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };
 // import React, { useState, useEffect } from 'react';
