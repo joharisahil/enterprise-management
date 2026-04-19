@@ -742,3 +742,105 @@ class SurepassService:
                 "error": str(e),
                 "data": None
             }
+
+    # Add to surepass.py inside SurepassService class
+
+    async def fetch_gas_bill(self, mobile_number: str, provider_name: str) -> Dict[str, Any]:
+        """
+        Fetch gas connection details from Surepass API
+    
+        Args:
+            mobile_number: Registered mobile number for gas connection
+            provider_name: Gas provider name (e.g., "indane", "bharat_gas", "hp_gas")
+    
+        Returns:
+            Dictionary with gas connection details
+        """
+        if not self.api_key:
+            raise HTTPException(status_code=500, detail="Surepass API key not configured")
+    
+        gas_api_url = os.getenv("SURPASS_GAS_API_URL", "https://kyc-api.surepass.app/api/v1/gas-connection/verify")
+    
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+    
+        payload = {
+            "mobile_number": mobile_number,
+            "provider_name": provider_name
+        }
+    
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    gas_api_url,
+                    json=payload,
+                    headers=headers
+                )
+            
+                if response.status_code != 200:
+                    logger.error(f"Gas bill API error: {response.status_code} - {response.text}")
+                    return {
+                        "success": False,
+                        "error": f"API returned status {response.status_code}",
+                        "data": None
+                    }
+            
+                data = response.json()
+            
+                if data.get("success"):
+                    # Parse the response based on provider
+                    provider_data = data.get("data", {}).get(f"{provider_name}_gas", {})
+                
+                    # Get consumer details
+                    consumer_details = provider_data.get("consumer_details", {})
+                    distributor_details = provider_data.get("distributor_details", {})
+                    consumer_address = consumer_details.get("consumer_address", {})
+                    distributor_address = distributor_details.get("distributor_address", {})
+                
+                    return {
+                        "success": True,
+                        "data": {
+                            "consumer_id": provider_data.get("consumer_id"),
+                            "consumer_number": provider_data.get("consumer_number"),
+                            "consumer_name": provider_data.get("consumer_name"),
+                            "mobile_number": data.get("data", {}).get("mobile_number"),
+                            "provider_name": provider_name,
+                            "consumer_status": consumer_details.get("consumer_status"),
+                            "consumer_type": consumer_details.get("consumer_type"),
+                            "consumer_category": consumer_details.get("consumer_category"),
+                            "address": f"{consumer_address.get('line_1', '')}, {consumer_address.get('line_2', '')}, {consumer_address.get('city', '')}, {consumer_address.get('district', '')}, {consumer_address.get('state', '')} - {consumer_address.get('pin_code', '')}",
+                            "district": consumer_address.get("district"),
+                            "state": consumer_address.get("state"),
+                            "pin_code": consumer_address.get("pin_code"),
+                            "distributor_name": distributor_details.get("distributor_name"),
+                            "distributor_code": distributor_details.get("distributor_code"),
+                            "distributor_contact": distributor_details.get("distributor_contact"),
+                            "distributor_address": f"{distributor_address.get('address_line_1', '')}, {distributor_address.get('address_line_2', '')}, {distributor_address.get('city', '')}, {distributor_address.get('district', '')}, {distributor_address.get('state', '')} - {distributor_address.get('pin_code', '')}",
+                            "mi_due_date": consumer_details.get("mi_due_date"),
+                            "tube_change_due_date": consumer_details.get("tube_change_due_date")
+                        },
+                        "raw_response": data
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": data.get("message", "Unknown error"),
+                        "data": None
+                    }
+                
+        except httpx.TimeoutException:
+            logger.error("Gas bill API timeout")
+            return {
+                "success": False,
+                "error": "API request timeout",
+                "data": None
+            }
+        except Exception as e:
+            logger.error(f"Gas bill API exception: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "data": None
+            }        

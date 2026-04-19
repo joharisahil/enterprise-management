@@ -424,6 +424,10 @@ async def save_electricity_bill_from_surepass(
     billing_period_end = data.get("billing_period_end")
     due_date = data.get("due_date")
     
+    # Get payment status and payment date
+    status = data.get("status", "Unpaid")
+    payment_date = data.get("payment_date")
+    
     # Parse dates or use defaults
     today = datetime.now(timezone.utc)
     if not billing_period_start:
@@ -437,6 +441,10 @@ async def save_electricity_bill_from_surepass(
         billing_period_end = (next_month - timedelta(days=1)).isoformat()
     if not due_date:
         due_date = (today + timedelta(days=15)).isoformat()
+    
+    # Validate payment date if status is Paid
+    if status == "Paid" and not payment_date:
+        raise HTTPException(status_code=400, detail="Payment date is required when status is Paid")
     
     # Create electricity bill
     bill_id = str(uuid.uuid4())
@@ -460,8 +468,8 @@ async def save_electricity_bill_from_surepass(
         "penalty": data.get("penalty", 0),
         "total_amount": bill_data.get("bill_amount", 0),
         "due_date": due_date_dt.isoformat(),
-        "payment_date": None,
-        "status": "Unpaid",
+        "payment_date": payment_date if payment_date else None,
+        "status": status,
         "bill_url": bill_data.get("document_link"),
         "phone_number": bill_data.get("mobile"),
         "consumer_id": bill_data.get("consumer_id"),
@@ -475,6 +483,11 @@ async def save_electricity_bill_from_surepass(
         "is_deleted": False
     }
     
+    # If payment date is provided, parse it
+    if payment_date:
+        payment_date_dt = datetime.fromisoformat(payment_date) if isinstance(payment_date, str) else payment_date
+        bill_dict["payment_date"] = payment_date_dt.isoformat()
+    
     await db.electricity_bills.insert_one(bill_dict)
     
     return {
@@ -482,7 +495,6 @@ async def save_electricity_bill_from_surepass(
         "bill_id": bill_id,
         "message": "Electricity bill saved successfully"
     }
-
 
 @api_router.get("/electricity-bills/operator-codes")
 async def get_electricity_operator_codes(
@@ -709,6 +721,185 @@ async def delete_gas_bill(bill_id: str, current_user: dict = Depends(get_current
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Gas bill not found")
     return {"message": "Gas bill deleted"}
+
+@api_router.post("/gas-bills/fetch-from-surepass")
+async def fetch_gas_bill_from_surepass(
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Fetch gas connection details from Surepass API using mobile number and provider
+    """
+    mobile_number = data.get("mobile_number", "").strip()
+    provider_name = data.get("provider_name", "").lower().strip()
+    property_id = data.get("property_id")
+    
+    if not mobile_number:
+        raise HTTPException(status_code=400, detail="Mobile number is required")
+    
+    if len(mobile_number) != 10:
+        raise HTTPException(status_code=400, detail="Mobile number must be 10 digits")
+    
+    if not provider_name:
+        raise HTTPException(status_code=400, detail="Provider name is required (e.g., 'indane', 'bharat_gas', 'hp_gas')")
+    
+    if not property_id:
+        raise HTTPException(status_code=400, detail="Property ID is required")
+    
+    # Verify property exists
+    property = await db.properties.find_one({"id": property_id, "is_deleted": False})
+    if not property:
+        raise HTTPException(status_code=404, detail="Property not found")
+    
+    logger.info(f"Fetching gas connection for mobile: {mobile_number}, provider: {provider_name}")
+    
+    # Call Surepass API
+    result = await surepass_service.fetch_gas_bill(mobile_number, provider_name)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to fetch gas connection details"))
+    
+    gas_data = result["data"]
+    
+    # Log the API call
+    try:
+        log_entry = {
+            "id": str(uuid.uuid4()),
+            "property_id": property_id,
+            "mobile_number": mobile_number,
+            "provider_name": provider_name,
+            "request_timestamp": datetime.now(timezone.utc).isoformat(),
+            "response_data": gas_data,
+            "is_successful": True,
+            "created_by": current_user["user_id"]
+        }
+        await db.gas_verification_logs.insert_one(log_entry)
+    except Exception as e:
+        logger.warning(f"Could not log gas verification: {e}")
+    
+    return {
+        "success": True,
+        "property_id": property_id,
+        "property_name": property["name"],
+        "gas_data": gas_data,
+        "message": "Gas connection details fetched successfully"
+    }
+
+@api_router.post("/gas-bills/save-from-surepass")
+async def save_gas_bill_from_surepass(
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Save gas bill from Surepass data to the database
+    """
+    property_id = data.get("property_id")
+    gas_data = data.get("gas_data", {})
+    
+    if not property_id:
+        raise HTTPException(status_code=400, detail="Property ID is required")
+    
+    if not gas_data:
+        raise HTTPException(status_code=400, detail="Gas data is required")
+    
+    # Verify property exists
+    property = await db.properties.find_one({"id": property_id, "is_deleted": False})
+    if not property:
+        raise HTTPException(status_code=404, detail="Property not found")
+    
+    # Get billing period (default to current month if not provided)
+    billing_period_start = data.get("billing_period_start")
+    billing_period_end = data.get("billing_period_end")
+    due_date = data.get("due_date")
+    
+    # Get payment status and payment date
+    status = data.get("status", "Unpaid")
+    payment_date = data.get("payment_date")
+    
+    # Parse dates or use defaults
+    today = datetime.now(timezone.utc)
+    if not billing_period_start:
+        billing_period_start = today.replace(day=1).isoformat()
+    if not billing_period_end:
+        # Last day of current month
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+        billing_period_end = (next_month - timedelta(days=1)).isoformat()
+    if not due_date:
+        due_date = (today + timedelta(days=15)).isoformat()
+    
+    # Validate payment date if status is Paid
+    if status == "Paid" and not payment_date:
+        raise HTTPException(status_code=400, detail="Payment date is required when status is Paid")
+    
+    # Create gas bill
+    bill_id = str(uuid.uuid4())
+    
+    # Parse the date strings
+    billing_period_start_dt = datetime.fromisoformat(billing_period_start) if isinstance(billing_period_start, str) else billing_period_start
+    billing_period_end_dt = datetime.fromisoformat(billing_period_end) if isinstance(billing_period_end, str) else billing_period_end
+    due_date_dt = datetime.fromisoformat(due_date) if isinstance(due_date, str) else due_date
+    
+    bill_dict = {
+        "id": bill_id,
+        "property_id": property_id,
+        "billing_period_start": billing_period_start_dt.isoformat(),
+        "billing_period_end": billing_period_end_dt.isoformat(),
+        "units_consumed": data.get("units_consumed", 0),
+        "rate_per_unit": data.get("rate_per_unit", 0),
+        "fixed_charges": data.get("fixed_charges", 0),
+        "total_bill": data.get("total_bill", 0),
+        "due_date": due_date_dt.isoformat(),
+        "status": status,
+        "vendor": gas_data.get("provider_name", "Unknown"),
+        "bill_url": None,
+        "phone_number": gas_data.get("mobile_number"),
+        "consumer_id": gas_data.get("consumer_id"),
+        "consumer_number": gas_data.get("consumer_number"),
+        "consumer_name": gas_data.get("consumer_name"),
+        "consumer_address": gas_data.get("address"),
+        "distributor_name": gas_data.get("distributor_name"),
+        "distributor_code": gas_data.get("distributor_code"),
+        "consumer_status": gas_data.get("consumer_status"),
+        "consumer_type": gas_data.get("consumer_type"),
+        "source": "surepass",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": current_user["user_id"],
+        "is_deleted": False
+    }
+    
+    # If payment date is provided, parse it
+    if payment_date and status == "Paid":
+        payment_date_dt = datetime.fromisoformat(payment_date) if isinstance(payment_date, str) else payment_date
+        bill_dict["payment_date"] = payment_date_dt.isoformat()
+    
+    await db.gas_bills.insert_one(bill_dict)
+    
+    return {
+        "success": True,
+        "bill_id": bill_id,
+        "message": "Gas bill saved successfully"
+    }
+
+@api_router.get("/gas-bills/provider-list")
+async def get_gas_providers(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get list of gas providers
+    """
+    providers = [
+        {"code": "indane", "name": "Indane (Indian Oil)", "type": "LPG"},
+        {"code": "bharat_gas", "name": "Bharat Gas (BPCL)", "type": "LPG"},
+        {"code": "hp_gas", "name": "HP Gas (Hindustan Petroleum)", "type": "LPG"},
+        {"code": "adani_gas", "name": "Adani Gas", "type": "PNG"},
+        {"code": "mahanagar_gas", "name": "Mahanagar Gas (MGL)", "type": "PNG"},
+        {"code": "gujarat_gas", "name": "Gujarat Gas", "type": "PNG"},
+    ]
+    return {"data": providers}
 
 # ==================== WATER BILL ROUTES ====================
 

@@ -121,6 +121,11 @@ class PropertyBase(BaseModel):
     sanctioned_load_kw: Optional[float] = Field(None, description="Sanctioned load in kW")
     connection_type: Optional[str] = Field(None, description="Connection type (e.g., Residential, Commercial, Industrial)")
     tariff_category: Optional[str] = Field(None, description="Tariff category/rate category")
+    # Gas bill fields
+    gas_mobile_number: Optional[str] = Field(None, description="Mobile number registered for gas connection")
+    gas_provider: Optional[str] = Field(None, description="Gas provider (e.g., indane, bharat_gas, hp_gas)")
+    gas_consumer_number: Optional[str] = Field(None, description="Gas consumer number")
+    gas_consumer_name: Optional[str] = Field(None, description="Name as per gas connection")
 
 class PropertyCreate(PropertyBase):
     pass
@@ -289,6 +294,19 @@ class GasBillCreate(GasBillBase):
 class GasBill(GasBillBase, TimestampModel):
     model_config = ConfigDict(extra="ignore")
     id: str
+
+class GasVerificationLog(BaseModel):
+    """Track gas connection verification API calls"""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    property_id: str
+    mobile_number: str
+    provider_name: str
+    request_timestamp: datetime
+    response_data: dict
+    is_successful: bool = True
+    error_message: Optional[str] = None
+    created_by: Optional[str] = None
 
 # Water Bill Models
 class WaterBillBase(BaseModel):

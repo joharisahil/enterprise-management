@@ -7,17 +7,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Cloud, Download, Loader2, MapPin, User, Phone, FileText, Calendar, Save } from 'lucide-react';
+import { Flame, Loader2, MapPin, User, Phone, Calendar, Save } from 'lucide-react';
 import api from '../../utils/api';
 
-const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) => {
+const GasBillFetcher = ({ propertyId, onSuccess, providers = [] }) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingProperty, setSavingProperty] = useState(false);
   const [property, setProperty] = useState(null);
-  const [consumerId, setConsumerId] = useState('');
-  const [operatorCode, setOperatorCode] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [providerName, setProviderName] = useState('');
   const [fetchedData, setFetchedData] = useState(null);
   const [showSavePropertyPrompt, setShowSavePropertyPrompt] = useState(false);
   
@@ -25,15 +25,12 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
   const [billingPeriodStart, setBillingPeriodStart] = useState('');
   const [billingPeriodEnd, setBillingPeriodEnd] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [previousReading, setPreviousReading] = useState('');
-  const [currentReading, setCurrentReading] = useState('');
   const [unitsConsumed, setUnitsConsumed] = useState('');
-  const [slabCharges, setSlabCharges] = useState('');
+  const [ratePerUnit, setRatePerUnit] = useState('');
   const [fixedCharges, setFixedCharges] = useState('');
-  const [taxes, setTaxes] = useState('');
-  const [penalty, setPenalty] = useState('0');
+  const [totalBill, setTotalBill] = useState('');
   
-  // NEW: Payment status fields
+  // Payment status fields
   const [paymentStatus, setPaymentStatus] = useState('Unpaid');
   const [paymentDate, setPaymentDate] = useState('');
 
@@ -50,73 +47,78 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
       setProperty(response.data);
       
       // Pre-fill from property if available
-      if (response.data.consumer_id) {
-        setConsumerId(response.data.consumer_id);
+      if (response.data.gas_mobile_number) {
+        setMobileNumber(response.data.gas_mobile_number);
       }
-      if (response.data.operator_code) {
-        setOperatorCode(response.data.operator_code);
+      if (response.data.gas_provider) {
+        setProviderName(response.data.gas_provider);
       }
     } catch (error) {
       console.error('Failed to fetch property details:', error);
     }
   };
 
-  const saveConsumerDetailsToProperty = async () => {
+  const saveGasDetailsToProperty = async () => {
     if (!property) return;
     
     setSavingProperty(true);
     try {
       await api.put(`/properties/${propertyId}`, {
         ...property,
-        consumer_id: consumerId,
-        operator_code: operatorCode,
-        consumer_name: fetchedData?.full_name || property.consumer_name,
+        gas_mobile_number: mobileNumber,
+        gas_provider: providerName,
+        gas_consumer_number: fetchedData?.consumer_id || property.gas_consumer_number,
+        gas_consumer_name: fetchedData?.consumer_name || property.gas_consumer_name,
       });
       
-      toast.success('Consumer details saved to property');
+      toast.success('Gas connection details saved to property');
       setShowSavePropertyPrompt(false);
       await saveBill();
     } catch (error) {
-      toast.error('Failed to save consumer details to property');
+      toast.error('Failed to save gas details to property');
     } finally {
       setSavingProperty(false);
     }
   };
 
   const handleFetch = async () => {
-    // Check if we have consumer_id from property or from input
-    let finalConsumerId = consumerId;
-    let finalOperatorCode = operatorCode;
+    // Check if we have mobile_number from property or from input
+    let finalMobileNumber = mobileNumber;
+    let finalProviderName = providerName;
     
     // If property has these values but they're not in state, use property values
-    if (property?.consumer_id && !finalConsumerId) {
-      finalConsumerId = property.consumer_id;
-      setConsumerId(property.consumer_id);
+    if (property?.gas_mobile_number && !finalMobileNumber) {
+      finalMobileNumber = property.gas_mobile_number;
+      setMobileNumber(property.gas_mobile_number);
     }
-    if (property?.operator_code && !finalOperatorCode) {
-      finalOperatorCode = property.operator_code;
-      setOperatorCode(property.operator_code);
+    if (property?.gas_provider && !finalProviderName) {
+      finalProviderName = property.gas_provider;
+      setProviderName(property.gas_provider);
     }
 
-    if (!finalConsumerId) {
-      toast.error('Please enter Consumer ID');
+    if (!finalMobileNumber) {
+      toast.error('Please enter mobile number');
       return;
     }
-    if (!finalOperatorCode) {
-      toast.error('Please select Operator');
+    if (finalMobileNumber.length !== 10) {
+      toast.error('Mobile number must be 10 digits');
+      return;
+    }
+    if (!finalProviderName) {
+      toast.error('Please select provider');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await api.post('/electricity-bills/fetch-from-surepass', {
-        consumer_id: finalConsumerId,
-        operator_code: finalOperatorCode,
+      const response = await api.post('/gas-bills/fetch-from-surepass', {
+        mobile_number: finalMobileNumber,
+        provider_name: finalProviderName,
         property_id: propertyId
       });
       
       if (response.data.success) {
-        setFetchedData(response.data.bill_data);
+        setFetchedData(response.data.gas_data);
         
         // Set default dates
         const today = new Date();
@@ -130,69 +132,74 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
         dueDateObj.setDate(today.getDate() + 15);
         setDueDate(dueDateObj.toISOString().split('T')[0]);
         
+        // Set default values for gas bill
+        setRatePerUnit('50');
+        setFixedCharges('0');
+        
         // Set default payment status to Unpaid
         setPaymentStatus('Unpaid');
         setPaymentDate('');
         
-        toast.success('Bill details fetched successfully');
+        toast.success('Gas connection details fetched successfully');
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to fetch bill details');
+      toast.error(error.response?.data?.detail || 'Failed to fetch gas connection details');
     } finally {
       setLoading(false);
     }
   };
 
   const saveBill = async () => {
+    // Validate payment date if status is Paid
+    if (paymentStatus === 'Paid' && !paymentDate) {
+      toast.error('Please select payment date');
+      return;
+    }
+
+    if (!totalBill) {
+      toast.error('Please enter total bill amount');
+      return;
+    }
+
     setSaving(true);
     try {
-      // Validate payment date if status is Paid
-      if (paymentStatus === 'Paid' && !paymentDate) {
-        toast.error('Please select payment date');
-        setSaving(false);
-        return;
-      }
-
-      const response = await api.post('/electricity-bills/save-from-surepass', {
+      const response = await api.post('/gas-bills/save-from-surepass', {
         property_id: propertyId,
-        bill_data: fetchedData,
+        gas_data: fetchedData,
         billing_period_start: billingPeriodStart,
         billing_period_end: billingPeriodEnd,
         due_date: dueDate,
-        previous_reading: parseFloat(previousReading) || 0,
-        current_reading: parseFloat(currentReading) || 0,
         units_consumed: parseFloat(unitsConsumed) || 0,
-        slab_charges: parseFloat(slabCharges) || 0,
+        rate_per_unit: parseFloat(ratePerUnit) || 0,
         fixed_charges: parseFloat(fixedCharges) || 0,
-        taxes: parseFloat(taxes) || 0,
-        penalty: parseFloat(penalty) || 0,
+        total_bill: parseFloat(totalBill),
         status: paymentStatus,
         payment_date: paymentStatus === 'Paid' ? new Date(paymentDate).toISOString() : null
       });
       
       if (response.data.success) {
-        toast.success('Electricity bill saved successfully');
+        toast.success('Gas bill saved successfully');
         setOpen(false);
         resetForm();
         if (onSuccess) onSuccess();
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to save bill');
+      toast.error(error.response?.data?.detail || 'Failed to save gas bill');
     } finally {
       setSaving(false);
     }
   };
 
   const handleSave = async () => {
-    // Check if property has consumer_id and operator_code saved
-    const hasConsumerId = property?.consumer_id;
-    const hasOperatorCode = property?.operator_code;
-    const currentConsumerId = consumerId || property?.consumer_id;
-    const currentOperatorCode = operatorCode || property?.operator_code;
+    // Check if property has gas_mobile_number and gas_provider saved
+    const hasMobileNumber = property?.gas_mobile_number;
+    const hasProvider = property?.gas_provider;
+    const currentMobileNumber = mobileNumber || property?.gas_mobile_number;
+    const currentProviderName = providerName || property?.gas_provider;
     
     // If property doesn't have these values saved, and we have them from the form,
     // prompt user to save them to property
-    if ((!hasConsumerId || !hasOperatorCode) && currentConsumerId && currentOperatorCode) {
+    if ((!hasMobileNumber || !hasProvider) && currentMobileNumber && currentProviderName) {
       setShowSavePropertyPrompt(true);
     } else {
       await saveBill();
@@ -200,47 +207,44 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
   };
 
   const resetForm = () => {
-    setConsumerId(property?.consumer_id || '');
-    setOperatorCode(property?.operator_code || '');
+    setMobileNumber(property?.gas_mobile_number || '');
+    setProviderName(property?.gas_provider || '');
     setFetchedData(null);
     setBillingPeriodStart('');
     setBillingPeriodEnd('');
     setDueDate('');
-    setPreviousReading('');
-    setCurrentReading('');
     setUnitsConsumed('');
-    setSlabCharges('');
+    setRatePerUnit('');
     setFixedCharges('');
-    setTaxes('');
-    setPenalty('0');
+    setTotalBill('');
     setPaymentStatus('Unpaid');
     setPaymentDate('');
     setShowSavePropertyPrompt(false);
   };
 
-  const calculateUnits = () => {
-    if (previousReading && currentReading) {
-      const units = parseFloat(currentReading) - parseFloat(previousReading);
-      setUnitsConsumed(units.toFixed(2));
+  const calculateTotal = () => {
+    if (unitsConsumed && ratePerUnit) {
+      const total = (parseFloat(unitsConsumed) * parseFloat(ratePerUnit)) + parseFloat(fixedCharges || 0);
+      setTotalBill(total.toFixed(2));
     }
   };
 
   // Check if property has pre-saved values
-  const hasPreSavedValues = property?.consumer_id && property?.operator_code;
+  const hasPreSavedValues = property?.gas_mobile_number && property?.gas_provider;
 
   return (
     <Dialog open={open} onOpenChange={(open) => { setOpen(open); if (!open) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="border-purple-500 text-purple-600 hover:bg-purple-50">
-          <Cloud size={16} className="mr-2" />
+        <Button variant="outline" className="border-orange-500 text-orange-600 hover:bg-orange-50">
+          <Flame size={16} className="mr-2" />
           Fetch from Surepass
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Cloud size={20} className="text-purple-600" />
-            Fetch Electricity Bill from Surepass
+            <Flame size={20} className="text-orange-600" />
+            Fetch Gas Bill from Surepass
           </DialogTitle>
         </DialogHeader>
 
@@ -249,21 +253,21 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Save size={20} className="text-purple-600" />
-                Save Consumer Details?
+                <Save size={20} className="text-orange-600" />
+                Save Gas Details?
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <p className="text-slate-600">
-                Do you want to save the Consumer ID and Operator details to this property for future use?
+                Do you want to save the Mobile Number and Gas Provider details to this property for future use?
               </p>
-              <div className="bg-purple-50 p-3 rounded-md">
-                <p className="text-sm font-medium text-purple-900">Details to save:</p>
-                <p className="text-sm text-purple-700 mt-1">
-                  <strong>Consumer ID:</strong> {consumerId || property?.consumer_id}
+              <div className="bg-orange-50 p-3 rounded-md">
+                <p className="text-sm font-medium text-orange-900">Details to save:</p>
+                <p className="text-sm text-orange-700 mt-1">
+                  <strong>Mobile Number:</strong> {mobileNumber || property?.gas_mobile_number}
                 </p>
-                <p className="text-sm text-purple-700">
-                  <strong>Operator:</strong> {operatorCode || property?.operator_code}
+                <p className="text-sm text-orange-700">
+                  <strong>Provider:</strong> {providerName || property?.gas_provider}
                 </p>
               </div>
               <div className="flex gap-3">
@@ -278,9 +282,9 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
                   No, Just Save Bill
                 </Button>
                 <Button
-                  onClick={saveConsumerDetailsToProperty}
+                  onClick={saveGasDetailsToProperty}
                   disabled={savingProperty}
-                  className="flex-1 bg-purple-600 hover:bg-purple-700"
+                  className="flex-1 bg-orange-600 hover:bg-orange-700"
                 >
                   {savingProperty ? <Loader2 size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
                   {savingProperty ? 'Saving...' : 'Yes, Save to Property'}
@@ -297,47 +301,49 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
             {hasPreSavedValues && (
               <div className="bg-green-50 border border-green-200 rounded-md p-3">
                 <p className="text-sm text-green-800 flex items-center gap-2">
-                  <FileText size={14} />
-                  This property has saved Consumer ID and Operator details.
+                  <Flame size={14} />
+                  This property has saved Gas connection details.
                 </p>
                 <p className="text-xs text-green-600 mt-1">
-                  Consumer ID: {property.consumer_id} | Operator: {property.operator_code}
+                  Mobile: {property.gas_mobile_number} | Provider: {providers.find(p => p.code === property.gas_provider)?.name || property.gas_provider}
                 </p>
               </div>
             )}
 
-            {/* Consumer ID Input - shown if property doesn't have it or user wants to override */}
+            {/* Mobile Number Input - shown if property doesn't have it or user wants to override */}
             <div>
-              <Label>Consumer ID / Account Number {!hasPreSavedValues && '*'}</Label>
+              <Label>Mobile Number {!hasPreSavedValues && '*'}</Label>
               <Input
-                placeholder="Enter electricity consumer ID"
-                value={consumerId}
-                onChange={(e) => setConsumerId(e.target.value)}
-                disabled={hasPreSavedValues && consumerId === property?.consumer_id}
+                type="tel"
+                placeholder="Enter 10 digit mobile number"
+                value={mobileNumber}
+                onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                maxLength={10}
+                disabled={hasPreSavedValues && mobileNumber === property?.gas_mobile_number}
               />
               <p className="text-xs text-slate-500 mt-1">
-                Found on your electricity bill (e.g., 1700034632254745)
+                Mobile number registered with gas connection
                 {hasPreSavedValues && (
                   <span className="text-green-600 block">Using saved value from property</span>
                 )}
               </p>
             </div>
 
-            {/* Operator Input - shown if property doesn't have it or user wants to override */}
+            {/* Gas Provider Input - shown if property doesn't have it or user wants to override */}
             <div>
-              <Label>Operator / State {!hasPreSavedValues && '*'}</Label>
+              <Label>Gas Provider {!hasPreSavedValues && '*'}</Label>
               <Select 
-                value={operatorCode} 
-                onValueChange={setOperatorCode}
-                disabled={hasPreSavedValues && operatorCode === property?.operator_code}
+                value={providerName} 
+                onValueChange={setProviderName}
+                disabled={hasPreSavedValues && providerName === property?.gas_provider}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select state/operator" />
+                  <SelectValue placeholder="Select gas provider" />
                 </SelectTrigger>
                 <SelectContent>
-                  {operatorCodes.map((op) => (
-                    <SelectItem key={op.code} value={op.code}>
-                      {op.name} ({op.code})
+                  {providers.map((provider) => (
+                    <SelectItem key={provider.code} value={provider.code}>
+                      {provider.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -349,67 +355,72 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
 
             <Button
               onClick={handleFetch}
-              disabled={loading || (!consumerId && !property?.consumer_id) || (!operatorCode && !property?.operator_code)}
-              className="w-full bg-purple-600 hover:bg-purple-700"
+              disabled={loading || (!mobileNumber && !property?.gas_mobile_number) || (!providerName && !property?.gas_provider)}
+              className="w-full bg-orange-600 hover:bg-orange-700"
             >
-              {loading ? <Loader2 size={16} className="animate-spin mr-2" /> : <Cloud size={16} className="mr-2" />}
-              {loading ? 'Fetching...' : 'Fetch Bill Details'}
+              {loading ? <Loader2 size={16} className="animate-spin mr-2" /> : <Flame size={16} className="mr-2" />}
+              {loading ? 'Fetching...' : 'Fetch Connection Details'}
             </Button>
           </div>
         ) : (
           // Bill Details Form
           <div className="space-y-4">
-            {/* Fetched Bill Summary */}
-            <Card className="bg-purple-50 border-purple-200">
-              <CardContent className="p-4 space-y-2">
+            {/* Fetched Gas Connection Summary */}
+            <Card className="bg-orange-50 border-orange-200">
+              <CardContent className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <FileText size={16} className="text-purple-600" />
-                    <span className="font-semibold text-purple-900">Fetched Bill Details</span>
+                    <Flame size={16} className="text-orange-600" />
+                    <span className="font-semibold text-orange-900">Gas Connection Details</span>
                   </div>
-                  <Badge className="bg-purple-200 text-purple-700">
-                    {fetchedData.operator_code}
+                  <Badge className="bg-orange-200 text-orange-700">
+                    {fetchedData.provider_name}
                   </Badge>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <p className="text-xs text-purple-500">Consumer Name</p>
+                    <p className="text-xs text-orange-500">Consumer Name</p>
                     <p className="font-medium flex items-center gap-1">
-                      <User size={12} /> {fetchedData.full_name || 'N/A'}
+                      <User size={12} /> {fetchedData.consumer_name || 'N/A'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-purple-500">Bill Amount</p>
-                    <p className="font-bold text-lg text-purple-700">₹{fetchedData.bill_amount?.toLocaleString()}</p>
+                    <p className="text-xs text-orange-500">Consumer ID</p>
+                    <p className="font-mono text-xs">{fetchedData.consumer_id || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-orange-500">Consumer Number</p>
+                    <p className="font-mono text-xs">{fetchedData.consumer_number || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-orange-500">Provider</p>
+                    <p className="font-medium">{fetchedData.provider_name || 'N/A'}</p>
                   </div>
                   <div className="col-span-2">
-                    <p className="text-xs text-purple-500">Address</p>
-                    <p className="text-sm flex items-center gap-1">
-                      <MapPin size={12} /> {fetchedData.address || 'N/A'}
+                    <p className="text-xs text-orange-500">Address</p>
+                    <p className="text-sm flex items-start gap-1">
+                      <MapPin size={12} className="mt-0.5 flex-shrink-0" />
+                      {fetchedData.address || 'N/A'}
                     </p>
                   </div>
-                  {fetchedData.mobile && (
-                    <div>
-                      <p className="text-xs text-purple-500">Mobile</p>
-                      <p className="text-sm flex items-center gap-1">
-                        <Phone size={12} /> {fetchedData.mobile}
-                      </p>
-                    </div>
-                  )}
-                  {fetchedData.email && (
-                    <div>
-                      <p className="text-xs text-purple-500">Email</p>
-                      <p className="text-sm">{fetchedData.email}</p>
-                    </div>
-                  )}
+                  <div>
+                    <p className="text-xs text-orange-500">Distributor</p>
+                    <p className="text-sm">{fetchedData.distributor_name || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-orange-500">Distributor Contact</p>
+                    <p className="text-sm flex items-center gap-1">
+                      <Phone size={12} /> {fetchedData.distributor_contact || 'N/A'}
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Manual Entry Fields */}
             <div className="border-t pt-4">
-              <h4 className="font-medium mb-3">Additional Information</h4>
+              <h4 className="font-medium mb-3">Bill Information</h4>
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -430,95 +441,75 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
                 </div>
               </div>
 
+              <div className="grid grid-cols-3 gap-4 mt-3">
+                <div>
+                  <Label>Units Consumed</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 12"
+                    value={unitsConsumed}
+                    onChange={(e) => {
+                      setUnitsConsumed(e.target.value);
+                      calculateTotal();
+                    }}
+                  />
+                  <p className="text-xs text-slate-500">KG or SCM</p>
+                </div>
+                <div>
+                  <Label>Rate per Unit (Rs)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 50"
+                    value={ratePerUnit}
+                    onChange={(e) => {
+                      setRatePerUnit(e.target.value);
+                      calculateTotal();
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label>Fixed Charges (Rs)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 100"
+                    value={fixedCharges}
+                    onChange={(e) => {
+                      setFixedCharges(e.target.value);
+                      calculateTotal();
+                    }}
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4 mt-3">
                 <div>
-                  <Label>Previous Reading (kWh)</Label>
+                  <Label>Total Bill (Rs) *</Label>
                   <Input
                     type="number"
                     step="0.01"
-                    value={previousReading}
-                    onChange={(e) => {
-                      setPreviousReading(e.target.value);
-                      calculateUnits();
-                    }}
-                  />
-                </div>
-                <div>
-                  <Label>Current Reading (kWh)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={currentReading}
-                    onChange={(e) => {
-                      setCurrentReading(e.target.value);
-                      calculateUnits();
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mt-3">
-                <div>
-                  <Label>Units Consumed (kWh)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={unitsConsumed}
-                    onChange={(e) => setUnitsConsumed(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Slab Charges (₹)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={slabCharges}
-                    onChange={(e) => setSlabCharges(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Fixed Charges (₹)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={fixedCharges}
-                    onChange={(e) => setFixedCharges(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mt-3">
-                <div>
-                  <Label>Taxes (₹)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={taxes}
-                    onChange={(e) => setTaxes(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Penalty (₹)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={penalty}
-                    onChange={(e) => setPenalty(e.target.value)}
+                    required
+                    placeholder="Total amount"
+                    value={totalBill}
+                    onChange={(e) => setTotalBill(e.target.value)}
                   />
                 </div>
                 <div>
                   <Label>Due Date *</Label>
                   <Input
                     type="date"
+                    required
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
                   />
                 </div>
               </div>
 
-              {/* NEW: Payment Status Section */}
-              <div className="mt-4 pt-4 border-t border-purple-100">
-                <h4 className="font-medium mb-3 text-purple-800">Payment Information</h4>
+              {/* Payment Status Section */}
+              <div className="mt-4 pt-4 border-t border-orange-100">
+                <h4 className="font-medium mb-3 text-orange-800">Payment Information</h4>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -568,9 +559,9 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
               <Button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                className="flex-1 bg-orange-600 hover:bg-orange-700"
               >
-                {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : <Download size={16} className="mr-2" />}
+                {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : <Flame size={16} className="mr-2" />}
                 {saving ? 'Saving...' : 'Save Bill'}
               </Button>
             </div>
@@ -581,4 +572,4 @@ const ElectricityBillFetcher = ({ propertyId, onSuccess, operatorCodes = [] }) =
   );
 };
 
-export default ElectricityBillFetcher;
+export default GasBillFetcher;

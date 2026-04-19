@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import api from '../utils/api';
 import { toast } from 'sonner';
-import { Building2, Plus, Edit, Trash2, MapPin, Eye, X, Zap, Cloud, Loader2 } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, MapPin, Eye, X, Zap, Cloud, Loader2, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -20,29 +20,39 @@ export const PropertiesPage = () => {
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [operatorCodes, setOperatorCodes] = useState([]);
+  const [gasProviders, setGasProviders] = useState([]);
   const [fetchingBill, setFetchingBill] = useState(false);
   const [fetchedBillData, setFetchedBillData] = useState(null);
   const [showBillFetchDialog, setShowBillFetchDialog] = useState(false);
+  const [fetchingGasBill, setFetchingGasBill] = useState(false);
+  const [fetchedGasBillData, setFetchedGasBillData] = useState(null);
+  const [showGasBillFetchDialog, setShowGasBillFetchDialog] = useState(false);
   
-const [formData, setFormData] = useState({
-  name: '',
-  type: 'Commercial',
-  address: '',
-  area_sqft: '',
-  // Electricity bill fields
-  consumer_id: '',
-  operator_code: '',
-  consumer_name: '',
-  electricity_board: '',
-  circle: '',
-  division: '',
-  sub_division: '',
-  meter_number: '',
-  sanctioned_load_kw: '',
-  connection_type: '',
-  tariff_category: '',
-});
-  // Bill fetch form data
+  const [formData, setFormData] = useState({
+    name: '',
+    type: 'Commercial',
+    address: '',
+    area_sqft: '',
+    // Electricity bill fields
+    consumer_id: '',
+    operator_code: '',
+    consumer_name: '',
+    electricity_board: '',
+    circle: '',
+    division: '',
+    sub_division: '',
+    meter_number: '',
+    sanctioned_load_kw: '',
+    connection_type: '',
+    tariff_category: '',
+    // Gas connection fields
+    gas_mobile_number: '',
+    gas_provider: '',
+    gas_consumer_number: '',
+    gas_consumer_name: '',
+  });
+
+  // Bill fetch form data for electricity
   const [billFetchData, setBillFetchData] = useState({
     consumer_id: '',
     operator_code: '',
@@ -58,9 +68,23 @@ const [formData, setFormData] = useState({
     penalty: '0'
   });
 
+  // Bill fetch form data for gas
+  const [gasBillFetchData, setGasBillFetchData] = useState({
+    mobile_number: '',
+    provider_name: '',
+    billing_period_start: '',
+    billing_period_end: '',
+    due_date: '',
+    units_consumed: '',
+    rate_per_unit: '',
+    fixed_charges: '',
+    total_bill: ''
+  });
+
   useEffect(() => {
     fetchProperties();
     fetchOperatorCodes();
+    fetchGasProviders();
   }, []);
 
   const fetchProperties = async () => {
@@ -81,14 +105,13 @@ const [formData, setFormData] = useState({
       setOperatorCodes(response.data.data);
     } catch (error) {
       console.error('Failed to fetch operator codes:', error);
-      // Fallback operator codes
       setOperatorCodes([
         { code: "MH", name: "Maharashtra", state: "Maharashtra" },
         { code: "DL", name: "Delhi", state: "Delhi" },
         { code: "GJ", name: "Gujarat", state: "Gujarat" },
         { code: "TN", name: "Tamil Nadu", state: "Tamil Nadu" },
         { code: "KA", name: "Karnataka", state: "Karnataka" },
-        { code: "PUP", name: "Uttar Pradesh", state: "Uttar Pradesh" },
+        { code: "UP", name: "Uttar Pradesh", state: "Uttar Pradesh" },
         { code: "WB", name: "West Bengal", state: "West Bengal" },
         { code: "RJ", name: "Rajasthan", state: "Rajasthan" },
         { code: "MP", name: "Madhya Pradesh", state: "Madhya Pradesh" },
@@ -102,104 +125,136 @@ const [formData, setFormData] = useState({
     }
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  try {
-    // Include all electricity fields in the payload
-    const payload = {
-      name: formData.name,
-      type: formData.type,
-      address: formData.address,
-      area_sqft: parseFloat(formData.area_sqft),
-      // Electricity fields
-      consumer_id: formData.consumer_id || null,
-      operator_code: formData.operator_code || null,
-      consumer_name: formData.consumer_name || null,
-      electricity_board: formData.electricity_board || null,
-      circle: formData.circle || null,
-      division: formData.division || null,
-      sub_division: formData.sub_division || null,
-      meter_number: formData.meter_number || null,
-      sanctioned_load_kw: formData.sanctioned_load_kw ? parseFloat(formData.sanctioned_load_kw) : null,
-      connection_type: formData.connection_type || null,
-      tariff_category: formData.tariff_category || null,
-    };
-    
-    await api.post('/properties', payload);
-    
-    toast.success('Property created successfully');
-    setDialogOpen(false);
-    resetForm();
-    fetchProperties();
-  } catch (error) {
-    console.error("API Error:", error);
-    toast.error(error.response?.data?.detail || 'Failed to create property');
-  }
-};
+  const fetchGasProviders = async () => {
+    try {
+      const response = await api.get('/gas-bills/provider-list');
+      setGasProviders(response.data.data);
+    } catch (error) {
+      console.error('Failed to fetch gas providers:', error);
+      setGasProviders([
+        { code: "indane", name: "Indane (Indian Oil)", type: "LPG" },
+        { code: "bharat_gas", name: "Bharat Gas (BPCL)", type: "LPG" },
+        { code: "hp_gas", name: "HP Gas (Hindustan Petroleum)", type: "LPG" },
+        { code: "adani_gas", name: "Adani Gas", type: "PNG" },
+        { code: "mahanagar_gas", name: "Mahanagar Gas (MGL)", type: "PNG" },
+        { code: "gujarat_gas", name: "Gujarat Gas", type: "PNG" },
+      ]);
+    }
+  };
 
-const handleEdit = (property) => {
-  setSelectedProperty(property);
-  setFormData({
-    name: property.name,
-    type: property.type,
-    address: property.address,
-    area_sqft: property.area_sqft.toString(),
-    consumer_id: property.consumer_id || '',
-    operator_code: property.operator_code || '',
-    consumer_name: property.consumer_name || '',
-    electricity_board: property.electricity_board || '',
-    circle: property.circle || '',
-    division: property.division || '',
-    sub_division: property.sub_division || '',
-    meter_number: property.meter_number || '',
-    sanctioned_load_kw: property.sanctioned_load_kw?.toString() || '',
-    connection_type: property.connection_type || '',
-    tariff_category: property.tariff_category || '',
-  });
-  setEditDialogOpen(true);
-};
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const payload = {
+        name: formData.name,
+        type: formData.type,
+        address: formData.address,
+        area_sqft: parseFloat(formData.area_sqft),
+        // Electricity fields
+        consumer_id: formData.consumer_id || null,
+        operator_code: formData.operator_code || null,
+        consumer_name: formData.consumer_name || null,
+        electricity_board: formData.electricity_board || null,
+        circle: formData.circle || null,
+        division: formData.division || null,
+        sub_division: formData.sub_division || null,
+        meter_number: formData.meter_number || null,
+        sanctioned_load_kw: formData.sanctioned_load_kw ? parseFloat(formData.sanctioned_load_kw) : null,
+        connection_type: formData.connection_type || null,
+        tariff_category: formData.tariff_category || null,
+        // Gas fields
+        gas_mobile_number: formData.gas_mobile_number || null,
+        gas_provider: formData.gas_provider || null,
+        gas_consumer_number: formData.gas_consumer_number || null,
+        gas_consumer_name: formData.gas_consumer_name || null,
+      };
+      
+      await api.post('/properties', payload);
+      
+      toast.success('Property created successfully');
+      setDialogOpen(false);
+      resetForm();
+      fetchProperties();
+    } catch (error) {
+      console.error("API Error:", error);
+      toast.error(error.response?.data?.detail || 'Failed to create property');
+    }
+  };
+
+  const handleEdit = (property) => {
+    setSelectedProperty(property);
+    setFormData({
+      name: property.name,
+      type: property.type,
+      address: property.address,
+      area_sqft: property.area_sqft.toString(),
+      // Electricity fields
+      consumer_id: property.consumer_id || '',
+      operator_code: property.operator_code || '',
+      consumer_name: property.consumer_name || '',
+      electricity_board: property.electricity_board || '',
+      circle: property.circle || '',
+      division: property.division || '',
+      sub_division: property.sub_division || '',
+      meter_number: property.meter_number || '',
+      sanctioned_load_kw: property.sanctioned_load_kw?.toString() || '',
+      connection_type: property.connection_type || '',
+      tariff_category: property.tariff_category || '',
+      // Gas fields
+      gas_mobile_number: property.gas_mobile_number || '',
+      gas_provider: property.gas_provider || '',
+      gas_consumer_number: property.gas_consumer_number || '',
+      gas_consumer_name: property.gas_consumer_name || '',
+    });
+    setEditDialogOpen(true);
+  };
 
   const handleView = (property) => {
     setSelectedProperty(property);
     setViewDialogOpen(true);
   };
 
-const handleUpdate = async (e) => {
-  e.preventDefault();
-  
-  try {
-    const payload = {
-      name: formData.name,
-      type: formData.type,
-      address: formData.address,
-      area_sqft: parseFloat(formData.area_sqft),
-      // Electricity fields
-      consumer_id: formData.consumer_id || null,
-      operator_code: formData.operator_code || null,
-      consumer_name: formData.consumer_name || null,
-      electricity_board: formData.electricity_board || null,
-      circle: formData.circle || null,
-      division: formData.division || null,
-      sub_division: formData.sub_division || null,
-      meter_number: formData.meter_number || null,
-      sanctioned_load_kw: formData.sanctioned_load_kw ? parseFloat(formData.sanctioned_load_kw) : null,
-      connection_type: formData.connection_type || null,
-      tariff_category: formData.tariff_category || null,
-    };
+  const handleUpdate = async (e) => {
+    e.preventDefault();
     
-    await api.put(`/properties/${selectedProperty.id}`, payload);
-    
-    toast.success('Property updated successfully');
-    setEditDialogOpen(false);
-    setSelectedProperty(null);
-    resetForm();
-    fetchProperties();
-  } catch (error) {
-    console.error("API Error:", error);
-    toast.error(error.response?.data?.detail || 'Failed to update property');
-  }
-};
+    try {
+      const payload = {
+        name: formData.name,
+        type: formData.type,
+        address: formData.address,
+        area_sqft: parseFloat(formData.area_sqft),
+        // Electricity fields
+        consumer_id: formData.consumer_id || null,
+        operator_code: formData.operator_code || null,
+        consumer_name: formData.consumer_name || null,
+        electricity_board: formData.electricity_board || null,
+        circle: formData.circle || null,
+        division: formData.division || null,
+        sub_division: formData.sub_division || null,
+        meter_number: formData.meter_number || null,
+        sanctioned_load_kw: formData.sanctioned_load_kw ? parseFloat(formData.sanctioned_load_kw) : null,
+        connection_type: formData.connection_type || null,
+        tariff_category: formData.tariff_category || null,
+        // Gas fields
+        gas_mobile_number: formData.gas_mobile_number || null,
+        gas_provider: formData.gas_provider || null,
+        gas_consumer_number: formData.gas_consumer_number || null,
+        gas_consumer_name: formData.gas_consumer_name || null,
+      };
+      
+      await api.put(`/properties/${selectedProperty.id}`, payload);
+      
+      toast.success('Property updated successfully');
+      setEditDialogOpen(false);
+      setSelectedProperty(null);
+      resetForm();
+      fetchProperties();
+    } catch (error) {
+      console.error("API Error:", error);
+      toast.error(error.response?.data?.detail || 'Failed to update property');
+    }
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this property?')) return;
@@ -214,25 +269,29 @@ const handleUpdate = async (e) => {
     }
   };
 
-const resetForm = () => {
-  setFormData({
-    name: '',
-    type: 'Commercial',
-    address: '',
-    area_sqft: '',
-    consumer_id: '',
-    operator_code: '',
-    consumer_name: '',
-    electricity_board: '',
-    circle: '',
-    division: '',
-    sub_division: '',
-    meter_number: '',
-    sanctioned_load_kw: '',
-    connection_type: '',
-    tariff_category: '',
-  });
-};
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      type: 'Commercial',
+      address: '',
+      area_sqft: '',
+      consumer_id: '',
+      operator_code: '',
+      consumer_name: '',
+      electricity_board: '',
+      circle: '',
+      division: '',
+      sub_division: '',
+      meter_number: '',
+      sanctioned_load_kw: '',
+      connection_type: '',
+      tariff_category: '',
+      gas_mobile_number: '',
+      gas_provider: '',
+      gas_consumer_number: '',
+      gas_consumer_name: '',
+    });
+  };
 
   const resetBillFetchForm = () => {
     setBillFetchData({
@@ -250,6 +309,21 @@ const resetForm = () => {
       penalty: '0'
     });
     setFetchedBillData(null);
+  };
+
+  const resetGasBillFetchForm = () => {
+    setGasBillFetchData({
+      mobile_number: '',
+      provider_name: '',
+      billing_period_start: '',
+      billing_period_end: '',
+      due_date: '',
+      units_consumed: '',
+      rate_per_unit: '',
+      fixed_charges: '',
+      total_bill: ''
+    });
+    setFetchedGasBillData(null);
   };
 
   const handleFetchBill = async () => {
@@ -277,7 +351,6 @@ const resetForm = () => {
       if (response.data.success) {
         setFetchedBillData(response.data.bill_data);
         
-        // Set default dates
         const today = new Date();
         const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
         const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
@@ -295,6 +368,57 @@ const resetForm = () => {
       toast.error(error.response?.data?.detail || 'Failed to fetch bill details');
     } finally {
       setFetchingBill(false);
+    }
+  };
+
+  const handleFetchGasBill = async () => {
+    const property = selectedProperty;
+    const mobileNumber = gasBillFetchData.mobile_number || property?.gas_mobile_number;
+    const providerName = gasBillFetchData.provider_name || property?.gas_provider;
+
+    if (!mobileNumber) {
+      toast.error('Please enter Mobile Number');
+      return;
+    }
+    if (mobileNumber.length !== 10) {
+      toast.error('Mobile number must be 10 digits');
+      return;
+    }
+    if (!providerName) {
+      toast.error('Please select Gas Provider');
+      return;
+    }
+
+    setFetchingGasBill(true);
+    try {
+      const response = await api.post('/gas-bills/fetch-from-surepass', {
+        mobile_number: mobileNumber,
+        provider_name: providerName,
+        property_id: property?.id
+      });
+      
+      if (response.data.success) {
+        setFetchedGasBillData(response.data.gas_data);
+        
+        const today = new Date();
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        
+        setGasBillFetchData(prev => ({
+          ...prev,
+          billing_period_start: startOfMonth.toISOString().split('T')[0],
+          billing_period_end: endOfMonth.toISOString().split('T')[0],
+          due_date: new Date(today.setDate(today.getDate() + 15)).toISOString().split('T')[0],
+          rate_per_unit: '50',
+          fixed_charges: '0'
+        }));
+        
+        toast.success('Gas connection details fetched successfully');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to fetch gas connection details');
+    } finally {
+      setFetchingGasBill(false);
     }
   };
 
@@ -326,10 +450,42 @@ const resetForm = () => {
     }
   };
 
+  const handleSaveGasBill = async () => {
+    if (!selectedProperty) return;
+
+    try {
+      await api.post('/gas-bills/save-from-surepass', {
+        property_id: selectedProperty.id,
+        gas_data: fetchedGasBillData,
+        billing_period_start: gasBillFetchData.billing_period_start,
+        billing_period_end: gasBillFetchData.billing_period_end,
+        due_date: gasBillFetchData.due_date,
+        units_consumed: parseFloat(gasBillFetchData.units_consumed) || 0,
+        rate_per_unit: parseFloat(gasBillFetchData.rate_per_unit) || 0,
+        fixed_charges: parseFloat(gasBillFetchData.fixed_charges) || 0,
+        total_bill: parseFloat(gasBillFetchData.total_bill) || 0
+      });
+      
+      toast.success('Gas bill saved successfully');
+      setShowGasBillFetchDialog(false);
+      resetGasBillFetchForm();
+      setFetchedGasBillData(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to save gas bill');
+    }
+  };
+
   const calculateUnits = () => {
     if (billFetchData.previous_reading && billFetchData.current_reading) {
       const units = parseFloat(billFetchData.current_reading) - parseFloat(billFetchData.previous_reading);
       setBillFetchData(prev => ({ ...prev, units_consumed: units.toFixed(2) }));
+    }
+  };
+
+  const calculateGasTotal = () => {
+    if (gasBillFetchData.units_consumed && gasBillFetchData.rate_per_unit) {
+      const total = (parseFloat(gasBillFetchData.units_consumed) * parseFloat(gasBillFetchData.rate_per_unit)) + parseFloat(gasBillFetchData.fixed_charges || 0);
+      setGasBillFetchData(prev => ({ ...prev, total_bill: total.toFixed(2) }));
     }
   };
 
@@ -363,9 +519,10 @@ const resetForm = () => {
               <DialogTitle>Add New Property</DialogTitle>
             </DialogHeader>
             <Tabs defaultValue="basic" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="basic">Basic Info</TabsTrigger>
                 <TabsTrigger value="electricity">Electricity Details</TabsTrigger>
+                <TabsTrigger value="gas">Gas Connection</TabsTrigger>
               </TabsList>
               
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
@@ -507,6 +664,112 @@ const resetForm = () => {
                       />
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="meter_number">Meter Number</Label>
+                      <Input
+                        id="meter_number"
+                        value={formData.meter_number}
+                        onChange={(e) => setFormData({ ...formData, meter_number: e.target.value })}
+                        placeholder="Electricity meter number"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="sanctioned_load_kw">Sanctioned Load (kW)</Label>
+                      <Input
+                        id="sanctioned_load_kw"
+                        type="number"
+                        step="0.01"
+                        value={formData.sanctioned_load_kw}
+                        onChange={(e) => setFormData({ ...formData, sanctioned_load_kw: e.target.value })}
+                        placeholder="e.g., 5.0"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="connection_type">Connection Type</Label>
+                      <Select
+                        value={formData.connection_type}
+                        onValueChange={(value) => setFormData({ ...formData, connection_type: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select connection type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Residential">Residential</SelectItem>
+                          <SelectItem value="Commercial">Commercial</SelectItem>
+                          <SelectItem value="Industrial">Industrial</SelectItem>
+                          <SelectItem value="Agricultural">Agricultural</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="tariff_category">Tariff Category</Label>
+                      <Input
+                        id="tariff_category"
+                        value={formData.tariff_category}
+                        onChange={(e) => setFormData({ ...formData, tariff_category: e.target.value })}
+                        placeholder="e.g., LT-I, HT-II"
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="gas" className="space-y-4">
+                  <div>
+                    <Label htmlFor="gas_mobile_number">Mobile Number (Registered with Gas Connection)</Label>
+                    <Input
+                      id="gas_mobile_number"
+                      type="tel"
+                      maxLength={10}
+                      value={formData.gas_mobile_number}
+                      onChange={(e) => setFormData({ ...formData, gas_mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                      placeholder="Enter 10 digit mobile number"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Mobile number registered with gas connection</p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="gas_provider">Gas Provider</Label>
+                    <Select
+                      value={formData.gas_provider}
+                      onValueChange={(value) => setFormData({ ...formData, gas_provider: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select gas provider" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {gasProviders.map((provider) => (
+                          <SelectItem key={provider.code} value={provider.code}>
+                            {provider.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="gas_consumer_number">Consumer Number</Label>
+                    <Input
+                      id="gas_consumer_number"
+                      value={formData.gas_consumer_number}
+                      onChange={(e) => setFormData({ ...formData, gas_consumer_number: e.target.value })}
+                      placeholder="Gas consumer number (if known)"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="gas_consumer_name">Consumer Name</Label>
+                    <Input
+                      id="gas_consumer_name"
+                      value={formData.gas_consumer_name}
+                      onChange={(e) => setFormData({ ...formData, gas_consumer_name: e.target.value })}
+                      placeholder="Name as per gas connection"
+                    />
+                  </div>
                 </TabsContent>
 
                 <Button type="submit" className="w-full bg-blue-800 hover:bg-blue-900" data-testid="submit-property-button">
@@ -525,9 +788,10 @@ const resetForm = () => {
             <DialogTitle>Edit Property</DialogTitle>
           </DialogHeader>
           <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="basic">Basic Info</TabsTrigger>
               <TabsTrigger value="electricity">Electricity Details</TabsTrigger>
+              <TabsTrigger value="gas">Gas Connection</TabsTrigger>
             </TabsList>
             
             <form onSubmit={handleUpdate} className="space-y-4 mt-4">
@@ -665,6 +929,59 @@ const resetForm = () => {
                 </div>
               </TabsContent>
 
+              <TabsContent value="gas" className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-gas_mobile_number">Mobile Number (Registered with Gas Connection)</Label>
+                  <Input
+                    id="edit-gas_mobile_number"
+                    type="tel"
+                    maxLength={10}
+                    value={formData.gas_mobile_number}
+                    onChange={(e) => setFormData({ ...formData, gas_mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                    placeholder="Enter 10 digit mobile number"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-gas_provider">Gas Provider</Label>
+                  <Select
+                    value={formData.gas_provider}
+                    onValueChange={(value) => setFormData({ ...formData, gas_provider: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select gas provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {gasProviders.map((provider) => (
+                        <SelectItem key={provider.code} value={provider.code}>
+                          {provider.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-gas_consumer_number">Consumer Number</Label>
+                  <Input
+                    id="edit-gas_consumer_number"
+                    value={formData.gas_consumer_number}
+                    onChange={(e) => setFormData({ ...formData, gas_consumer_number: e.target.value })}
+                    placeholder="Gas consumer number (if known)"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-gas_consumer_name">Consumer Name</Label>
+                  <Input
+                    id="edit-gas_consumer_name"
+                    value={formData.gas_consumer_name}
+                    onChange={(e) => setFormData({ ...formData, gas_consumer_name: e.target.value })}
+                    placeholder="Name as per gas connection"
+                  />
+                </div>
+              </TabsContent>
+
               <Button type="submit" className="w-full bg-blue-800 hover:bg-blue-900" data-testid="update-property-button">
                 Update Property
               </Button>
@@ -681,9 +998,10 @@ const resetForm = () => {
           </DialogHeader>
           {selectedProperty && (
             <Tabs defaultValue="basic" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="basic">Basic Info</TabsTrigger>
                 <TabsTrigger value="electricity">Electricity Details</TabsTrigger>
+                <TabsTrigger value="gas">Gas Connection</TabsTrigger>
               </TabsList>
               
               <TabsContent value="basic" className="space-y-4 mt-4">
@@ -767,6 +1085,46 @@ const resetForm = () => {
                   </div>
                 )}
               </TabsContent>
+
+              <TabsContent value="gas" className="space-y-4 mt-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Mobile Number</p>
+                    <p className="text-sm">{selectedProperty.gas_mobile_number || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Gas Provider</p>
+                    <p className="text-sm">{selectedProperty.gas_provider ? gasProviders.find(p => p.code === selectedProperty.gas_provider)?.name || selectedProperty.gas_provider : 'Not set'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Consumer Number</p>
+                    <p className="text-sm font-mono">{selectedProperty.gas_consumer_number || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Consumer Name</p>
+                    <p className="text-sm">{selectedProperty.gas_consumer_name || 'Not set'}</p>
+                  </div>
+                </div>
+
+                {(selectedProperty.gas_mobile_number || selectedProperty.gas_provider) && (
+                  <div className="mt-4 pt-4 border-t">
+                    <Button
+                      onClick={() => {
+                        setGasBillFetchData({
+                          ...gasBillFetchData,
+                          mobile_number: selectedProperty.gas_mobile_number || '',
+                          provider_name: selectedProperty.gas_provider || '',
+                        });
+                        setShowGasBillFetchDialog(true);
+                      }}
+                      className="w-full bg-orange-600 hover:bg-orange-700"
+                    >
+                      <Flame size={16} className="mr-2" />
+                      Fetch Gas Bill
+                    </Button>
+                  </div>
+                )}
+              </TabsContent>
             </Tabs>
           )}
         </DialogContent>
@@ -824,7 +1182,6 @@ const resetForm = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Fetched Bill Summary */}
               <Card className="bg-purple-50 border-purple-200">
                 <CardContent className="p-4 space-y-2">
                   <div className="flex items-center justify-between">
@@ -856,7 +1213,6 @@ const resetForm = () => {
                 </CardContent>
               </Card>
 
-              {/* Manual Entry Fields */}
               <div className="border-t pt-4">
                 <h4 className="font-medium mb-3">Additional Information</h4>
                 
@@ -986,6 +1342,208 @@ const resetForm = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Fetch Gas Bill Dialog */}
+      <Dialog open={showGasBillFetchDialog} onOpenChange={(open) => { setShowGasBillFetchDialog(open); if (!open) resetGasBillFetchForm(); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flame size={20} className="text-orange-600" />
+              Fetch Gas Bill
+            </DialogTitle>
+          </DialogHeader>
+
+          {!fetchedGasBillData ? (
+            <div className="space-y-4">
+              <div>
+                <Label>Mobile Number *</Label>
+                <Input
+                  type="tel"
+                  placeholder="Enter 10 digit mobile number"
+                  value={gasBillFetchData.mobile_number}
+                  onChange={(e) => setGasBillFetchData(prev => ({ ...prev, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                  maxLength={10}
+                />
+                <p className="text-xs text-slate-500 mt-1">Mobile number registered with gas connection</p>
+              </div>
+
+              <div>
+                <Label>Gas Provider *</Label>
+                <Select
+                  value={gasBillFetchData.provider_name}
+                  onValueChange={(value) => setGasBillFetchData(prev => ({ ...prev, provider_name: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select gas provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {gasProviders.map((provider) => (
+                      <SelectItem key={provider.code} value={provider.code}>
+                        {provider.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                onClick={handleFetchGasBill}
+                disabled={fetchingGasBill}
+                className="w-full bg-orange-600 hover:bg-orange-700"
+              >
+                {fetchingGasBill ? <Loader2 size={16} className="animate-spin mr-2" /> : <Flame size={16} className="mr-2" />}
+                {fetchingGasBill ? 'Fetching...' : 'Fetch Connection Details'}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Card className="bg-orange-50 border-orange-200">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Flame size={16} className="text-orange-600" />
+                      <span className="font-semibold text-orange-900">Gas Connection Details</span>
+                    </div>
+                    <Badge className="bg-orange-200 text-orange-700">
+                      {fetchedGasBillData.provider_name}
+                    </Badge>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-orange-500">Consumer Name</p>
+                      <p className="font-medium">{fetchedGasBillData.consumer_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-orange-500">Consumer ID</p>
+                      <p className="font-mono text-xs">{fetchedGasBillData.consumer_id || 'N/A'}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-orange-500">Address</p>
+                      <p className="text-sm flex items-center gap-1">
+                        <MapPin size={12} /> {fetchedGasBillData.address || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-orange-500">Distributor</p>
+                      <p className="text-sm">{fetchedGasBillData.distributor_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-orange-500">Distributor Contact</p>
+                      <p className="text-sm">{fetchedGasBillData.distributor_contact || 'N/A'}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="border-t pt-4">
+                <h4 className="font-medium mb-3">Bill Information</h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Billing Period Start *</Label>
+                    <Input
+                      type="date"
+                      value={gasBillFetchData.billing_period_start}
+                      onChange={(e) => setGasBillFetchData(prev => ({ ...prev, billing_period_start: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Billing Period End *</Label>
+                    <Input
+                      type="date"
+                      value={gasBillFetchData.billing_period_end}
+                      onChange={(e) => setGasBillFetchData(prev => ({ ...prev, billing_period_end: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 mt-3">
+                  <div>
+                    <Label>Units Consumed</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g., 12"
+                      value={gasBillFetchData.units_consumed}
+                      onChange={(e) => {
+                        setGasBillFetchData(prev => ({ ...prev, units_consumed: e.target.value }));
+                        calculateGasTotal();
+                      }}
+                    />
+                    <p className="text-xs text-slate-500">KG or SCM</p>
+                  </div>
+                  <div>
+                    <Label>Rate per Unit (Rs)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g., 50"
+                      value={gasBillFetchData.rate_per_unit}
+                      onChange={(e) => {
+                        setGasBillFetchData(prev => ({ ...prev, rate_per_unit: e.target.value }));
+                        calculateGasTotal();
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Label>Fixed Charges (Rs)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g., 100"
+                      value={gasBillFetchData.fixed_charges}
+                      onChange={(e) => {
+                        setGasBillFetchData(prev => ({ ...prev, fixed_charges: e.target.value }));
+                        calculateGasTotal();
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-3">
+                  <div>
+                    <Label>Total Bill (Rs) *</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      required
+                      placeholder="Total amount"
+                      value={gasBillFetchData.total_bill}
+                      onChange={(e) => setGasBillFetchData(prev => ({ ...prev, total_bill: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Due Date *</Label>
+                    <Input
+                      type="date"
+                      required
+                      value={gasBillFetchData.due_date}
+                      onChange={(e) => setGasBillFetchData(prev => ({ ...prev, due_date: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setFetchedGasBillData(null)}
+                  className="flex-1"
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={handleSaveGasBill}
+                  className="flex-1 bg-orange-600 hover:bg-orange-700"
+                >
+                  Save Bill
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Properties Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {properties.map((property) => (
@@ -1016,14 +1574,20 @@ const resetForm = () => {
                   <span>{property.address}</span>
                 </div>
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                  <div>
+                  <div className="flex flex-wrap gap-2">
                     <span className="text-sm font-semibold text-slate-700">
                       {property.area_sqft.toLocaleString()} sq ft
                     </span>
                     {property.consumer_id && (
-                      <Badge variant="outline" className="ml-2 text-xs bg-purple-50">
+                      <Badge variant="outline" className="text-xs bg-purple-50">
                         <Zap size={10} className="mr-1" />
-                        Bill Ready
+                        Elec Ready
+                      </Badge>
+                    )}
+                    {property.gas_mobile_number && (
+                      <Badge variant="outline" className="text-xs bg-orange-50">
+                        <Flame size={10} className="mr-1" />
+                        Gas Ready
                       </Badge>
                     )}
                   </div>

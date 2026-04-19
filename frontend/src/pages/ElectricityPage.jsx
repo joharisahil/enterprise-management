@@ -11,6 +11,16 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import PhoneNumberInput from '@/components/ui/PhoneNumberInput';
 import ElectricityBillFetcher from '@/components/electricity/ElectricityBillFetcher';
 
@@ -34,6 +44,11 @@ export const ElectricityPage = () => {
   const [selectedElecBill, setSelectedElecBill] = useState(null);
   const [selectedSolarMeter, setSelectedSolarMeter] = useState(null);
   const [operatorCodes, setOperatorCodes] = useState([]);
+  
+  // Delete confirmation dialogs
+  const [deleteElecDialogOpen, setDeleteElecDialogOpen] = useState(false);
+  const [deleteSolarDialogOpen, setDeleteSolarDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
   // File upload states for electricity
   const [elecSelectedFile, setElecSelectedFile] = useState(null);
@@ -468,24 +483,28 @@ useEffect(() => {
     }
   };
 
-  const handleDeleteElecBill = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this electricity bill?')) return;
+  const handleDeleteElecBill = async () => {
+    if (!itemToDelete) return;
     
     try {
-      await api.delete(`/electricity-bills/${id}`);
+      await api.delete(`/electricity-bills/${itemToDelete}`);
       toast.success('Electricity bill deleted');
+      setDeleteElecDialogOpen(false);
+      setItemToDelete(null);
       fetchData();
     } catch (error) {
       toast.error('Failed to delete electricity bill');
     }
   };
 
-  const handleDeleteSolarMeter = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this solar meter record?')) return;
+  const handleDeleteSolarMeter = async () => {
+    if (!itemToDelete) return;
     
     try {
-      await api.delete(`/solar-meters/${id}`);
+      await api.delete(`/solar-meters/${itemToDelete}`);
       toast.success('Solar meter record deleted');
+      setDeleteSolarDialogOpen(false);
+      setItemToDelete(null);
       fetchData();
     } catch (error) {
       toast.error('Failed to delete solar meter record');
@@ -569,11 +588,6 @@ useEffect(() => {
       {currentUrl && !selectedFile && (
         <div className="flex items-center justify-between p-3 bg-slate-50 rounded-md border border-slate-200">
           <div className="flex items-center gap-2">
-            {/* {currentUrl.toLowerCase().includes('.pdf') ? (
-              <File size={20} className="text-red-500" />
-            ) : (
-              <img src={currentUrl} alt="Preview" className="h-10 w-10 object-cover rounded" />
-            )} */}
             <span className="text-sm text-slate-600 truncate max-w-[200px]">
               {currentUrl.split('/').pop()?.split('?')[0] || 'document'}
             </span>
@@ -669,6 +683,42 @@ useEffect(() => {
         </div>
       </div>
 
+      {/* Delete Confirmation Dialog for Electricity Bill */}
+      <AlertDialog open={deleteElecDialogOpen} onOpenChange={setDeleteElecDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Electricity Bill</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this electricity bill? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setItemToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteElecBill} className="bg-rose-600 hover:bg-rose-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirmation Dialog for Solar Meter */}
+      <AlertDialog open={deleteSolarDialogOpen} onOpenChange={setDeleteSolarDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Solar Meter Record</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this solar meter record? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setItemToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteSolarMeter} className="bg-rose-600 hover:bg-rose-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* View Electricity Bill Dialog */}
       <Dialog open={viewElecDialogOpen} onOpenChange={(open) => { setViewElecDialogOpen(open); if (!open) setSelectedElecBill(null); }}>
         <DialogContent className="max-w-lg">
@@ -751,11 +801,6 @@ useEffect(() => {
                   <div className="col-span-2">
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Bill Document</p>
                     <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-md border border-slate-200">
-                      {/* {selectedElecBill.bill_url.toLowerCase().includes('.pdf') ? (
-                        <File size={20} className="text-red-500" />
-                      ) : (
-                        <img src={selectedElecBill.bill_url} alt="Bill" className="h-12 w-12 object-cover rounded" />
-                      )} */}
                       <Button
                         variant="link"
                         className="text-blue-600 p-0 h-auto"
@@ -851,11 +896,6 @@ useEffect(() => {
                   <div className="col-span-2">
                     <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Meter Image</p>
                     <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-md border border-slate-200">
-                      {selectedSolarMeter.meter_image_url.toLowerCase().includes('.pdf') ? (
-                        <File size={20} className="text-red-500" />
-                      ) : (
-                        <img src={selectedSolarMeter.meter_image_url} alt="Meter" className="h-12 w-12 object-cover rounded" />
-                      )}
                       <Button
                         variant="link"
                         className="text-blue-600 p-0 h-auto"
@@ -1274,214 +1314,215 @@ useEffect(() => {
         {/* Electricity Bills Tab */}
         <TabsContent value="electricity" className="space-y-6">
           <div className="flex justify-between items-center">
-  <div className="flex gap-2">
-            <Dialog open={elecDialogOpen} onOpenChange={(open) => { setElecDialogOpen(open); if (!open) resetElecForm(); }}>
-              <DialogTrigger asChild>
-                <Button className="bg-blue-800 hover:bg-blue-900">
-                  <Plus size={18} className="mr-2" />
-                  Add Electricity Bill
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Add Electricity Bill</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleElecSubmit} className="space-y-4">
-                  <div>
-                    <Label>Property *</Label>
-                    <Select
-                      value={elecFormData.property_id}
-                      onValueChange={(value) => setElecFormData({ ...elecFormData, property_id: value })}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select property" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {properties.map((prop) => (
-                          <SelectItem key={prop.id} value={prop.id}>
-                            {prop.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
+            <div className="flex gap-2">
+              <Dialog open={elecDialogOpen} onOpenChange={(open) => { setElecDialogOpen(open); if (!open) resetElecForm(); }}>
+                <DialogTrigger asChild>
+                  <Button className="bg-blue-800 hover:bg-blue-900">
+                    <Plus size={18} className="mr-2" />
+                    Add Electricity Bill
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Add Electricity Bill</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleElecSubmit} className="space-y-4">
+                    {/* Form content remains the same */}
                     <div>
-                      <Label>Billing Period Start *</Label>
-                      <Input
-                        type="date"
-                        required
-                        value={elecFormData.billing_period_start}
-                        onChange={(e) => setElecFormData({ ...elecFormData, billing_period_start: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Billing Period End *</Label>
-                      <Input
-                        type="date"
-                        required
-                        value={elecFormData.billing_period_end}
-                        onChange={(e) => setElecFormData({ ...elecFormData, billing_period_end: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Previous Reading (kWh) *</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={elecFormData.previous_reading}
-                        onChange={(e) => setElecFormData({ ...elecFormData, previous_reading: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Current Reading (kWh) *</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={elecFormData.current_reading}
-                        onChange={(e) => setElecFormData({ ...elecFormData, current_reading: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label>Slab Charges (Rs) *</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={elecFormData.slab_charges}
-                        onChange={(e) => setElecFormData({ ...elecFormData, slab_charges: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Fixed Charges (Rs) *</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={elecFormData.fixed_charges}
-                        onChange={(e) => setElecFormData({ ...elecFormData, fixed_charges: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Taxes (Rs) *</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={elecFormData.taxes}
-                        onChange={(e) => setElecFormData({ ...elecFormData, taxes: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <PhoneNumberInput
-                    value={elecFormData.phone_number || ''}
-                    onChange={(value) => setElecFormData({ ...elecFormData, phone_number: value })}
-                    propertyId={elecFormData.property_id}
-                    excludeId={selectedElecBill?.id}
-                    excludeType="electricity"
-                    label="Phone Number (Optional)"
-                    placeholder="Enter 10 digit mobile number"
-                  />
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Penalty (Rs)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={elecFormData.penalty}
-                        onChange={(e) => setElecFormData({ ...elecFormData, penalty: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Total Amount (Rs) *</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={elecFormData.total_amount}
-                        onChange={(e) => setElecFormData({ ...elecFormData, total_amount: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Due Date *</Label>
-                      <Input
-                        type="date"
-                        required
-                        value={elecFormData.due_date}
-                        onChange={(e) => setElecFormData({ ...elecFormData, due_date: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label>Status *</Label>
+                      <Label>Property *</Label>
                       <Select
-                        value={elecFormData.status}
-                        onValueChange={(value) => setElecFormData({ ...elecFormData, status: value })}
+                        value={elecFormData.property_id}
+                        onValueChange={(value) => setElecFormData({ ...elecFormData, property_id: value })}
+                        required
                       >
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select property" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Paid">Paid</SelectItem>
-                          <SelectItem value="Unpaid">Unpaid</SelectItem>
+                          {properties.map((prop) => (
+                            <SelectItem key={prop.id} value={prop.id}>
+                              {prop.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
 
-                  {elecFormData.status === 'Paid' && (
-                    <div>
-                      <Label>Payment Date *</Label>
-                      <Input
-                        type="date"
-                        required
-                        value={elecFormData.payment_date}
-                        onChange={(e) => setElecFormData({ ...elecFormData, payment_date: e.target.value })}
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Billing Period Start *</Label>
+                        <Input
+                          type="date"
+                          required
+                          value={elecFormData.billing_period_start}
+                          onChange={(e) => setElecFormData({ ...elecFormData, billing_period_start: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Billing Period End *</Label>
+                        <Input
+                          type="date"
+                          required
+                          value={elecFormData.billing_period_end}
+                          onChange={(e) => setElecFormData({ ...elecFormData, billing_period_end: e.target.value })}
+                        />
+                      </div>
                     </div>
-                  )}
 
-                  <FileUploadSection
-                    id="elec-receipt-upload"
-                    currentUrl={elecFormData.bill_url}
-                    selectedFile={elecSelectedFile}
-                    filePreview={elecFilePreview}
-                    onFileSelect={handleElecFileSelect}
-                    onClear={clearElecSelectedFile}
-                    label="Bill Document"
-                    propertyName={properties.find(p => p.id === elecFormData.property_id)?.name || 'Property'}
-                    documentType="Electricity_Bill"
-                    date={elecFormData.billing_period_start}
-                  />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Previous Reading (kWh) *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={elecFormData.previous_reading}
+                          onChange={(e) => setElecFormData({ ...elecFormData, previous_reading: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Current Reading (kWh) *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={elecFormData.current_reading}
+                          onChange={(e) => setElecFormData({ ...elecFormData, current_reading: e.target.value })}
+                        />
+                      </div>
+                    </div>
 
-                  <Button type="submit" className="w-full bg-blue-800 hover:bg-blue-900" disabled={uploading}>
-                    {uploading ? 'Uploading...' : 'Create Bill'}
-                  </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
-            {selectedProperty !== 'all' && (
-      <ElectricityBillFetcher 
-        propertyId={selectedProperty}
-        onSuccess={fetchData}
-        operatorCodes={operatorCodes}
-      />
-    )}
-          </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <Label>Slab Charges (Rs) *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={elecFormData.slab_charges}
+                          onChange={(e) => setElecFormData({ ...elecFormData, slab_charges: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Fixed Charges (Rs) *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={elecFormData.fixed_charges}
+                          onChange={(e) => setElecFormData({ ...elecFormData, fixed_charges: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Taxes (Rs) *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={elecFormData.taxes}
+                          onChange={(e) => setElecFormData({ ...elecFormData, taxes: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <PhoneNumberInput
+                      value={elecFormData.phone_number || ''}
+                      onChange={(value) => setElecFormData({ ...elecFormData, phone_number: value })}
+                      propertyId={elecFormData.property_id}
+                      excludeId={selectedElecBill?.id}
+                      excludeType="electricity"
+                      label="Phone Number (Optional)"
+                      placeholder="Enter 10 digit mobile number"
+                    />
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Penalty (Rs)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={elecFormData.penalty}
+                          onChange={(e) => setElecFormData({ ...elecFormData, penalty: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Total Amount (Rs) *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={elecFormData.total_amount}
+                          onChange={(e) => setElecFormData({ ...elecFormData, total_amount: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Due Date *</Label>
+                        <Input
+                          type="date"
+                          required
+                          value={elecFormData.due_date}
+                          onChange={(e) => setElecFormData({ ...elecFormData, due_date: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label>Status *</Label>
+                        <Select
+                          value={elecFormData.status}
+                          onValueChange={(value) => setElecFormData({ ...elecFormData, status: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Paid">Paid</SelectItem>
+                            <SelectItem value="Unpaid">Unpaid</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {elecFormData.status === 'Paid' && (
+                      <div>
+                        <Label>Payment Date *</Label>
+                        <Input
+                          type="date"
+                          required
+                          value={elecFormData.payment_date}
+                          onChange={(e) => setElecFormData({ ...elecFormData, payment_date: e.target.value })}
+                        />
+                      </div>
+                    )}
+
+                    <FileUploadSection
+                      id="elec-receipt-upload"
+                      currentUrl={elecFormData.bill_url}
+                      selectedFile={elecSelectedFile}
+                      filePreview={elecFilePreview}
+                      onFileSelect={handleElecFileSelect}
+                      onClear={clearElecSelectedFile}
+                      label="Bill Document"
+                      propertyName={properties.find(p => p.id === elecFormData.property_id)?.name || 'Property'}
+                      documentType="Electricity_Bill"
+                      date={elecFormData.billing_period_start}
+                    />
+
+                    <Button type="submit" className="w-full bg-blue-800 hover:bg-blue-900" disabled={uploading}>
+                      {uploading ? 'Uploading...' : 'Create Bill'}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+              {selectedProperty !== 'all' && (
+                <ElectricityBillFetcher 
+                  propertyId={selectedProperty}
+                  onSuccess={fetchData}
+                  operatorCodes={operatorCodes}
+                />
+              )}
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -1492,7 +1533,10 @@ useEffect(() => {
                 getPropertyName={getPropertyName} 
                 onView={handleViewElecBill}
                 onEdit={handleEditElecBill}
-                onDelete={handleDeleteElecBill}
+                onDelete={() => {
+                  setItemToDelete(bill.id);
+                  setDeleteElecDialogOpen(true);
+                }}
                 onViewReceipt={openReceipt}
               />
             ))}
@@ -1522,6 +1566,7 @@ useEffect(() => {
                   <DialogTitle>Add Solar Net Metering Data</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleSolarSubmit} className="space-y-4">
+                  {/* Form content remains the same */}
                   <div>
                     <Label>Property *</Label>
                     <Select
@@ -1694,7 +1739,10 @@ useEffect(() => {
                 getPropertyName={getPropertyName}
                 onView={handleViewSolarMeter}
                 onEdit={handleEditSolarMeter}
-                onDelete={handleDeleteSolarMeter}
+                onDelete={() => {
+                  setItemToDelete(meter.id);
+                  setDeleteSolarDialogOpen(true);
+                }}
                 onViewReceipt={openReceipt}
               />
             ))}
@@ -1773,7 +1821,7 @@ const ElectricityBillCard = ({ bill, getPropertyName, onView, onEdit, onDelete, 
               size="sm"
               variant="ghost"
               className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-              onClick={() => onDelete(bill.id)}
+              onClick={onDelete}
               data-testid={`delete-electricity-${bill.id}`}
             >
               <Trash2 size={16} />
@@ -1873,7 +1921,7 @@ const SolarMeterCard = ({ meter, getPropertyName, onView, onEdit, onDelete, onVi
               size="sm"
               variant="ghost"
               className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-              onClick={() => onDelete(meter.id)}
+              onClick={onDelete}
               data-testid={`delete-solar-${meter.id}`}
             >
               <Trash2 size={16} />

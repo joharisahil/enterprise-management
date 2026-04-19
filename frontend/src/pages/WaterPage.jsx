@@ -10,6 +10,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import PhoneNumberInput from '@/components/ui/PhoneNumberInput';
 
 const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
@@ -295,6 +305,10 @@ export const WaterPage = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
+  
+  // Delete confirmation dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
   // File upload states
   const [selectedFile, setSelectedFile] = useState(null);
@@ -463,6 +477,21 @@ export const WaterPage = () => {
     clearSelectedFile();
   };
 
+  const handleDeleteBill = async () => {
+    if (!itemToDelete) return;
+    
+    try {
+      await api.delete(`/water-bills/${itemToDelete}`);
+      toast.success('Water bill deleted');
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+      fetchData();
+    } catch (error) {
+      console.error("API Error:", error);
+      toast.error('Failed to delete water bill');
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -561,19 +590,6 @@ export const WaterPage = () => {
     setViewDialogOpen(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this water bill?')) return;
-
-    try {
-      await api.delete(`/water-bills/${id}`);
-      toast.success('Water bill deleted');
-      fetchData();
-    } catch (error) {
-      console.error("API Error:", error);
-      toast.error('Failed to delete water bill');
-    }
-  };
-
   const getPropertyName = (propertyId) => {
     const prop = properties.find(p => p.id === propertyId);
     return prop ? prop.name : propertyId;
@@ -628,6 +644,24 @@ export const WaterPage = () => {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Water Bill</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this water bill? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setItemToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteBill} className="bg-rose-600 hover:bg-rose-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => {
@@ -829,7 +863,10 @@ export const WaterPage = () => {
                       size="sm"
                       variant="ghost"
                       className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                      onClick={() => handleDelete(bill.id)}
+                      onClick={() => {
+                        setItemToDelete(bill.id);
+                        setDeleteDialogOpen(true);
+                      }}
                       data-testid={`delete-water-${bill.id}`}
                     >
                       <Trash2 size={16} />
