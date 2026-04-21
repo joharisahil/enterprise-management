@@ -430,53 +430,51 @@ class SurepassService:
                     "success": False,
                     "error": "API key not configured"
                 }
-            
+        
             # First API: Get FASTag verification details with transactions
             verification_headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}"
             }
-            
+        
             verification_payload = {
                 "rc_number": rc_number
             }
-            
+        
             logger.info(f"Fetching FASTag verification for RC: {rc_number}")
-            logger.info(f"Verification URL: {self.fastag_verification_url}")
-            logger.info(f"Verification Payload: {verification_payload}")
-            
+        
             async with httpx.AsyncClient(timeout=30.0) as client:
+                 # First API call - Get verification and transactions
                 response = await client.post(
                     self.fastag_verification_url,
                     json=verification_payload,
                     headers=verification_headers
                 )
-                
+            
                 logger.info(f"Verification API response status: {response.status_code}")
-                logger.info(f"Verification API response body: {response.text}")
-                
+            
                 if response.status_code != 200:
                     logger.error(f"FASTag verification API error: {response.status_code} - {response.text}")
                     return {
                         "success": False,
-                        "error": f"API error: {response.status_code} - {response.text}"
+                        "error": f"API error: {response.status_code}"
                     }
-                
+            
                 verification_data = response.json()
-                
+            
                 if not verification_data.get("success"):
                     logger.error(f"FASTag verification unsuccessful: {verification_data}")
                     return {
                         "success": False,
                         "error": verification_data.get("message", "Failed to fetch FASTag details")
                     }
-                
+            
                 # Get the provider name from verification response
                 bank_name = verification_data.get("data", {}).get("bank_name")
                 tag_id = verification_data.get("data", {}).get("tag_id")
-                
+            
                 logger.info(f"Bank name from verification: {bank_name}, Tag ID: {tag_id}")
-                
+            
                 # If no bank name, return just the verification data
                 if not bank_name:
                     logger.warning(f"No bank name found for RC: {rc_number}")
@@ -488,61 +486,111 @@ class SurepassService:
                             "bank_name": None,
                             "tag_status": verification_data.get("data", {}).get("status", "Unknown"),
                             "transactions": verification_data.get("data", {}).get("transactions", []),
-                            "available_balance": None,
-                            "available_recharge_limit": None,
+                            "available_balance": "0",
+                            "available_recharge_limit": "0",
                             "customer_name": None,
                             "vehicle_class": None,
                             "vehicle_class_desc": None
                         }
                     }
-                
+            
                 # Map bank name to provider name for second API
                 provider_mapping = {
                     "IDFC First Bank": "idfc_first_bank",
                     "HDFC Bank": "hdfc_bank",
                     "ICICI Bank": "icici_bank",
                     "Axis Bank": "axis_bank",
-                    "SBI": "sbi",
-                    "Paytm": "paytm"
+                    "SBI": "state_bank_of_india_netc",
+                    "State Bank of India": "state_bank_of_india_netc",
+                    "Paytm": "paytm",
+                    "IDBI Bank": "idbi_bank",
+                    "AU Small Finance Bank": "au_bank",
+                    "AU Bank": "au_bank",
+                    "Canara Bank": "canara_bank",
+                    "Union Bank of India": "union_bank_of_india",
+                    "UCO Bank": "uco_bank",
+                    "Federal Bank": "federal_bank_-",
+                    "Airtel Payments Bank": "airtel_payments_bank_netc",
+                    "Airtel Bank": "airtel_payments_bank_netc",
+                    "Indian Bank": "indian_bank_recharge",
+                    "Equitas Small Finance Bank": "equitas_recharge",
+                    "Equitas Bank": "equitas_recharge",
+                    "IOB": "iob",
+                    "Indian Overseas Bank": "iob",
+                    "Karnataka Bank": "karnataka_bank",
+                    "Yes Bank": "yes_bank",
+                    "Bajaj Pay": "bajaj_pay",
+                    "Bank of Baroda": "bank_of_baroda",
+                    "Jammu and Kashmir Bank": "jammu_and_kashmir_bank",
+                    "J&K Bank": "jammu_and_kashmir_bank",
+                    "IndusInd Bank": "indusind_bank",
+                    "Indian Highways Management Company": "indian_highways_management_company_ltd",
+                    "IHMCL": "indian_highways_management_company_ltd",
+                    "LivQuik": "livquik_technology_india_private_limited",
+                    "LivQuik Technology": "livquik_technology_india_private_limited",
+                    "South Indian Bank": "south_indian_bank",
+                    "Bandhan Bank": "bandhan_bank",
+                    "Bank of Maharashtra": "bank_of_maharashtra",
+                    "Kotak Mahindra Bank": "kotak_mahindra_bank",
+                    "Kotak Bank": "kotak_mahindra_bank",
                 }
-                
+            
                 provider_name = provider_mapping.get(bank_name, "idfc_first_bank")
-                
+            
                 # Second API: Get balance details
                 balance_headers = {
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {self.api_key}"
                 }
-                
+            
                 balance_payload = {
                     "rc_number": rc_number,
                     "provider_name": provider_name
                 }
-                
+            
                 logger.info(f"Fetching FASTag balance for RC: {rc_number} with provider: {provider_name}")
-                logger.info(f"Balance Payload: {balance_payload}")
-                logger.info(f"Balance URL: {self.fastag_balance_url}")
-                
+            
                 balance_response = await client.post(
                     self.fastag_balance_url,
                     json=balance_payload,
                     headers=balance_headers
                 )
-                
+            
                 logger.info(f"Balance API response status: {balance_response.status_code}")
-                logger.info(f"Balance API response body: {balance_response.text}")
-                
-                balance_data = {}
+            
+                # Initialize default balance data
+                available_balance = "0"
+                available_recharge_limit = "0"
+                customer_name = None
+                vehicle_class = None
+                vehicle_class_desc = None
+                tag_status = verification_data.get("data", {}).get("status", "Unknown")
+            
+                # Parse balance response if successful
                 if balance_response.status_code == 200:
                     try:
                         balance_data = balance_response.json()
-                        logger.info(f"Balance data parsed successfully")
+                        logger.info(f"Balance API response: {balance_data}")
+                    
+                        if balance_data.get("success"):
+                            balance_info = balance_data.get("data", {})
+                            # Extract balance values (handle both string and number formats)
+                            available_balance = str(balance_info.get("available_balance", "0"))
+                            available_recharge_limit = str(balance_info.get("available_recharge_limit", "0"))
+                            customer_name = balance_info.get("customer_name")
+                            vehicle_class = balance_info.get("vehicle_class")
+                            vehicle_class_desc = balance_info.get("vehicle_class_desc")
+                            # Update tag status if available in balance response
+                            if balance_info.get("tag_status"):
+                                tag_status = balance_info.get("tag_status")
+                        else:
+                            logger.warning(f"Balance API returned success=false: {balance_data}")
+                        
                     except Exception as e:
                         logger.error(f"Failed to parse balance response: {e}")
-                        balance_data = {}
                 else:
                     logger.warning(f"Balance API returned non-200 status: {balance_response.status_code}")
-                
+            
                 # Combine both responses
                 result = {
                     "success": True,
@@ -550,27 +598,36 @@ class SurepassService:
                         "rc_number": rc_number,
                         "tag_id": tag_id,
                         "bank_name": bank_name,
-                        "provider_code": balance_data.get("data", {}).get("provider_code"),
-                        "customer_name": balance_data.get("data", {}).get("customer_name"),
-                        "available_balance": balance_data.get("data", {}).get("available_balance"),
-                        "available_recharge_limit": balance_data.get("data", {}).get("available_recharge_limit"),
-                        "tag_status": balance_data.get("data", {}).get("tag_status", verification_data.get("data", {}).get("status", "Unknown")),
-                        "vehicle_class": balance_data.get("data", {}).get("vehicle_class"),
-                        "vehicle_class_desc": balance_data.get("data", {}).get("vehicle_class_desc"),
+                        "provider_code": None,  # Will be set if available from balance response
+                        "customer_name": customer_name,
+                        "available_balance": available_balance,
+                        "available_recharge_limit": available_recharge_limit,
+                        "tag_status": tag_status,
+                        "vehicle_class": vehicle_class,
+                        "vehicle_class_desc": vehicle_class_desc,
                         "transactions": verification_data.get("data", {}).get("transactions", [])
                     }
                 }
-                
-                logger.info(f"Successfully fetched FASTag details for {rc_number}")
+            
+                # Add provider_code if available from balance response
+                if balance_response.status_code == 200:
+                    try:
+                        balance_data = balance_response.json()
+                        if balance_data.get("success") and balance_data.get("data", {}).get("provider_code"):
+                            result["data"]["provider_code"] = balance_data["data"]["provider_code"]
+                    except:
+                        pass
+            
+                logger.info(f"Successfully fetched FASTag details for {rc_number}. Balance: {available_balance}")
                 return result
-                
+            
         except Exception as e:
             logger.error(f"Error fetching FASTag details: {e}", exc_info=True)
             return {
                 "success": False,
-                "error": str(e)
+                 "error": str(e)
             }
-
+        
     async def fetch_fastag_transactions(self, rc_number: str):
         """
         Fetch only FASTag transaction details
@@ -671,8 +728,8 @@ class SurepassService:
         cleaned_operator_code = operator_code.upper().strip()
          
         # Validate operator_code length (should be 2 characters like MH, DL, etc.)
-        if len(cleaned_operator_code) != 2:
-            logger.warning(f"Operator code {cleaned_operator_code} is not 2 characters long") 
+        if len(cleaned_operator_code) < 2 or len(cleaned_operator_code) > 4:
+            logger.warning(f"Operator code {cleaned_operator_code} has unusual length ({len(cleaned_operator_code)} chars)")
     
         payload = {
             "id_number": cleaned_consumer_id,

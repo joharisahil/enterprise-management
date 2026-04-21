@@ -353,9 +353,10 @@ async def fetch_electricity_bill_from_surepass(
     if not property_id:
         raise HTTPException(status_code=400, detail="Property ID is required")
     
-    # Validate operator code format
-    if len(operator_code) != 3:
-        raise HTTPException(status_code=400, detail="Operator code must be 2 characters (e.g., MH, DL, GJ)")
+    # FIX: Remove the 3-character validation - operator codes can be 2-4 characters
+    # Instead, just validate it's not empty
+    if len(operator_code) < 2:
+        raise HTTPException(status_code=400, detail="Operator code must be at least 2 characters")
     
     # Verify property exists
     property = await db.properties.find_one({"id": property_id, "is_deleted": False})
@@ -397,6 +398,7 @@ async def fetch_electricity_bill_from_surepass(
         "bill_data": bill_data,
         "message": "Electricity bill details fetched successfully"
     }
+
 @api_router.post("/electricity-bills/save-from-surepass")
 async def save_electricity_bill_from_surepass(
     data: dict,
@@ -501,25 +503,61 @@ async def get_electricity_operator_codes(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Get list of electricity operator codes
+    Get list of electricity operator codes from Surepass
     """
     operator_codes = [
-        {"code": "MH", "name": "Maharashtra", "state": "Maharashtra"},
-        {"code": "DL", "name": "Delhi", "state": "Delhi"},
-        {"code": "GJ", "name": "Gujarat", "state": "Gujarat"},
+        {"code": "AS", "name": "Assam", "state": "Assam"},
+        {"code": "AJ", "name": "Rajasthan (Ajmer)", "state": "Rajasthan"},
+        {"code": "APS", "name": "Andhra Pradesh", "state": "Andhra Pradesh"},
+        {"code": "BG", "name": "West Bengal", "state": "West Bengal"},
+        {"code": "BS", "name": "Karnataka (BESCOM)", "state": "Karnataka"},
+        {"code": "BR", "name": "BSES Rajdhani Delhi", "state": "Delhi"},
+        {"code": "BY", "name": "BSES Yamuna Delhi", "state": "Delhi"},
+        {"code": "CD", "name": "Chandigarh", "state": "Chandigarh"},
+        {"code": "CH", "name": "Chhattisgarh", "state": "Chhattisgarh"},
+        {"code": "CS", "name": "Karnataka (CESCOM)", "state": "Karnataka"},
+        {"code": "DDM", "name": "Daman and Diu", "state": "Daman and Diu"},
+        {"code": "DG", "name": "Gujarat (DGVCL)", "state": "Gujarat"},
+        {"code": "DH", "name": "Haryana (DHBVN)", "state": "Haryana"},
+        {"code": "DL", "name": "Delhi (Tata Power)", "state": "Delhi"},
+        {"code": "DNH", "name": "Dadra and Nagar Haveli", "state": "Dadra and Nagar Haveli"},
+        {"code": "GO", "name": "Goa", "state": "Goa"},
+        {"code": "GS", "name": "Karnataka (GESCOM)", "state": "Karnataka"},
+        {"code": "HP", "name": "Himachal Pradesh", "state": "Himachal Pradesh"},
+        {"code": "HS", "name": "Karnataka (HESCOM)", "state": "Karnataka"},
+        {"code": "JD", "name": "Rajasthan (Jodhpur)", "state": "Rajasthan"},
+        {"code": "JP", "name": "Rajasthan (Jaipur)", "state": "Rajasthan"},
+        {"code": "KP", "name": "Kanpur", "state": "Uttar Pradesh"},
+        {"code": "KC", "name": "West Bengal (Kolkata)", "state": "West Bengal"},
+        {"code": "MG", "name": "Gujarat (MGVCL)", "state": "Gujarat"},
+        {"code": "MH", "name": "Maharashtra (MSEDCL)", "state": "Maharashtra"},
+        {"code": "MPC", "name": "Madhya Pradesh (Central)", "state": "Madhya Pradesh"},
+        {"code": "MPE", "name": "Madhya Pradesh (East)", "state": "Madhya Pradesh"},
+        {"code": "MPW", "name": "Madhya Pradesh (West)", "state": "Madhya Pradesh"},
+        {"code": "MS", "name": "Karnataka (MESCOM)", "state": "Karnataka"},
+        {"code": "MU", "name": "Mumbai (Tata Power)", "state": "Maharashtra"},
+        {"code": "AEML", "name": "Mumbai (Adani Electricity)", "state": "Maharashtra"},
+        {"code": "NB", "name": "Bihar (North Bihar)", "state": "Bihar"},
+        {"code": "NG", "name": "Nagaland", "state": "Nagaland"},
+        {"code": "OD", "name": "Odisha", "state": "Odisha"},
+        {"code": "PG", "name": "Gujarat (PGVCL)", "state": "Gujarat"},
+        {"code": "PN", "name": "Punjab", "state": "Punjab"},
+        {"code": "SB", "name": "Bihar (South Bihar)", "state": "Bihar"},
+        {"code": "TG", "name": "Torrent Power (Gujarat)", "state": "Gujarat"},
+        {"code": "TL", "name": "Telangana", "state": "Telangana"},
         {"code": "TN", "name": "Tamil Nadu", "state": "Tamil Nadu"},
-        {"code": "KA", "name": "Karnataka", "state": "Karnataka"},
-        {"code": "PUP", "name": "Uttar Pradesh", "state": "Uttar Pradesh"},
-        {"code": "WB", "name": "West Bengal", "state": "West Bengal"},
-        {"code": "RJ", "name": "Rajasthan", "state": "Rajasthan"},
-        {"code": "MP", "name": "Madhya Pradesh", "state": "Madhya Pradesh"},
-        {"code": "AP", "name": "Andhra Pradesh", "state": "Andhra Pradesh"},
-        {"code": "TS", "name": "Telangana", "state": "Telangana"},
-        {"code": "KL", "name": "Kerala", "state": "Kerala"},
-        {"code": "PB", "name": "Punjab", "state": "Punjab"},
-        {"code": "HR", "name": "Haryana", "state": "Haryana"},
-        {"code": "BR", "name": "Bihar", "state": "Bihar"},
+        {"code": "TR", "name": "Tripura", "state": "Tripura"},
+        {"code": "UG", "name": "Gujarat (UGVCL)", "state": "Gujarat"},
+        {"code": "UH", "name": "Haryana (UHBVN)", "state": "Haryana"},
+        {"code": "UK", "name": "Uttarakhand", "state": "Uttarakhand"},
+        {"code": "UP", "name": "Uttar Pradesh (UPPCL)", "state": "Uttar Pradesh"},
+        {"code": "PUP", "name": "Purvanchal Uttar Pradesh", "state": "Uttar Pradesh"},
+        {"code": "MUP", "name": "Madhyanchal Uttar Pradesh", "state": "Uttar Pradesh"},
     ]
+    
+    # Sort by state name for better UX
+    operator_codes.sort(key=lambda x: x["state"])
+    
     return {"data": operator_codes}
 
 @api_router.post("/electricity-bills")
@@ -883,7 +921,6 @@ async def save_gas_bill_from_surepass(
         "bill_id": bill_id,
         "message": "Gas bill saved successfully"
     }
-
 @api_router.get("/gas-bills/provider-list")
 async def get_gas_providers(
     current_user: dict = Depends(get_current_user)
