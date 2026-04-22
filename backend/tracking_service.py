@@ -12,6 +12,21 @@ class TrackingService:
         self.token = None
         self.token_expiry = None
 
+    def normalize_status(self, v):
+        speed = self.safe_int(v.get("Speed"))
+        ignition = v.get("IGN")
+        api_status = (v.get("Status") or "").upper()
+
+        if api_status == "INACTIVE":
+            return "OFFLINE"
+
+        if ignition == "OFF":
+            return "STOPPED"
+
+        if speed == 0:
+            return "IDLE"
+
+        return "MOVING"
     # 🔹 SAFE PARSERS
     def safe_int(self, val):
         try:
@@ -147,7 +162,8 @@ class TrackingService:
                 "lat": self.safe_float(v.get("Latitude")),
                 "lng": self.safe_float(v.get("Longitude")),
                 "speed": self.safe_int(v.get("Speed")),
-                "status": v.get("Status"),
+                "status": v.get("Status"),  # raw
+                "movement_status": self.normalize_status(v),  # clean
                 "ignition": v.get("IGN"),
 
                 
@@ -172,11 +188,22 @@ class TrackingService:
                 )
 
                 if last:
-                    if last.get("lat") == record["lat"] and last.get("lng") == record["lng"]:
-                        print("⚠️ Duplicate, skipping")
+                    same_location = (
+                        abs(last.get("lat", 0) - record["lat"]) < 0.00001 and
+                        abs(last.get("lng", 0) - record["lng"]) < 0.00001
+                    )
+
+                    same_state = last.get("movement_status") == record["movement_status"]
+                    same_speed = last.get("speed") == record["speed"]
+                    same_ignition = last.get("ignition") == record["ignition"]
+
+                    # 🔥 FINAL SMART CHECK
+                    if same_location and same_state and same_speed and same_ignition:
+                        print("⚠️ Exact duplicate, skipping")
                         continue
                 else:
                     print("🔥 First record — inserting")
+            
 
                 # 🔹 LIVE COLLECTION
                 await self.db.vehicle_live.update_one(
