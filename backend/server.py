@@ -1293,7 +1293,7 @@ async def export_vehicles_csv(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/vehicles/export/excel")
 async def export_vehicles_excel(current_user: dict = Depends(get_current_user)):
-    """Export all vehicles to a professional Excel file with all fields"""
+    """Export all vehicles to a professional Excel file with all fields including document expiry dates"""
     try:
         vehicles = await db.vehicles.find({"is_deleted": False}, {"_id": 0}).to_list(1000)
         
@@ -1304,27 +1304,94 @@ async def export_vehicles_excel(current_user: dict = Depends(get_current_user)):
         def clean_date(value):
             if not value:
                 return ""
-            # If it's already a string, remove the time part if it exists
             if isinstance(value, str):
-                # Check if it's an ISO date string with time
                 if 'T' in value:
-                    # Split at T and take only the date part
                     return value.split('T')[0]
-                # Try to parse as datetime
                 try:
                     dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
                     return dt.strftime('%Y-%m-%d')
                 except:
-                    # If parsing fails, return as is
                     return value
-            # If it's a datetime object
             if isinstance(value, datetime):
                 return value.strftime('%Y-%m-%d')
             return str(value)
         
-        # Prepare data for Excel
+        # Get CURRENT documents for all vehicles
+        vehicle_ids = [v["id"] for v in vehicles]
+        
+        # Fetch all current documents (only is_current = True)
+        documents = await db.vehicle_documents.find(
+            {
+                "vehicle_id": {"$in": vehicle_ids},
+                "is_current": True,
+                "is_deleted": False
+            },
+            {"_id": 0}
+        ).to_list(5000)
+        
+        # Group documents by vehicle_id
+        docs_by_vehicle = {}
+        for doc in documents:
+            vehicle_id = doc["vehicle_id"]
+            if vehicle_id not in docs_by_vehicle:
+                docs_by_vehicle[vehicle_id] = {}
+            
+            doc_type = doc.get("document_type", "")
+            docs_by_vehicle[vehicle_id][doc_type] = doc
+        
+        # Prepare data for Excel with document details
         excel_data = []
         for v in vehicles:
+            vehicle_docs = docs_by_vehicle.get(v["id"], {})
+            
+            # Get current document expiry dates
+            insurance_expiry = ""
+            puc_expiry = ""
+            fitness_expiry = ""
+            tax_expiry = ""
+            
+            if "Insurance" in vehicle_docs:
+                insurance_expiry = clean_date(vehicle_docs["Insurance"].get("expiry_date"))
+            elif v.get("insurance_expiry"):
+                # Fallback to vehicle field if no document found
+                insurance_expiry = clean_date(v.get("insurance_expiry"))
+            
+            if "PUC" in vehicle_docs:
+                puc_expiry = clean_date(vehicle_docs["PUC"].get("expiry_date"))
+            elif v.get("puc_expiry"):
+                puc_expiry = clean_date(v.get("puc_expiry"))
+            
+            if "Fitness" in vehicle_docs:
+                fitness_expiry = clean_date(vehicle_docs["Fitness"].get("expiry_date"))
+            elif v.get("fit_up_to"):
+                fitness_expiry = clean_date(v.get("fit_up_to"))
+            
+            if "Tax" in vehicle_docs:
+                tax_expiry = clean_date(vehicle_docs["Tax"].get("expiry_date"))
+            elif v.get("tax_upto") and v.get("tax_upto") != "LIFETIME":
+                tax_expiry = clean_date(v.get("tax_upto"))
+            elif v.get("tax_upto") == "LIFETIME":
+                tax_expiry = "LIFETIME"
+            
+            # Get document numbers
+            insurance_policy = ""
+            if "Insurance" in vehicle_docs:
+                insurance_policy = vehicle_docs["Insurance"].get("policy_number", "")
+            elif v.get("insurance_policy_number"):
+                insurance_policy = v.get("insurance_policy_number", "")
+            
+            insurance_company = ""
+            if "Insurance" in vehicle_docs:
+                insurance_company = vehicle_docs["Insurance"].get("provider", "")
+            elif v.get("insurance_company"):
+                insurance_company = v.get("insurance_company", "")
+            
+            pucc_number = ""
+            if "PUC" in vehicle_docs:
+                pucc_number = vehicle_docs["PUC"].get("policy_number", "")
+            elif v.get("pucc_number"):
+                pucc_number = v.get("pucc_number", "")
+            
             excel_data.append({
                 "Registration Number": v.get("registration_number", ""),
                 "Vehicle Type": v.get("type", ""),
@@ -1335,20 +1402,18 @@ async def export_vehicles_excel(current_user: dict = Depends(get_current_user)):
                 "Engine Number": v.get("engine_number", ""),
                 "Color": v.get("color", ""),
                 "Fuel Type": v.get("fuel_type", ""),
-                "Average Mileage (km/l)": v.get("average_kmpl", ""),
-                "Tank Capacity (L)": v.get("tank_capacity_liters", ""),
                 "Seating Capacity": v.get("seating_capacity", ""),
                 "Owner Name": v.get("owner_name", ""),
                 "File Status": "Complete" if v.get("file_status") else "Incomplete",
                 "Site Name": v.get("site_name", ""),
                 "Date of Registration": clean_date(v.get("date_of_registration")),
-                "Tax Validity": v.get("tax_upto", ""),
-                "Insurance Expiry": clean_date(v.get("insurance_expiry")),
-                "Insurance Company": v.get("insurance_company", ""),
-                "Insurance Policy Number": v.get("insurance_policy_number", ""),
-                "PUC Expiry": clean_date(v.get("puc_expiry")),
-                "PUCC Number": v.get("pucc_number", ""),
-                "Fitness Upto": clean_date(v.get("fit_up_to")),
+                "Insurance Company": insurance_company,
+                "Insurance Policy Number": insurance_policy,
+                "Insurance Expiry": insurance_expiry,
+                "PUCC Number": pucc_number,
+                "PUC Expiry": puc_expiry,
+                "Fitness Upto": fitness_expiry,
+                "Tax Upto": tax_expiry,
                 "Registered At": v.get("registered_at", ""),
                 "Source": v.get("source", "Manual"),
                 "Last Synced": clean_date(v.get("last_synced")),
@@ -1387,53 +1452,98 @@ async def export_vehicles_excel(current_user: dict = Depends(get_current_user)):
                 adjusted_width = min(max_length + 2, 50)
                 worksheet.column_dimensions[column_letter].width = adjusted_width
             
+            # Color code expiry dates
+            from openpyxl.styles import PatternFill, Font
+            from openpyxl import load_workbook
+            
+            today = datetime.now(timezone.utc)
+            today_str = today.strftime('%Y-%m-%d')
+            
+            # Define fills
+            expired_fill = PatternFill(start_color="FF6B6B", end_color="FF6B6B", fill_type="solid")  # Red
+            critical_fill = PatternFill(start_color="FFB347", end_color="FFB347", fill_type="solid")  # Orange
+            warning_fill = PatternFill(start_color="FFE66D", end_color="FFE66D", fill_type="solid")  # Yellow
+            valid_fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")  # Green
+            
+            # Find column indices for expiry dates
+            col_map = {}
+            for col_idx, cell in enumerate(worksheet[1], 1):
+                if cell.value:
+                    col_map[cell.value] = col_idx
+            
+            expiry_columns = ["Insurance Expiry", "PUC Expiry", "Fitness Upto", "Tax Upto"]
+            expiry_col_indices = [col_map.get(col) for col in expiry_columns if col in col_map]
+            
+            # Apply color coding
+            for row_idx in range(2, len(excel_data) + 2):
+                for col_idx in expiry_col_indices:
+                    cell = worksheet.cell(row=row_idx, column=col_idx)
+                    expiry_str = cell.value
+                    
+                    if expiry_str and expiry_str != "LIFETIME":
+                        try:
+                            expiry_date = datetime.strptime(str(expiry_str), '%Y-%m-%d').date()
+                            today_date = today.date()
+                            
+                            if expiry_date < today_date:
+                                cell.fill = expired_fill
+                                cell.font = Font(color="FFFFFF", bold=True)
+                            elif (expiry_date - today_date).days <= 7:
+                                cell.fill = critical_fill
+                                cell.font = Font(bold=True)
+                            elif (expiry_date - today_date).days <= 30:
+                                cell.fill = warning_fill
+                        except Exception as e:
+                            logger.warning(f"Could not parse expiry date: {expiry_str}")
+            
             # Add summary sheet
             total_vehicles = len(vehicles)
             sold_vehicles = len([v for v in vehicles if v.get("sold")])
             active_vehicles = total_vehicles - sold_vehicles
-            surepass_sourced = len([v for v in vehicles if v.get("source") == "surepass"])
-            manual_sourced = total_vehicles - surepass_sourced
             
-            # Calculate document expiry statistics
-            today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            # Calculate document expiry statistics from current documents
             expired_insurance = 0
             expired_puc = 0
             expired_fitness = 0
+            expired_tax = 0
             
-            for v in vehicles:
-                insurance = clean_date(v.get("insurance_expiry"))
-                if insurance and insurance < today_str:
-                    expired_insurance += 1
-                
-                puc = clean_date(v.get("puc_expiry"))
-                if puc and puc < today_str:
-                    expired_puc += 1
-                
-                fitness = clean_date(v.get("fit_up_to"))
-                if fitness and fitness < today_str:
-                    expired_fitness += 1
+            for doc in documents:
+                if doc.get("document_type") == "Insurance":
+                    expiry = clean_date(doc.get("expiry_date"))
+                    if expiry and expiry < today_str:
+                        expired_insurance += 1
+                elif doc.get("document_type") == "PUC":
+                    expiry = clean_date(doc.get("expiry_date"))
+                    if expiry and expiry < today_str:
+                        expired_puc += 1
+                elif doc.get("document_type") == "Fitness":
+                    expiry = clean_date(doc.get("expiry_date"))
+                    if expiry and expiry < today_str:
+                        expired_fitness += 1
+                elif doc.get("document_type") == "Tax":
+                    expiry = clean_date(doc.get("expiry_date"))
+                    if expiry and expiry < today_str:
+                        expired_tax += 1
             
             summary_data = {
                 'Metric': [
                     'Total Vehicles',
                     'Active Vehicles',
                     'Sold Vehicles',
-                    'Surepass Sourced',
-                    'Manual Sourced',
-                    'Expired Insurance',
-                    'Expired PUC',
-                    'Expired Fitness',
+                    'Vehicles with Expired Insurance',
+                    'Vehicles with Expired PUC',
+                    'Vehicles with Expired Fitness',
+                    'Vehicles with Expired Tax',
                     'Export Date'
                 ],
                 'Value': [
                     total_vehicles,
                     active_vehicles,
                     sold_vehicles,
-                    surepass_sourced,
-                    manual_sourced,
                     expired_insurance,
                     expired_puc,
                     expired_fitness,
+                    expired_tax,
                     datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 ]
             }
@@ -1443,8 +1553,46 @@ async def export_vehicles_excel(current_user: dict = Depends(get_current_user)):
             
             # Auto-adjust summary sheet columns
             summary_sheet = writer.sheets['Summary']
-            summary_sheet.column_dimensions['A'].width = 25
+            summary_sheet.column_dimensions['A'].width = 35
             summary_sheet.column_dimensions['B'].width = 20
+            
+            # Add Documents Details sheet
+            doc_data = []
+            for doc in documents:
+                vehicle = next((v for v in vehicles if v["id"] == doc["vehicle_id"]), {})
+                doc_data.append({
+                    "Registration Number": vehicle.get("registration_number", "Unknown"),
+                    "Vehicle Model": f"{vehicle.get('brand', '')} {vehicle.get('model', '')}".strip(),
+                    "Document Type": doc.get("document_type", ""),
+                    "Policy Number": doc.get("policy_number", ""),
+                    "Provider": doc.get("provider", ""),
+                    "Issue Date": clean_date(doc.get("issue_date")),
+                    "Expiry Date": clean_date(doc.get("expiry_date")),
+                    "Status": doc.get("status", ""),
+                    "Days Until Expiry": (
+                        (datetime.strptime(clean_date(doc.get("expiry_date")), '%Y-%m-%d').date() - today.date()).days 
+                        if clean_date(doc.get("expiry_date")) else "N/A"
+                    ),
+                    "Source": doc.get("source", "Manual")
+                })
+            
+            if doc_data:
+                doc_df = pd.DataFrame(doc_data)
+                doc_df.to_excel(writer, sheet_name='Documents', index=False)
+                
+                # Auto-adjust documents sheet columns
+                doc_sheet = writer.sheets['Documents']
+                for column in doc_sheet.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 40)
+                    doc_sheet.column_dimensions[column_letter].width = adjusted_width
         
         output.seek(0)
         
@@ -1459,7 +1607,7 @@ async def export_vehicles_excel(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Error exporting vehicles to Excel: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to export: {str(e)}")
-        
+    
 @api_router.get("/vehicles/template/csv")
 async def get_vehicle_import_template(current_user: dict = Depends(get_current_user)):
     """Get CSV template for vehicle import with sample data"""
