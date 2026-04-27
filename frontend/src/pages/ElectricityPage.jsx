@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import api from '../utils/api';
 import { toast } from 'sonner';
-import { Zap, Sun, Plus, TrendingUp, AlertTriangle, Eye, Trash2, Phone, Upload, File, X } from 'lucide-react';
+import { Zap, Sun, Plus, TrendingUp, AlertTriangle, Eye, Trash2, Phone, Upload, File, X, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -34,6 +34,7 @@ export const ElectricityPage = () => {
   const [selectedProperty, setSelectedProperty] = useState('all');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   
   const [elecDialogOpen, setElecDialogOpen] = useState(false);
   const [solarDialogOpen, setSolarDialogOpen] = useState(false);
@@ -74,7 +75,7 @@ export const ElectricityPage = () => {
     payment_date: '',
     status: 'Unpaid',
     phone_number: '',
-    bill_url: '' // Add bill_url field
+    bill_url: ''
   });
 
   const [solarFormData, setSolarFormData] = useState({
@@ -91,7 +92,7 @@ export const ElectricityPage = () => {
     credit_carried_forward: '0',
     billable_units: '',
     phone_number: '',
-    meter_image_url: '' // Add meter_image_url field for solar meter photos
+    meter_image_url: ''
   });
 
   useEffect(() => {
@@ -118,19 +119,237 @@ export const ElectricityPage = () => {
   };
 
   const fetchOperatorCodes = async () => {
-  try {
-    const response = await api.get('/electricity-bills/operator-codes');
-    setOperatorCodes(response.data.data);
-  } catch (error) {
-    console.error('Failed to fetch operator codes:', error);
-  }
-};
+    try {
+      const response = await api.get('/electricity-bills/operator-codes');
+      setOperatorCodes(response.data.data);
+    } catch (error) {
+      console.error('Failed to fetch operator codes:', error);
+    }
+  };
 
-// Add to useEffect
-useEffect(() => {
-  fetchData();
-  fetchOperatorCodes();
-}, [selectedProperty]);
+  // Add to useEffect
+  useEffect(() => {
+    fetchData();
+    fetchOperatorCodes();
+  }, [selectedProperty]);
+
+  // ==================== EXPORT FUNCTIONALITY ====================
+  
+  const handleExportExcel = async () => {
+    console.log('📊 [ElectricityPage] Exporting electricity bills to Excel...');
+    setExporting(true);
+    
+    try {
+      // Get unique properties with their latest bill
+      const latestBillsByProperty = {};
+      
+      // Group bills by property and find the latest (by billing period end)
+      for (const bill of electricityBills) {
+        const propertyId = bill.property_id;
+        const property = properties.find(p => p.id === propertyId);
+        
+        // Parse billing period end date
+        const billDate = new Date(bill.billing_period_end);
+        
+        if (!latestBillsByProperty[propertyId] || 
+            new Date(latestBillsByProperty[propertyId].billing_period_end) < billDate) {
+          latestBillsByProperty[propertyId] = {
+            ...bill,
+            property_name: property?.name || propertyId,
+            property_type: property?.type || 'N/A',
+            property_address: property?.address || 'N/A',
+            property_area: property?.area_sqft || 'N/A'
+          };
+        }
+      }
+      
+      const latestBills = Object.values(latestBillsByProperty);
+      
+      if (latestBills.length === 0) {
+        toast.warning('No electricity bills to export');
+        setExporting(false);
+        return;
+      }
+      
+      // Prepare data for Excel
+      const exportData = latestBills.map(bill => ({
+        'Property Name': bill.property_name,
+        'Property Type': bill.property_type,
+        'Address': bill.property_address,
+        'Area (sq.ft)': bill.property_area,
+        'Billing Period Start': new Date(bill.billing_period_start).toLocaleDateString('en-IN'),
+        'Billing Period End': new Date(bill.billing_period_end).toLocaleDateString('en-IN'),
+        'Previous Reading (kWh)': bill.previous_reading,
+        'Current Reading (kWh)': bill.current_reading,
+        'Units Consumed (kWh)': bill.units_consumed,
+        'Slab Charges (₹)': bill.slab_charges,
+        'Fixed Charges (₹)': bill.fixed_charges,
+        'Taxes (₹)': bill.taxes,
+        'Penalty (₹)': bill.penalty || 0,
+        'Total Amount (₹)': bill.total_amount,
+        'Due Date': new Date(bill.due_date).toLocaleDateString('en-IN'),
+        'Status': bill.status,
+        'Payment Date': bill.payment_date ? new Date(bill.payment_date).toLocaleDateString('en-IN') : 'N/A',
+        'Phone Number': bill.phone_number || 'N/A',
+        'Has Bill Document': bill.bill_url ? 'Yes' : 'No'
+      }));
+      
+      // Create CSV content
+      const headers = Object.keys(exportData[0]);
+      const csvRows = [
+        headers.join(','),
+        ...exportData.map(row => 
+          headers.map(header => {
+            let value = row[header];
+            // Handle commas in values
+            if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+              value = `"${value.replace(/"/g, '""')}"`;
+            }
+            return value;
+          }).join(',')
+        )
+      ];
+      
+      const csvContent = csvRows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `electricity_bills_export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success(`Exported ${latestBills.length} latest electricity bills`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export electricity bills');
+    } finally {
+      setExporting(false);
+    }
+  };
+  
+  // Excel export with proper formatting using XLSX library (if available)
+  const handleExportExcelDetailed = async () => {
+    console.log('📊 [ElectricityPage] Exporting detailed electricity bills to Excel...');
+    setExporting(true);
+    
+    try {
+      // Import XLSX dynamically
+      const XLSX = await import('xlsx');
+      
+      // Get unique properties with their latest bill
+      const latestBillsByProperty = {};
+      
+      for (const bill of electricityBills) {
+        const propertyId = bill.property_id;
+        const property = properties.find(p => p.id === propertyId);
+        const billDate = new Date(bill.billing_period_end);
+        
+        if (!latestBillsByProperty[propertyId] || 
+            new Date(latestBillsByProperty[propertyId].billing_period_end) < billDate) {
+          latestBillsByProperty[propertyId] = {
+            ...bill,
+            property_name: property?.name || propertyId,
+            property_type: property?.type || 'N/A',
+            property_address: property?.address || 'N/A',
+            property_area: property?.area_sqft || 'N/A'
+          };
+        }
+      }
+      
+      const latestBills = Object.values(latestBillsByProperty);
+      
+      if (latestBills.length === 0) {
+        toast.warning('No electricity bills to export');
+        setExporting(false);
+        return;
+      }
+      
+      // Prepare data for Excel
+      const exportData = latestBills.map(bill => ({
+        'Property Name': bill.property_name,
+        'Property Type': bill.property_type,
+        'Address': bill.property_address,
+        'Area (sq.ft)': bill.property_area,
+        'Billing Period Start': new Date(bill.billing_period_start).toLocaleDateString('en-IN'),
+        'Billing Period End': new Date(bill.billing_period_end).toLocaleDateString('en-IN'),
+        'Previous Reading (kWh)': bill.previous_reading,
+        'Current Reading (kWh)': bill.current_reading,
+        'Units Consumed (kWh)': bill.units_consumed,
+        'Slab Charges (₹)': bill.slab_charges,
+        'Fixed Charges (₹)': bill.fixed_charges,
+        'Taxes (₹)': bill.taxes,
+        'Penalty (₹)': bill.penalty || 0,
+        'Total Amount (₹)': bill.total_amount,
+        'Due Date': new Date(bill.due_date).toLocaleDateString('en-IN'),
+        'Status': bill.status,
+        'Payment Date': bill.payment_date ? new Date(bill.payment_date).toLocaleDateString('en-IN') : 'N/A',
+        'Phone Number': bill.phone_number || 'N/A',
+        'Has Bill Document': bill.bill_url ? 'Yes' : 'No'
+      }));
+      
+      // Create workbook
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      
+      // Auto-size columns
+      const colWidths = [];
+      const headers = Object.keys(exportData[0]);
+      headers.forEach((header, idx) => {
+        let maxLength = header.length;
+        exportData.forEach(row => {
+          const value = row[header];
+          if (value) {
+            const strValue = value.toString();
+            maxLength = Math.max(maxLength, strValue.length);
+          }
+        });
+        colWidths[idx] = { wch: Math.min(maxLength + 2, 50) };
+      });
+      ws['!cols'] = colWidths;
+      
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Electricity Bills');
+      
+      // Add summary sheet
+      const totalAmount = latestBills.reduce((sum, bill) => sum + bill.total_amount, 0);
+      const paidAmount = latestBills.filter(b => b.status === 'Paid').reduce((sum, bill) => sum + bill.total_amount, 0);
+      const unpaidAmount = latestBills.filter(b => b.status === 'Unpaid').reduce((sum, bill) => sum + bill.total_amount, 0);
+      const totalUnits = latestBills.reduce((sum, bill) => sum + bill.units_consumed, 0);
+      
+      const summaryData = [
+        { 'Metric': 'Total Properties with Bills', 'Value': latestBills.length },
+        { 'Metric': 'Total Units Consumed (kWh)', 'Value': totalUnits },
+        { 'Metric': 'Total Amount (₹)', 'Value': totalAmount },
+        { 'Metric': 'Paid Amount (₹)', 'Value': paidAmount },
+        { 'Metric': 'Unpaid Amount (₹)', 'Value': unpaidAmount },
+        { 'Metric': 'Number of Paid Bills', 'Value': latestBills.filter(b => b.status === 'Paid').length },
+        { 'Metric': 'Number of Unpaid Bills', 'Value': latestBills.filter(b => b.status === 'Unpaid').length },
+        { 'Metric': 'Properties with Bill Document', 'Value': latestBills.filter(b => b.bill_url).length },
+        { 'Metric': 'Export Date', 'Value': new Date().toLocaleString('en-IN') }
+      ];
+      
+      const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+      wsSummary['!cols'] = [{ wch: 30 }, { wch: 20 }];
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+      
+      // Export file
+      XLSX.writeFile(wb, `electricity_bills_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+      
+      toast.success(`Exported ${latestBills.length} latest electricity bills to Excel`);
+    } catch (error) {
+      console.error('Export error:', error);
+      if (error.message && error.message.includes('xlsx')) {
+        toast.error('XLSX library not available. Using CSV export instead.');
+        handleExportExcel();
+      } else {
+        toast.error('Failed to export electricity bills');
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // File handling functions for electricity
   const handleElecFileSelect = (e) => {
@@ -681,6 +900,15 @@ useEffect(() => {
           </h1>
           <p className="text-slate-600">Track grid electricity and solar net metering</p>
         </div>
+        <Button 
+          variant="outline" 
+          onClick={handleExportExcelDetailed}
+          disabled={exporting || electricityBills.length === 0}
+          className="border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+        >
+          <Download size={16} className="mr-2" />
+          {exporting ? 'Exporting...' : 'Export to Excel'}
+        </Button>
       </div>
 
       {/* Delete Confirmation Dialog for Electricity Bill */}
@@ -1283,7 +1511,7 @@ useEffect(() => {
       </Dialog>
 
       {/* Property Filter */}
-      <div className="mb-6">
+      <div className="mb-6 flex justify-between items-center">
         <Select value={selectedProperty} onValueChange={setSelectedProperty}>
           <SelectTrigger className="w-64">
             <SelectValue />
@@ -1327,7 +1555,6 @@ useEffect(() => {
                     <DialogTitle>Add Electricity Bill</DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleElecSubmit} className="space-y-4">
-                    {/* Form content remains the same */}
                     <div>
                       <Label>Property *</Label>
                       <Select
@@ -1566,7 +1793,6 @@ useEffect(() => {
                   <DialogTitle>Add Solar Net Metering Data</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleSolarSubmit} className="space-y-4">
-                  {/* Form content remains the same */}
                   <div>
                     <Label>Property *</Label>
                     <Select
