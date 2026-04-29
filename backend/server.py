@@ -750,6 +750,31 @@ async def get_gas_bill(bill_id: str, current_user: dict = Depends(get_current_us
         raise HTTPException(status_code=404, detail="Gas bill not found")
     return bill
 
+@api_router.put("/gas-bills/{bill_id}")
+async def update_gas_bill(bill_id: str, bill_data: GasBillCreate, current_user: dict = Depends(get_current_user)):
+    """
+    Update an existing gas bill
+    """
+    update_data = bill_data.model_dump()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_by"] = current_user["user_id"]
+    update_data["billing_period_start"] = update_data["billing_period_start"].isoformat()
+    update_data["billing_period_end"] = update_data["billing_period_end"].isoformat()
+    update_data["due_date"] = update_data["due_date"].isoformat()
+    if update_data.get("payment_date"):
+        update_data["payment_date"] = update_data["payment_date"].isoformat()
+    
+    result = await db.gas_bills.update_one(
+        {"id": bill_id, "is_deleted": False}, 
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Gas bill not found")
+    
+    return {"message": "Gas bill updated successfully"}
+
+
 @api_router.delete("/gas-bills/{bill_id}")
 async def delete_gas_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
     result = await db.gas_bills.update_one(
