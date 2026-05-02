@@ -4900,6 +4900,81 @@ async def export_challans_current_view_excel(
         headers={"Content-Disposition": f"attachment; filename=challans_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"}
     )
 
+# Add this PUT endpoint for updating challan status after the existing challan endpoints
+
+@api_router.put("/challans/{challan_id}/status")
+async def update_challan_status(
+    challan_id: str,
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Update the status of a single challan (manual update)
+    """
+    new_status = data.get("status")
+    payment_date = data.get("payment_date")
+    
+    if new_status not in ["Paid", "Unpaid"]:
+        raise HTTPException(status_code=400, detail="Status must be 'Paid' or 'Unpaid'")
+    
+    # Find the challan
+    challan = await db.challans.find_one({"id": challan_id, "is_deleted": False})
+    if not challan:
+        raise HTTPException(status_code=404, detail="Challan not found")
+    
+    # Prepare update data
+    update_data = {
+        "status": new_status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": current_user["user_id"]
+    }
+    
+    # If status is being changed to Paid, set payment date
+    if new_status == "Paid":
+        if payment_date:
+            update_data["payment_date"] = datetime.fromisoformat(payment_date).isoformat()
+        else:
+            update_data["payment_date"] = datetime.now(timezone.utc).isoformat()
+    else:
+        # If changing to Unpaid, remove payment date
+        update_data["payment_date"] = None
+    
+    # Update the challan
+    result = await db.challans.update_one(
+        {"id": challan_id, "is_deleted": False},
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Challan not found")
+    
+    # Update driver risk score if driver is linked
+    if challan.get("driver_id"):
+        await update_driver_risk_score(challan["driver_id"])
+    
+    # Log the status change
+    try:
+        log_entry = {
+            "id": str(uuid.uuid4()),
+            "challan_id": challan_id,
+            "old_status": challan.get("status"),
+            "new_status": new_status,
+            "changed_by": current_user["user_id"],
+            "changed_at": datetime.now(timezone.utc).isoformat(),
+            "is_manual": True
+        }
+        await db.challan_status_logs.insert_one(log_entry)
+    except Exception as e:
+        logger.warning(f"Could not log challan status change: {e}")
+    
+    return {
+        "success": True,
+        "message": f"Challan status updated to {new_status}",
+        "challan_id": challan_id,
+        "new_status": new_status,
+        "payment_date": update_data.get("payment_date")
+    }
+
 # FASTag Balance and Transaction Routes
 
 @api_router.post("/vehicles/{vehicle_id}/fastag-balance")
