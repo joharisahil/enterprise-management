@@ -1190,7 +1190,60 @@ async def export_vehicles_csv(current_user: dict = Depends(get_current_user)):
     """Export all vehicles as CSV with comprehensive fields"""
     vehicles = await db.vehicles.find({"is_deleted": False}, {"_id": 0}).to_list(1000)
     
-    # Comprehensive CSV headers with user-friendly names
+    if not vehicles:
+        return {
+            "csv_data": "No vehicles found",
+            "filename": f"vehicles_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        }
+    
+    # Fetch documents
+    vehicle_ids = [v["id"] for v in vehicles]
+    documents = await db.vehicle_documents.find(
+        {"vehicle_id": {"$in": vehicle_ids}, "is_current": True, "is_deleted": False},
+        {"_id": 0}
+    ).to_list(5000)
+    
+    # Group documents by vehicle
+    docs_by_vehicle = {}
+    for doc in documents:
+        vehicle_id = doc["vehicle_id"]
+        if vehicle_id not in docs_by_vehicle:
+            docs_by_vehicle[vehicle_id] = {}
+        docs_by_vehicle[vehicle_id][doc.get("document_type", "")] = doc
+    
+    # Helper function to clean dates
+    def clean_date(value):
+        if not value:
+            return None
+        if isinstance(value, str):
+            if 'T' in value:
+                return value.split('T')[0]
+            try:
+                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                return dt.strftime('%Y-%m-%d')
+            except:
+                return value if value.strip() else None
+        if isinstance(value, datetime):
+            return value.strftime('%Y-%m-%d')
+        return str(value) if str(value).strip() else None
+    
+    # Helper function to check if value is valid/meaningful
+    def is_valid_value(value):
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return value.strip() not in ["", "None", "null", "NULL", "N/A", "n/a", "undefined"]
+        if isinstance(value, (int, float)):
+            return True
+        return bool(value)
+    
+    # Helper function to get display value (with Exempted for invalid/empty)
+    def get_display_value(value, default="Exempted"):
+        if is_valid_value(value):
+            return value
+        return default
+    
+    # Updated headers with Other Documents column
     headers = [
         "Registration Number", "Vehicle Type", "Brand", "Model", "Year", 
         "Chassis Number", "Engine Number", "Color", "Fuel Type", 
@@ -1198,124 +1251,138 @@ async def export_vehicles_csv(current_user: dict = Depends(get_current_user)):
         "Owner Name", "File Status", "Site Name", "Date of Registration", 
         "Tax Validity", "Insurance Expiry", "Insurance Company", 
         "Insurance Policy Number", "PUC Expiry", "PUCC Number", 
-        "Fitness Upto", "Registered At", "Source", "Last Synced", 
+        "Fitness Upto", "Other Documents",
+        "Registered At", "Source", "Last Synced", 
         "FASTag Company", "FASTag Balance", "FASTag Status", "Remark", 
-        " Status", "Sold Date"
+        "Sold Status", "Sold Date"
     ]
-    
-    # Helper function to clean date strings
-    def clean_date(value):
-        if not value:
-            return ""
-        # If it's already a string, remove the time part if it exists
-        if isinstance(value, str):
-            # Check if it's an ISO date string with time
-            if 'T' in value:
-                # Split at T and take only the date part
-                return value.split('T')[0]
-            # Try to parse as datetime
-            try:
-                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                return dt.strftime('%Y-%m-%d')
-            except:
-                # If parsing fails, return as is
-                return value
-        # If it's a datetime object
-        if isinstance(value, datetime):
-            return value.strftime('%Y-%m-%d')
-        return str(value)
     
     # Build CSV rows
     csv_rows = [",".join(f'"{h}"' for h in headers)]
     
     for v in vehicles:
-        row = []
-        for h in headers:
-            # Get the raw value from the vehicle
-            raw_value = None
-            if h == "Registration Number":
-                raw_value = v.get("registration_number", "")
-            elif h == "Vehicle Type":
-                raw_value = v.get("type", "")
-            elif h == "Brand":
-                raw_value = v.get("brand", "")
-            elif h == "Model":
-                raw_value = v.get("model", "")
-            elif h == "Year":
-                raw_value = v.get("year", "")
-            elif h == "Chassis Number":
-                raw_value = v.get("chassis_number", "")
-            elif h == "Engine Number":
-                raw_value = v.get("engine_number", "")
-            elif h == "Color":
-                raw_value = v.get("color", "")
-            elif h == "Fuel Type":
-                raw_value = v.get("fuel_type", "")
-            elif h == "Average Mileage (km/l)":
-                raw_value = v.get("average_kmpl", "")
-            elif h == "Tank Capacity (L)":
-                raw_value = v.get("tank_capacity_liters", "")
-            elif h == "Seating Capacity":
-                raw_value = v.get("seating_capacity", "")
-            elif h == "Owner Name":
-                raw_value = v.get("owner_name", "")
-            elif h == "File Status":
-                raw_value = "Complete" if v.get("file_status") else "Incomplete"
-            elif h == "Site Name":
-                raw_value = v.get("site_name", "")
-            elif h == "Date of Registration":
-                raw_value = clean_date(v.get("date_of_registration"))
-            elif h == "Tax Validity":
-                raw_value = clean_date(v.get("tax_upto"))
-            elif h == "Insurance Expiry":
-                raw_value = clean_date(v.get("insurance_expiry"))
-            elif h == "Insurance Company":
-                raw_value = v.get("insurance_company", "")
-            elif h == "Insurance Policy Number":
-                raw_value = v.get("insurance_policy_number", "")
-            elif h == "PUC Expiry":
-                raw_value = clean_date(v.get("puc_expiry"))
-            elif h == "PUCC Number":
-                raw_value = v.get("pucc_number", "")
-            elif h == "Fitness Upto":
-                raw_value = clean_date(v.get("fit_up_to"))
-            elif h == "Registered At":
-                raw_value = v.get("registered_at", "")
-            elif h == "Source":
-                raw_value = v.get("source", "Manual")
-            elif h == "Last Synced":
-                raw_value = clean_date(v.get("last_synced"))
-            elif h == "FASTag Company":
-                raw_value = v.get("fastag_company", "")
-            elif h == "FASTag Balance":
-                balance = v.get("fastag_balance")
-                raw_value = f"₹{balance:,.2f}" if balance else ""
-            elif h == "FASTag Status":
-                raw_value = v.get("fastag_status", "")
-            elif h == "Remark":
-                raw_value = v.get("remark", "")
-            elif h == "Sold Status":
-                raw_value = "Yes" if v.get("sold") else "No"
-            elif h == "Sold Date":
-                raw_value = clean_date(v.get("sold_date"))
-            
-            # Clean the value for CSV
-            if raw_value is None:
-                val = ""
-            elif isinstance(raw_value, bool):
-                val = "Yes" if raw_value else "No"
-            else:
-                val = str(raw_value).replace('"', '""').replace(",", ";").replace("\n", " ")
-            
-            row.append(f'"{val}"')
+        vehicle_docs = docs_by_vehicle.get(v["id"], {})
         
-        csv_rows.append(",".join(row))
+        # Collect other/custom documents
+        other_documents = []
+        for doc_type, doc in vehicle_docs.items():
+            if doc_type not in ["Insurance", "PUC", "Fitness", "Tax"]:
+                doc_name = doc.get("custom_document_name", doc_type)
+                doc_expiry = clean_date(doc.get("expiry_date"))
+                if doc_expiry:
+                    other_documents.append(f"{doc_name}: {doc_expiry}")
+                else:
+                    other_documents.append(f"{doc_name}: Exempted")
+        
+        other_docs_text = "; ".join(other_documents) if other_documents else "Exempted"
+        
+        # Get values with Exempted for invalid/empty
+        reg_number = get_display_value(v.get("registration_number", ""), "Not Added")
+        vehicle_type = get_display_value(v.get("type", ""))
+        brand = get_display_value(v.get("brand", ""))
+        model = get_display_value(v.get("model", ""))
+        year = get_display_value(v.get("year"))
+        chassis_number = get_display_value(v.get("chassis_number"))
+        engine_number = get_display_value(v.get("engine_number"))
+        color = get_display_value(v.get("color"))
+        fuel_type = get_display_value(v.get("fuel_type", ""))
+        avg_kmpl = get_display_value(v.get("average_kmpl"))
+        tank_capacity = get_display_value(v.get("tank_capacity_liters"))
+        seating_capacity = get_display_value(v.get("seating_capacity"))
+        owner_name = get_display_value(v.get("owner_name"))
+        file_status = "Complete" if v.get("file_status") else "Incomplete"
+        site_name = get_display_value(v.get("site_name"))
+        date_of_reg = get_display_value(clean_date(v.get("date_of_registration")))
+        
+        # Tax Validity
+        tax_validity = v.get("tax_upto")
+        if tax_validity == "LIFETIME":
+            tax_validity_display = "LIFETIME"
+        else:
+            tax_validity_display = get_display_value(clean_date(tax_validity))
+        
+        # Insurance Expiry
+        if "Insurance" in vehicle_docs:
+            insurance_expiry = get_display_value(clean_date(vehicle_docs["Insurance"].get("expiry_date")))
+        else:
+            insurance_expiry = get_display_value(clean_date(v.get("insurance_expiry")))
+        
+        # Insurance Company
+        if "Insurance" in vehicle_docs:
+            insurance_company = get_display_value(vehicle_docs["Insurance"].get("provider"))
+        else:
+            insurance_company = get_display_value(v.get("insurance_company"))
+        
+        # Insurance Policy Number
+        if "Insurance" in vehicle_docs:
+            insurance_policy = get_display_value(vehicle_docs["Insurance"].get("policy_number"))
+        else:
+            insurance_policy = get_display_value(v.get("insurance_policy_number"))
+        
+        # PUC Expiry
+        if "PUC" in vehicle_docs:
+            puc_expiry = get_display_value(clean_date(vehicle_docs["PUC"].get("expiry_date")))
+        else:
+            puc_expiry = get_display_value(clean_date(v.get("puc_expiry")))
+        
+        # PUCC Number
+        if "PUC" in vehicle_docs:
+            pucc_number = get_display_value(vehicle_docs["PUC"].get("policy_number"))
+        else:
+            pucc_number = get_display_value(v.get("pucc_number"))
+        
+        # Fitness Upto
+        if "Fitness" in vehicle_docs:
+            fitness_expiry = get_display_value(clean_date(vehicle_docs["Fitness"].get("expiry_date")))
+        else:
+            fitness_expiry = get_display_value(clean_date(v.get("fit_up_to")))
+        
+        # Other fields
+        registered_at = get_display_value(v.get("registered_at"))
+        source = get_display_value(v.get("source", "Manual"))
+        last_synced = get_display_value(clean_date(v.get("last_synced")))
+        fastag_company = get_display_value(v.get("fastag_company"))
+        
+        # FASTag Balance with currency formatting if valid
+        fastag_balance = v.get("fastag_balance")
+        if is_valid_value(fastag_balance):
+            fastag_balance_display = f"₹{fastag_balance:,.2f}"
+        else:
+            fastag_balance_display = "Exempted"
+        
+        fastag_status = get_display_value(v.get("fastag_status"))
+        remark = get_display_value(v.get("remark"))
+        sold_status = "Yes" if v.get("sold") else "No"
+        sold_date = get_display_value(clean_date(v.get("sold_date")))
+        
+        # Prepare row values
+        row_values = [
+            reg_number, vehicle_type, brand, model, year,
+            chassis_number, engine_number, color, fuel_type,
+            avg_kmpl, tank_capacity, seating_capacity,
+            owner_name, file_status, site_name, date_of_reg,
+            tax_validity_display, insurance_expiry, insurance_company, insurance_policy,
+            puc_expiry, pucc_number, fitness_expiry, other_docs_text,
+            registered_at, source, last_synced,
+            fastag_company, fastag_balance_display, fastag_status, remark,
+            sold_status, sold_date
+        ]
+        
+        # Clean and quote each value for CSV
+        formatted_row = []
+        for val in row_values:
+            if val is None:
+                val = "Exempted"
+            val_str = str(val).replace('"', '""').replace(",", ";").replace("\n", " ")
+            formatted_row.append(f'"{val_str}"')
+        
+        csv_rows.append(",".join(formatted_row))
     
     return {
         "csv_data": "\n".join(csv_rows),
         "filename": f"vehicles_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     }
-
+    
 @api_router.get("/vehicles/export/excel")
 async def export_vehicles_excel(current_user: dict = Depends(get_current_user)):
     """Export all vehicles to a professional Excel file with all fields including document expiry dates"""
