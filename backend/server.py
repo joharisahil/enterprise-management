@@ -332,6 +332,290 @@ async def delete_property_tax(tax_id: str, current_user: dict = Depends(get_curr
 
 # ==================== ELECTRICITY BILL ROUTES ====================
 
+
+# Add after your existing electricity bill routes
+
+@api_router.get("/electricity-bills/filter")
+async def filter_electricity_bills(
+    property_id: Optional[str] = Query(None, description="Filter by property ID"),
+    status: Optional[str] = Query(None, description="Filter by status (Paid/Unpaid)"),
+    payment_status: Optional[str] = Query(None, description="Filter by payment status"),
+    start_date: Optional[str] = Query(None, description="Filter by billing period start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter by billing period end date (YYYY-MM-DD)"),
+    min_amount: Optional[float] = Query(None, description="Minimum total amount"),
+    max_amount: Optional[float] = Query(None, description="Maximum total amount"),
+    has_document: Optional[bool] = Query(None, description="Has bill document or not"),
+    search: Optional[str] = Query(None, description="Search in property name or phone number"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Advanced filtering for electricity bills
+    """
+    query = {"is_deleted": False}
+    
+    # Filter by property ID
+    if property_id and property_id != "all":
+        query["property_id"] = property_id
+    
+    # Filter by status
+    if status and status != "all":
+        query["status"] = status
+    
+    # Handle payment status (overdue, upcoming, paid_on_time)
+    if payment_status and payment_status != "all":
+        today = datetime.now(timezone.utc).date()
+        
+        if payment_status == "overdue":
+            # Unpaid and due date passed
+            query["status"] = "Unpaid"
+            query["due_date"] = {"$lt": today.isoformat()}
+        elif payment_status == "upcoming":
+            # Unpaid but due date in future (within 7 days)
+            query["status"] = "Unpaid"
+            future_date = (today + timedelta(days=7)).isoformat()
+            query["due_date"] = {"$gte": today.isoformat(), "$lte": future_date}
+        elif payment_status == "paid_on_time":
+            # Paid and payment date <= due date
+            query["status"] = "Paid"
+            # We'll filter in Python since we need to compare dates
+            # Will handle after fetching
+        elif payment_status == "paid_late":
+            # Paid but payment date > due date
+            query["status"] = "Paid"
+    
+    # Filter by date range
+    if start_date:
+        start_datetime = datetime.fromisoformat(start_date).isoformat()
+        query["billing_period_start"] = {"$gte": start_datetime}
+    
+    if end_date:
+        end_datetime = datetime.fromisoformat(end_date).isoformat()
+        query["billing_period_end"] = {"$lte": end_datetime}
+    
+    # Filter by amount range
+    if min_amount is not None or max_amount is not None:
+        query["total_amount"] = {}
+        if min_amount is not None:
+            query["total_amount"]["$gte"] = min_amount
+        if max_amount is not None:
+            query["total_amount"]["$lte"] = max_amount
+    
+    # Filter by document presence
+    if has_document is not None:
+        if has_document:
+            query["bill_url"] = {"$ne": None, "$ne": ""}
+        else:
+            query["$or"]=[
+                {"bill_url": {"$eq": None}},
+                {"bill_url": {"$eq": ""}}
+            ]
+    
+    # Get bills with pagination
+    bills = await db.electricity_bills.find(query, {"_id": 0}).sort("billing_period_start", -1).skip(skip).limit(limit).to_list(limit)
+    
+    # Apply search filter (property name lookup)
+    filtered_bills = []
+    if search and search.strip():
+        search_lower = search.lower().strip()
+        # Get all properties for searching
+        properties = await db.properties.find({"is_deleted": False}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
+        property_map = {p["id"]: p["name"] for p in properties}
+        
+        for bill in bills:
+            property_name = property_map.get(bill["property_id"], "").lower()
+            phone = bill.get("phone_number", "").lower()
+            if search_lower in property_name or search_lower in phone:
+                filtered_bills.append(bill)
+    else:
+        filtered_bills = bills
+    
+    # Apply paid_on_time / paid_late filtering
+    if payment_status in ["paid_on_time", "paid_late"]:
+        temp_bills = []
+        for bill in filtered_bills:
+            if bill.get("status") == "Paid":
+                due_date = datetime.fromisoformat(bill["due_date"]).date() if bill.get("due_date") else None
+                payment_date = datetime.fromisoformat(bill["payment_date"]).date() if bill.get("payment_date") else None
+                
+                if due_date and payment_date:
+                    if payment_status == "paid_on_time" and payment_date <= due_date:
+                        temp_bills.append(bill)
+                    elif payment_status == "paid_late" and payment_date > due_date:
+                        temp_bills.append(bill)
+        filtered_bills = temp_bills
+    
+    # Get property names for the response
+    property_ids = list(set(b["property_id"] for b in filtered_bills))
+    properties = await db.properties.find(
+        {"id": {"$in": property_ids}, "is_deleted": False},
+        {"_id": 0, "id": 1, "name": 1}
+    ).to_list(1000)
+    property_name_map = {p["id"]: p["name"] for p in properties}
+    
+    # Add property names to bills
+    for bill in filtered_bills:
+        bill["property_name"] = property_name_map.get(bill["property_id"], "Unknown")
+    
+    # Calculate summary statistics
+    total_bills = len(filtered_bills)
+    total_amount = sum(b.get("total_amount", 0) for b in filtered_bills)
+    paid_bills = [b for b in filtered_bills if b.get("status") == "Paid"]
+    unpaid_bills = [b for b in filtered_bills if b.get("status") == "Unpaid"]
+    overdue_bills = [
+        b for b in unpaid_bills 
+        if datetime.fromisoformat(b["due_date"]).date() < datetime.now(timezone.utc).date()
+    ]
+    
+    # Calculate upcoming bills (due within 7 days)
+    today = datetime.now(timezone.utc).date()
+    upcoming_date = today + timedelta(days=7)
+    upcoming_bills = [
+        b for b in unpaid_bills
+        if today <= datetime.fromisoformat(b["due_date"]).date() <= upcoming_date
+    ]
+    
+    # Calculate total units consumed
+    total_units = sum(b.get("units_consumed", 0) for b in filtered_bills)
+    
+    return {
+        "data": filtered_bills,
+        "total": len(filtered_bills),
+        "skip": skip,
+        "limit": limit,
+        "summary": {
+            "total_bills": total_bills,
+            "total_amount": round(total_amount, 2),
+            "total_units_kwh": round(total_units, 2),
+            "paid_count": len(paid_bills),
+            "paid_amount": round(sum(b.get("total_amount", 0) for b in paid_bills), 2),
+            "unpaid_count": len(unpaid_bills),
+            "unpaid_amount": round(sum(b.get("total_amount", 0) for b in unpaid_bills), 2),
+            "overdue_count": len(overdue_bills),
+            "overdue_amount": round(sum(b.get("total_amount", 0) for b in overdue_bills), 2),
+            "upcoming_count": len(upcoming_bills),
+            "upcoming_amount": round(sum(b.get("total_amount", 0) for b in upcoming_bills), 2),
+            "bills_with_document": len([b for b in filtered_bills if b.get("bill_url")]),
+            "bills_without_document": len([b for b in filtered_bills if not b.get("bill_url")])
+        }
+    }
+
+
+@api_router.get("/electricity-bills/stats-summary")
+async def get_electricity_bills_stats_summary(
+    property_id: Optional[str] = Query(None, description="Filter by property ID"),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get summary statistics for electricity bills dashboard
+    """
+    query = {"is_deleted": False}
+    if property_id and property_id != "all":
+        query["property_id"] = property_id
+    
+    # Get all bills (unfiltered for stats)
+    all_bills = await db.electricity_bills.find(query, {"_id": 0}).to_list(10000)
+    
+    today = datetime.now(timezone.utc).date()
+    
+    # Calculate various stats
+    total_bills = len(all_bills)
+    total_amount = sum(b.get("total_amount", 0) for b in all_bills)
+    total_units = sum(b.get("units_consumed", 0) for b in all_bills)
+    
+    paid_bills = [b for b in all_bills if b.get("status") == "Paid"]
+    unpaid_bills = [b for b in all_bills if b.get("status") == "Unpaid"]
+    
+    # Overdue: Unpaid and due date passed
+    overdue_bills = []
+    for b in unpaid_bills:
+        due_date = datetime.fromisoformat(b["due_date"]).date() if b.get("due_date") else None
+        if due_date and due_date < today:
+            overdue_bills.append(b)
+    
+    # Upcoming: Unpaid and due within next 7 days
+    upcoming_date = today + timedelta(days=7)
+    upcoming_bills = []
+    for b in unpaid_bills:
+        due_date = datetime.fromisoformat(b["due_date"]).date() if b.get("due_date") else None
+        if due_date and today <= due_date <= upcoming_date:
+            upcoming_bills.append(b)
+    
+    # Paid on time vs late
+    paid_on_time = []
+    paid_late = []
+    for b in paid_bills:
+        due_date = datetime.fromisoformat(b["due_date"]).date() if b.get("due_date") else None
+        payment_date = datetime.fromisoformat(b["payment_date"]).date() if b.get("payment_date") else None
+        if due_date and payment_date:
+            if payment_date <= due_date:
+                paid_on_time.append(b)
+            else:
+                paid_late.append(b)
+    
+    # Document stats
+    with_document = [b for b in all_bills if b.get("bill_url")]
+    without_document = [b for b in all_bills if not b.get("bill_url")]
+    
+    # Monthly trend (last 6 months)
+    monthly_trend = {}
+    for b in all_bills:
+        period_start = b.get("billing_period_start")
+        if period_start:
+            try:
+                date = datetime.fromisoformat(period_start)
+                month_key = date.strftime("%Y-%m")
+                if month_key not in monthly_trend:
+                    monthly_trend[month_key] = {"units": 0, "amount": 0, "count": 0}
+                monthly_trend[month_key]["units"] += b.get("units_consumed", 0)
+                monthly_trend[month_key]["amount"] += b.get("total_amount", 0)
+                monthly_trend[month_key]["count"] += 1
+            except:
+                pass
+    
+    # Sort months and get last 6
+    sorted_months = sorted(monthly_trend.keys(), reverse=True)[:6]
+    monthly_data = [
+        {
+            "month": month,
+            "units": round(monthly_trend[month]["units"], 2),
+            "amount": round(monthly_trend[month]["amount"], 2),
+            "count": monthly_trend[month]["count"]
+        }
+        for month in sorted_months
+    ]
+    
+    return {
+        "summary": {
+            "total_bills": total_bills,
+            "total_amount": round(total_amount, 2),
+            "total_units_kwh": round(total_units, 2),
+            "paid": {
+                "count": len(paid_bills),
+                "amount": round(sum(b.get("total_amount", 0) for b in paid_bills), 2),
+                "on_time_count": len(paid_on_time),
+                "on_time_amount": round(sum(b.get("total_amount", 0) for b in paid_on_time), 2),
+                "late_count": len(paid_late),
+                "late_amount": round(sum(b.get("total_amount", 0) for b in paid_late), 2)
+            },
+            "unpaid": {
+                "count": len(unpaid_bills),
+                "amount": round(sum(b.get("total_amount", 0) for b in unpaid_bills), 2),
+                "overdue_count": len(overdue_bills),
+                "overdue_amount": round(sum(b.get("total_amount", 0) for b in overdue_bills), 2),
+                "upcoming_count": len(upcoming_bills),
+                "upcoming_amount": round(sum(b.get("total_amount", 0) for b in upcoming_bills), 2)
+            },
+            "documents": {
+                "with_document_count": len(with_document),
+                "without_document_count": len(without_document),
+                "with_document_percentage": round(len(with_document) / total_bills * 100, 1) if total_bills > 0 else 0
+            }
+        },
+        "monthly_trend": monthly_data
+    }
+
 @api_router.post("/electricity-bills/fetch-from-surepass")
 async def fetch_electricity_bill_from_surepass(
     data: dict,

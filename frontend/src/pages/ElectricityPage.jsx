@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import api from '../utils/api';
 import { toast } from 'sonner';
-import { Zap, Sun, Plus, TrendingUp, AlertTriangle, Eye, Trash2, Phone, Upload, File, X, Download } from 'lucide-react';
+import { Zap, Sun, Plus, TrendingUp, AlertTriangle, Eye, Trash2, Phone, Upload, File, X, Download, Search, Filter, CheckCircle, Calendar, DollarSign, FileText, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -21,6 +21,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import PhoneNumberInput from '@/components/ui/PhoneNumberInput';
 import ElectricityBillFetcher from '@/components/electricity/ElectricityBillFetcher';
 
@@ -59,6 +67,23 @@ export const ElectricityPage = () => {
   const [solarSelectedFile, setSolarSelectedFile] = useState(null);
   const [solarFilePreview, setSolarFilePreview] = useState(null);
 
+  // Filter states
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState('all');
+  const [dateRangeStart, setDateRangeStart] = useState('');
+  const [dateRangeEnd, setDateRangeEnd] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [hasDocument, setHasDocument] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredBills, setFilteredBills] = useState([]);
+  const [filterSummary, setFilterSummary] = useState(null);
+  const [statsSummary, setStatsSummary] = useState(null);
+  const [filterLoading, setFilterLoading] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalFiltered, setTotalFiltered] = useState(0);
+
   const [elecFormData, setElecFormData] = useState({
     property_id: '',
     billing_period_start: '',
@@ -95,9 +120,112 @@ export const ElectricityPage = () => {
     meter_image_url: ''
   });
 
+  // Fetch filtered bills from backend
+  const fetchFilteredBills = async (page = 0) => {
+    setFilterLoading(true);
+    try {
+      const params = new URLSearchParams();
+      
+      if (selectedProperty !== 'all') {
+        params.append('property_id', selectedProperty);
+      }
+      if (filterStatus !== 'all') {
+        params.append('status', filterStatus);
+      }
+      if (filterPaymentStatus !== 'all') {
+        params.append('payment_status', filterPaymentStatus);
+      }
+      if (dateRangeStart) {
+        params.append('start_date', dateRangeStart);
+      }
+      if (dateRangeEnd) {
+        params.append('end_date', dateRangeEnd);
+      }
+      if (minAmount) {
+        params.append('min_amount', minAmount);
+      }
+      if (maxAmount) {
+        params.append('max_amount', maxAmount);
+      }
+      if (hasDocument !== null) {
+        params.append('has_document', hasDocument);
+      }
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+      params.append('skip', page * 20);
+      params.append('limit', 20);
+      
+      const response = await api.get(`/electricity-bills/filter?${params.toString()}`);
+      setFilteredBills(response.data.data);
+      setTotalFiltered(response.data.total);
+      setFilterSummary(response.data.summary);
+      setCurrentPage(page);
+    } catch (error) {
+      console.error('Error filtering bills:', error);
+      toast.error('Failed to apply filters');
+    } finally {
+      setFilterLoading(false);
+    }
+  };
+
+  // Fetch stats summary from backend
+  const fetchStatsSummary = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (selectedProperty !== 'all') {
+        params.append('property_id', selectedProperty);
+      }
+      const response = await api.get(`/electricity-bills/stats-summary?${params.toString()}`);
+      setStatsSummary(response.data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  // Reset all filters
+  const resetFilters = () => {
+    setFilterStatus('all');
+    setFilterPaymentStatus('all');
+    setDateRangeStart('');
+    setDateRangeEnd('');
+    setMinAmount('');
+    setMaxAmount('');
+    setHasDocument(null);
+    setSearchTerm('');
+    setCurrentPage(0);
+    setFilterSheetOpen(false);
+  };
+
+  // Helper function to get payment status display
+  const getPaymentStatusDisplay = (bill) => {
+    if (bill.status === 'Paid') {
+      const dueDate = new Date(bill.due_date);
+      const paymentDate = new Date(bill.payment_date);
+      if (paymentDate <= dueDate) return 'Paid on Time';
+      return 'Paid Late';
+    } else {
+      const dueDate = new Date(bill.due_date);
+      const today = new Date();
+      if (dueDate < today) return 'Overdue';
+      const daysLeft = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+      if (daysLeft <= 7) return `Due in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`;
+      return `Due on ${dueDate.toLocaleDateString()}`;
+    }
+  };
+
   useEffect(() => {
     fetchData();
-  }, [selectedProperty]);
+  }, []);
+
+  useEffect(() => {
+    fetchOperatorCodes();
+  }, []);
+
+  useEffect(() => {
+    fetchFilteredBills(0);
+    fetchStatsSummary();
+  }, [selectedProperty, filterStatus, filterPaymentStatus, dateRangeStart, dateRangeEnd, minAmount, maxAmount, hasDocument, searchTerm]);
 
   const fetchData = async () => {
     try {
@@ -126,12 +254,6 @@ export const ElectricityPage = () => {
       console.error('Failed to fetch operator codes:', error);
     }
   };
-
-  // Add to useEffect
-  useEffect(() => {
-    fetchData();
-    fetchOperatorCodes();
-  }, [selectedProperty]);
 
   // ==================== EXPORT FUNCTIONALITY ====================
   
@@ -577,6 +699,8 @@ export const ElectricityPage = () => {
       setElecDialogOpen(false);
       resetElecForm();
       fetchData();
+      fetchFilteredBills(0);
+      fetchStatsSummary();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create electricity bill');
     }
@@ -619,6 +743,8 @@ export const ElectricityPage = () => {
       setEditElecDialogOpen(false);
       resetElecForm();
       fetchData();
+      fetchFilteredBills(currentPage);
+      fetchStatsSummary();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to update electricity bill');
     }
@@ -711,6 +837,8 @@ export const ElectricityPage = () => {
       setDeleteElecDialogOpen(false);
       setItemToDelete(null);
       fetchData();
+      fetchFilteredBills(currentPage);
+      fetchStatsSummary();
     } catch (error) {
       toast.error('Failed to delete electricity bill');
     }
@@ -882,6 +1010,255 @@ export const ElectricityPage = () => {
       </p>
     </div>
   );
+
+  // Stats Cards Component
+  const StatsCards = ({ stats }) => {
+    if (!stats) return null;
+    
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500">Total Bills</p>
+                <p className="text-2xl font-bold">{stats.summary.total_bills}</p>
+                <p className="text-xs text-slate-500">₹{stats.summary.total_amount.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-blue-100 rounded-full">
+                <Zap size={24} className="text-blue-700" />
+              </div>
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-100">
+              <p className="text-xs text-slate-500">{stats.summary.total_units_kwh.toLocaleString()} kWh consumed</p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500">Paid Bills</p>
+                <p className="text-2xl font-bold text-emerald-700">{stats.summary.paid.count}</p>
+                <p className="text-xs text-slate-500">₹{stats.summary.paid.amount.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-emerald-100 rounded-full">
+                <CheckCircle size={24} className="text-emerald-700" />
+              </div>
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-100">
+              <p className="text-xs text-slate-500">
+                {stats.summary.paid.on_time_count} on time, {stats.summary.paid.late_count} late
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500">Unpaid Bills</p>
+                <p className="text-2xl font-bold text-rose-700">{stats.summary.unpaid.count}</p>
+                <p className="text-xs text-slate-500">₹{stats.summary.unpaid.amount.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-rose-100 rounded-full">
+                <AlertTriangle size={24} className="text-rose-700" />
+              </div>
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-100">
+              <p className="text-xs text-slate-500">
+                {stats.summary.unpaid.overdue_count} overdue, {stats.summary.unpaid.upcoming_count} upcoming
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500">Documents</p>
+                <p className="text-2xl font-bold">{stats.summary.documents.with_document_count}</p>
+                <p className="text-xs text-slate-500">with bill documents</p>
+              </div>
+              <div className="p-3 bg-purple-100 rounded-full">
+                <FileText size={24} className="text-purple-700" />
+              </div>
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-100">
+              <p className="text-xs text-slate-500">
+                {stats.summary.documents.with_document_percentage}% have documents
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  // Filter Dialog Component
+  const FilterDialog = ({ open, onOpenChange, onReset }) => {
+    const [localStatus, setLocalStatus] = useState(filterStatus);
+    const [localPaymentStatus, setLocalPaymentStatus] = useState(filterPaymentStatus);
+    const [localStartDate, setLocalStartDate] = useState(dateRangeStart);
+    const [localEndDate, setLocalEndDate] = useState(dateRangeEnd);
+    const [localMinAmount, setLocalMinAmount] = useState(minAmount);
+    const [localMaxAmount, setLocalMaxAmount] = useState(maxAmount);
+    const [localHasDocument, setLocalHasDocument] = useState(hasDocument);
+    
+    const handleApply = () => {
+      setFilterStatus(localStatus);
+      setFilterPaymentStatus(localPaymentStatus);
+      setDateRangeStart(localStartDate);
+      setDateRangeEnd(localEndDate);
+      setMinAmount(localMinAmount);
+      setMaxAmount(localMaxAmount);
+      setHasDocument(localHasDocument);
+      onOpenChange(false);
+    };
+    
+    const handleReset = () => {
+      setLocalStatus('all');
+      setLocalPaymentStatus('all');
+      setLocalStartDate('');
+      setLocalEndDate('');
+      setLocalMinAmount('');
+      setLocalMaxAmount('');
+      setLocalHasDocument(null);
+      onReset();
+      onOpenChange(false);
+    };
+    
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent side="right" className="w-[400px] sm:w-[540px]">
+          <SheetHeader>
+            <SheetTitle>Filter Electricity Bills</SheetTitle>
+            <SheetDescription>
+              Apply filters to narrow down your electricity bills
+            </SheetDescription>
+          </SheetHeader>
+          
+          <ScrollArea className="h-[calc(100vh-120px)] mt-6">
+            <div className="space-y-6 pr-4">
+              {/* Status Filter */}
+              <div>
+                <Label className="text-sm font-semibold">Bill Status</Label>
+                <Select value={localStatus} onValueChange={setLocalStatus}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Bills</SelectItem>
+                    <SelectItem value="Paid">Paid</SelectItem>
+                    <SelectItem value="Unpaid">Unpaid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Payment Status Filter */}
+              <div>
+                <Label className="text-sm font-semibold">Payment Status</Label>
+                <Select value={localPaymentStatus} onValueChange={setLocalPaymentStatus}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Payment Status</SelectItem>
+                    <SelectItem value="overdue">Overdue (Unpaid & Past Due Date)</SelectItem>
+                    <SelectItem value="upcoming">Upcoming (Due in 7 Days)</SelectItem>
+                    <SelectItem value="paid_on_time">Paid on Time</SelectItem>
+                    <SelectItem value="paid_late">Paid Late</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Date Range */}
+              <div>
+                <Label className="text-sm font-semibold">Billing Period</Label>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div>
+                    <Label className="text-xs">Start Date</Label>
+                    <Input
+                      type="date"
+                      value={localStartDate}
+                      onChange={(e) => setLocalStartDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">End Date</Label>
+                    <Input
+                      type="date"
+                      value={localEndDate}
+                      onChange={(e) => setLocalEndDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Amount Range */}
+              <div>
+                <Label className="text-sm font-semibold">Amount Range (₹)</Label>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div>
+                    <Label className="text-xs">Min Amount</Label>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={localMinAmount}
+                      onChange={(e) => setLocalMinAmount(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Max Amount</Label>
+                    <Input
+                      type="number"
+                      placeholder="Any"
+                      value={localMaxAmount}
+                      onChange={(e) => setLocalMaxAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Document Filter */}
+              <div>
+                <Label className="text-sm font-semibold">Bill Document</Label>
+                <Select 
+                  value={localHasDocument === null ? 'all' : localHasDocument ? 'yes' : 'no'} 
+                  onValueChange={(val) => {
+                    if (val === 'all') setLocalHasDocument(null);
+                    else if (val === 'yes') setLocalHasDocument(true);
+                    else setLocalHasDocument(false);
+                  }}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Bills</SelectItem>
+                    <SelectItem value="yes">Has Document</SelectItem>
+                    <SelectItem value="no">No Document</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </ScrollArea>
+          
+          <div className="flex gap-2 mt-6 pt-4 border-t">
+            <Button variant="outline" onClick={handleReset} className="flex-1">
+              Reset All
+            </Button>
+            <Button onClick={handleApply} className="flex-1 bg-blue-800 hover:bg-blue-900">
+              Apply Filters
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    );
+  };
 
   if (loading) {
     return (
@@ -1527,6 +1904,133 @@ export const ElectricityPage = () => {
         </Select>
       </div>
 
+      {/* Advanced Filters Bar */}
+      <div className="mb-6 space-y-4">
+        <div className="flex gap-3">
+          {/* Search Input */}
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
+            <Input
+              placeholder="Search by property name or phone number..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          {/* Quick Status Filters */}
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="Paid">Paid</SelectItem>
+              <SelectItem value="Unpaid">Unpaid</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Advanced Filter Button */}
+          <Button 
+            variant="outline" 
+            onClick={() => setFilterSheetOpen(true)}
+            className="border-slate-300"
+          >
+            <Filter size={16} className="mr-2" />
+            Filters
+            {(filterStatus !== 'all' || filterPaymentStatus !== 'all' || dateRangeStart || dateRangeEnd || minAmount || maxAmount || hasDocument !== null) && (
+              <span className="ml-2 w-2 h-2 bg-blue-600 rounded-full"></span>
+            )}
+          </Button>
+        </div>
+
+        {/* Active Filters Display */}
+        {(filterStatus !== 'all' || filterPaymentStatus !== 'all' || dateRangeStart || dateRangeEnd || minAmount || maxAmount || hasDocument !== null || searchTerm) && (
+          <div className="flex flex-wrap gap-2">
+            <span className="text-xs text-slate-500">Active filters:</span>
+            {filterStatus !== 'all' && (
+              <Badge variant="secondary" className="text-xs">
+                Status: {filterStatus}
+                <button className="ml-1 hover:text-rose-600" onClick={() => setFilterStatus('all')}>×</button>
+              </Badge>
+            )}
+            {filterPaymentStatus !== 'all' && (
+              <Badge variant="secondary" className="text-xs">
+                Payment: {filterPaymentStatus.replace('_', ' ')}
+                <button className="ml-1 hover:text-rose-600" onClick={() => setFilterPaymentStatus('all')}>×</button>
+              </Badge>
+            )}
+            {(dateRangeStart || dateRangeEnd) && (
+              <Badge variant="secondary" className="text-xs">
+                Period: {dateRangeStart || 'start'} to {dateRangeEnd || 'end'}
+                <button className="ml-1 hover:text-rose-600" onClick={() => { setDateRangeStart(''); setDateRangeEnd(''); }}>×</button>
+              </Badge>
+            )}
+            {(minAmount || maxAmount) && (
+              <Badge variant="secondary" className="text-xs">
+                Amount: {minAmount || '0'} - {maxAmount || '∞'}
+                <button className="ml-1 hover:text-rose-600" onClick={() => { setMinAmount(''); setMaxAmount(''); }}>×</button>
+              </Badge>
+            )}
+            {hasDocument !== null && (
+              <Badge variant="secondary" className="text-xs">
+                Document: {hasDocument ? 'Has' : 'No'}
+                <button className="ml-1 hover:text-rose-600" onClick={() => setHasDocument(null)}>×</button>
+              </Badge>
+            )}
+            {searchTerm && (
+              <Badge variant="secondary" className="text-xs">
+                Search: {searchTerm}
+                <button className="ml-1 hover:text-rose-600" onClick={() => setSearchTerm('')}>×</button>
+              </Badge>
+            )}
+            <Button variant="ghost" size="sm" onClick={resetFilters} className="text-xs h-6">
+              Clear all
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Statistics Cards */}
+      <StatsCards stats={statsSummary} />
+
+      {/* Filter Summary Bar */}
+      {filterSummary && (
+        <div className="bg-slate-50 rounded-lg p-4 mb-4 border border-slate-200">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex gap-6">
+              <div>
+                <p className="text-xs text-slate-500">Showing</p>
+                <p className="text-sm font-semibold">{filterSummary.total_bills} bills</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Total Amount</p>
+                <p className="text-sm font-semibold">₹{filterSummary.total_amount?.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Paid</p>
+                <p className="text-sm font-semibold text-emerald-700">{filterSummary.paid_count}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Unpaid</p>
+                <p className="text-sm font-semibold text-rose-700">{filterSummary.unpaid_count}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Overdue</p>
+                <p className="text-sm font-semibold text-orange-700">{filterSummary.overdue_count || 0}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Units</p>
+                <p className="text-sm font-semibold">{filterSummary.total_units_kwh?.toLocaleString()} kWh</p>
+              </div>
+            </div>
+            <div className="text-xs text-slate-400">
+              {totalFiltered > 20 ? `Showing 1-20 of ${totalFiltered}` : `Showing ${totalFiltered} bills`}
+            </div>
+          </div>
+        </div>
+      )}
+
       <Tabs defaultValue="electricity" className="space-y-6">
         <TabsList>
           <TabsTrigger value="electricity">
@@ -1745,7 +2249,11 @@ export const ElectricityPage = () => {
               {selectedProperty !== 'all' && (
                 <ElectricityBillFetcher 
                   propertyId={selectedProperty}
-                  onSuccess={fetchData}
+                  onSuccess={() => {
+                    fetchData();
+                    fetchFilteredBills(0);
+                    fetchStatsSummary();
+                  }}
                   operatorCodes={operatorCodes}
                 />
               )}
@@ -1753,27 +2261,63 @@ export const ElectricityPage = () => {
           </div>
 
           <div className="space-y-4">
-            {electricityBills.map((bill) => (
-              <ElectricityBillCard 
-                key={bill.id} 
-                bill={bill} 
-                getPropertyName={getPropertyName} 
-                onView={handleViewElecBill}
-                onEdit={handleEditElecBill}
-                onDelete={() => {
-                  setItemToDelete(bill.id);
-                  setDeleteElecDialogOpen(true);
-                }}
-                onViewReceipt={openReceipt}
-              />
-            ))}
+            {filterLoading ? (
+              <div className="text-center py-16">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-800 mx-auto"></div>
+                <p className="mt-4 text-slate-500">Loading bills...</p>
+              </div>
+            ) : filteredBills.length > 0 ? (
+              filteredBills.map((bill) => (
+                <ElectricityBillCard 
+                  key={bill.id} 
+                  bill={bill} 
+                  getPropertyName={() => bill.property_name || getPropertyName(bill.property_id)} 
+                  onView={handleViewElecBill}
+                  onEdit={handleEditElecBill}
+                  onDelete={() => {
+                    setItemToDelete(bill.id);
+                    setDeleteElecDialogOpen(true);
+                  }}
+                  onViewReceipt={openReceipt}
+                  paymentStatus={getPaymentStatusDisplay(bill)}
+                />
+              ))
+            ) : (
+              <div className="text-center py-16">
+                <Zap size={64} className="mx-auto text-slate-300 mb-4" />
+                <h3 className="text-xl font-semibold text-slate-900 mb-2">No electricity bills found</h3>
+                <p className="text-slate-600">Try adjusting your filters or add a new bill</p>
+                <Button 
+                  variant="outline" 
+                  onClick={resetFilters}
+                  className="mt-4"
+                >
+                  Clear Filters
+                </Button>
+              </div>
+            )}
           </div>
 
-          {electricityBills.length === 0 && (
-            <div className="text-center py-16">
-              <Zap size={64} className="mx-auto text-slate-300 mb-4" />
-              <h3 className="text-xl font-semibold text-slate-900 mb-2">No electricity bills yet</h3>
-              <p className="text-slate-600">Add your first electricity bill</p>
+          {/* Pagination */}
+          {totalFiltered > 20 && (
+            <div className="flex justify-center gap-2 mt-6">
+              <Button
+                variant="outline"
+                disabled={currentPage === 0}
+                onClick={() => fetchFilteredBills(currentPage - 1)}
+              >
+                Previous
+              </Button>
+              <span className="px-4 py-2 text-sm">
+                Page {currentPage + 1} of {Math.ceil(totalFiltered / 20)}
+              </span>
+              <Button
+                variant="outline"
+                disabled={(currentPage + 1) * 20 >= totalFiltered}
+                onClick={() => fetchFilteredBills(currentPage + 1)}
+              >
+                Next
+              </Button>
             </div>
           )}
         </TabsContent>
@@ -1983,18 +2527,25 @@ export const ElectricityPage = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Filter Dialog */}
+      <FilterDialog 
+        open={filterSheetOpen}
+        onOpenChange={setFilterSheetOpen}
+        onReset={resetFilters}
+      />
     </div>
   );
 };
 
-// Updated ElectricityBillCard with document indicator
-const ElectricityBillCard = ({ bill, getPropertyName, onView, onEdit, onDelete, onViewReceipt }) => {
+// Updated ElectricityBillCard with payment status
+const ElectricityBillCard = ({ bill, getPropertyName, onView, onEdit, onDelete, onViewReceipt, paymentStatus }) => {
   return (
     <Card className="border-slate-200 shadow-sm" data-testid={`electricity-bill-${bill.id}`}>
       <CardContent className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h3 className="font-semibold text-lg text-slate-900">{getPropertyName(bill.property_id)}</h3>
+            <h3 className="font-semibold text-lg text-slate-900">{getPropertyName()}</h3>
             <p className="text-sm text-slate-600">
               {new Date(bill.billing_period_start).toLocaleDateString()} - {new Date(bill.billing_period_end).toLocaleDateString()}
             </p>
@@ -2009,6 +2560,11 @@ const ElectricityBillCard = ({ bill, getPropertyName, onView, onEdit, onDelete, 
             <Badge className={bill.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}>
               {bill.status}
             </Badge>
+            {paymentStatus && (
+              <Badge variant="outline" className="text-xs bg-slate-100">
+                {paymentStatus}
+              </Badge>
+            )}
             {bill.bill_url && (
               <Button
                 size="sm"
@@ -2016,7 +2572,7 @@ const ElectricityBillCard = ({ bill, getPropertyName, onView, onEdit, onDelete, 
                 className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                 onClick={() => onViewReceipt(
                   bill.bill_url,
-                  getPropertyName(bill.property_id),
+                  getPropertyName(),
                   'Electricity_Bill',
                   new Date(bill.billing_period_start).toLocaleDateString()
                 )}
@@ -2078,7 +2634,7 @@ const ElectricityBillCard = ({ bill, getPropertyName, onView, onEdit, onDelete, 
   );
 };
 
-// Updated SolarMeterCard with document indicator
+// SolarMeterCard remains the same
 const SolarMeterCard = ({ meter, getPropertyName, onView, onEdit, onDelete, onViewReceipt }) => {
   const reconciliationOk = !meter.reconciliation_flag;
 
