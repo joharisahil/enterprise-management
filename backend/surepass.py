@@ -470,7 +470,7 @@ class SurepassService:
                     }
             
                 # Get the provider name from verification response
-                bank_name = verification_data.get("data", {}).get("bank_name")
+                bank_name = verification_data.get("data", {}).get("bank_name", "").strip()
                 tag_id = verification_data.get("data", {}).get("tag_id")
             
                 logger.info(f"Bank name from verification: {bank_name}, Tag ID: {tag_id}")
