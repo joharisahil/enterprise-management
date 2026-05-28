@@ -33,7 +33,7 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
 
   const fetchFastagBalance = async () => {
     if (!vehicle?.id) return;
-    
+
     setFetchingBalance(true);
     try {
       const response = await api.post(`/vehicles/${vehicle.id}/fastag-balance`);
@@ -49,7 +49,7 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
 
   const fetchFastagTransactions = async () => {
     if (!vehicle?.id) return;
-    
+
     setFetchingTransactions(true);
     try {
       const response = await api.post(`/vehicles/${vehicle.id}/fastag-transactions`);
@@ -77,9 +77,19 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
 
   const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return '₹0';
-    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+
+    const cleanedAmount =
+      typeof amount === 'string'
+        ? amount.replace(/,/g, '')
+        : amount;
+
+    const numAmount = parseFloat(cleanedAmount);
+
     if (isNaN(numAmount)) return '₹0';
-    return `₹${numAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+
+    return `₹${numAmount
+      .toFixed(2)
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
   };
 
   const getBalanceColor = (balance) => {
@@ -146,7 +156,7 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
                     {fastagData.tag_status || 'Unknown'}
                   </Badge>
                 </div>
-                
+
                 <div className="text-center mb-4">
                   <p className={`text-4xl font-bold ${getBalanceColor(fastagData.available_balance)}`}>
                     {formatCurrency(fastagData.available_balance)}
@@ -192,7 +202,7 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
                 <Route size={18} className="text-purple-600" />
                 <h3 className="font-semibold">Recent Transactions</h3>
               </div>
-              
+
               <div className="space-y-3">
                 {(fastagData?.transactions || transactions).map((txn, idx) => (
                   <Card key={idx} className="hover:shadow-md transition-shadow">
