@@ -3,31 +3,23 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import {
   Zap,
   Wallet,
-  CreditCard,
-  Building2,
   User,
   RefreshCw,
   MapPin,
   Clock,
   Route,
-  ArrowRight,
-  TrendingUp,
-  TrendingDown,
-  AlertCircle
+  ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../utils/api';
 
 export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
-  const [loading, setLoading] = useState(false);
   const [fastagData, setFastagData] = useState(null);
   const [transactions, setTransactions] = useState([]);
-  const [activeTab, setActiveTab] = useState('balance');
   const [fetchingBalance, setFetchingBalance] = useState(false);
   const [fetchingTransactions, setFetchingTransactions] = useState(false);
 
@@ -37,11 +29,17 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
     setFetchingBalance(true);
     try {
       const response = await api.post(`/vehicles/${vehicle.id}/fastag-balance`);
-      console.log('API Response:', response.data);
-      console.log('Fastag data:', response.data.fastag_data);
-      console.log('Balance value:', response.data.fastag_data?.available_balance);
+      console.log('FASTag API Response:', response.data);
+      console.log('Available Balance Raw:', response.data.fastag_data?.available_balance);
       
+      // Store the data directly
       setFastagData(response.data.fastag_data);
+      
+      // If transactions are included in the response, set them too
+      if (response.data.fastag_data?.transactions?.length > 0) {
+        setTransactions(response.data.fastag_data.transactions);
+      }
+      
       toast.success('FASTag balance fetched successfully');
     } catch (error) {
       console.error('Error fetching FASTag balance:', error);
@@ -79,25 +77,40 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
     });
   };
 
+  // CRITICAL FIX: Properly format currency with commas and decimal places
   const formatCurrency = (amount) => {
+    // Debug logging
+    console.log('Formatting amount:', amount, 'Type:', typeof amount);
+    
     // Handle null, undefined, or empty values
-    if (!amount && amount !== 0) return '₹0.00';
+    if (amount === null || amount === undefined || amount === '') {
+      console.log('Amount is null/undefined/empty, returning ₹0.00');
+      return '₹0.00';
+    }
     
     let numAmount;
     
-    // Handle string amounts
+    // If it's a string, clean it
     if (typeof amount === 'string') {
-      // Remove commas, spaces, and any non-numeric characters except decimal point and minus sign
-      const cleanedAmount = amount.replace(/,/g, '').replace(/[^0-9.-]/g, '').trim();
-      numAmount = parseFloat(cleanedAmount);
+      // Remove all commas first
+      let cleaned = amount.replace(/,/g, '');
+      console.log('After removing commas:', cleaned);
+      
+      // Remove any other non-numeric characters except decimal point and minus
+      cleaned = cleaned.replace(/[^0-9.-]/g, '');
+      console.log('After removing non-numeric:', cleaned);
+      
+      numAmount = parseFloat(cleaned);
+      console.log('After parseFloat:', numAmount);
     } 
-    // Handle number amounts
+    // If it's already a number
     else if (typeof amount === 'number') {
       numAmount = amount;
     } 
-    // Handle any other type
+    // Fallback
     else {
-      numAmount = 0;
+      console.log('Unknown amount type, returning ₹0.00');
+      return '₹0.00';
     }
     
     // Check if parsing was successful
@@ -106,57 +119,48 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
       return '₹0.00';
     }
     
-    // Format with 2 decimal places and Indian number formatting
-    const formattedAmount = numAmount.toFixed(2);
-    const parts = formattedAmount.split('.');
+    // Format with 2 decimal places
+    const fixedAmount = numAmount.toFixed(2);
+    console.log('Fixed amount:', fixedAmount);
     
-    // Add commas for thousands separator (Indian format)
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    // Split into integer and decimal parts
+    const parts = fixedAmount.split('.');
+    const integerPart = parts[0];
+    const decimalPart = parts[1];
     
-    return `₹${parts.join('.')}`;
+    // Add commas to integer part (Indian format: groups of 3 from right, but first group can be 1-3 digits)
+    const lastThree = integerPart.slice(-3);
+    const otherNumbers = integerPart.slice(0, -3);
+    let formattedInteger;
+    
+    if (otherNumbers !== '') {
+      formattedInteger = otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + lastThree;
+    } else {
+      formattedInteger = lastThree;
+    }
+    
+    const result = `₹${formattedInteger}.${decimalPart}`;
+    console.log('Final formatted result:', result);
+    
+    return result;
   };
 
   const getBalanceColor = (balance) => {
     let numBalance = 0;
     
-    // Parse balance to number for comparison
+    // Parse balance to number
     if (typeof balance === 'string') {
-      const cleanedBalance = balance.replace(/,/g, '').replace(/[^0-9.-]/g, '');
-      numBalance = parseFloat(cleanedBalance) || 0;
+      const cleaned = balance.replace(/,/g, '').replace(/[^0-9.-]/g, '');
+      numBalance = parseFloat(cleaned) || 0;
     } else if (typeof balance === 'number') {
       numBalance = balance;
-    } else {
-      numBalance = 0;
     }
+    
+    console.log('Balance for color:', numBalance);
     
     if (numBalance <= 100) return 'text-rose-600';
     if (numBalance <= 500) return 'text-orange-600';
     return 'text-emerald-600';
-  };
-
-  const getProgressPercentage = (balance, limit) => {
-    let numBalance = 0;
-    let numLimit = 0;
-    
-    // Parse balance
-    if (typeof balance === 'string') {
-      const cleanedBalance = balance.replace(/,/g, '').replace(/[^0-9.-]/g, '');
-      numBalance = parseFloat(cleanedBalance) || 0;
-    } else if (typeof balance === 'number') {
-      numBalance = balance;
-    }
-    
-    // Parse limit
-    if (typeof limit === 'string') {
-      const cleanedLimit = limit.replace(/,/g, '').replace(/[^0-9.-]/g, '');
-      numLimit = parseFloat(cleanedLimit) || 0;
-    } else if (typeof limit === 'number') {
-      numLimit = limit;
-    }
-    
-    if (numLimit === 0) return 0;
-    const percentage = (numBalance / numLimit) * 100;
-    return Math.min(percentage, 100); // Cap at 100%
   };
 
   return (
@@ -212,7 +216,7 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
                     <Wallet size={20} className="text-purple-600" />
                     <h3 className="font-semibold text-purple-900">Current Balance</h3>
                   </div>
-                  <Badge className={`${fastagData.tag_status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                  <Badge className={fastagData.tag_status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
                     {fastagData.tag_status || 'Unknown'}
                   </Badge>
                 </div>
@@ -225,20 +229,6 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
                     Available Balance
                   </p>
                 </div>
-
-                {/* Balance Usage Progress Bar */}
-                {fastagData.available_recharge_limit && (
-                  <div className="mb-4">
-                    <div className="flex justify-between text-xs text-purple-600 mb-1">
-                      <span>Balance Usage</span>
-                      <span>{getProgressPercentage(fastagData.available_balance, fastagData.available_recharge_limit)}%</span>
-                    </div>
-                    <Progress 
-                      value={getProgressPercentage(fastagData.available_balance, fastagData.available_recharge_limit)} 
-                      className="h-2 bg-purple-200"
-                    />
-                  </div>
-                )}
 
                 <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-purple-200">
                   <div>
@@ -278,7 +268,7 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
               </div>
               
               <div className="space-y-3">
-                {(fastagData?.transactions || transactions).slice(0, 10).map((txn, idx) => (
+                {(fastagData?.transactions || transactions).map((txn, idx) => (
                   <Card key={idx} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
@@ -306,11 +296,6 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
                             <Badge variant="outline" className="text-xs">
                               {txn.vehicle_type || 'Vehicle'}
                             </Badge>
-                            {txn.seq_no && (
-                              <p className="text-xs text-slate-400 font-mono">
-                                Seq: {txn.seq_no.slice(-8)}
-                              </p>
-                            )}
                           </div>
                         </div>
                         <div className="text-right">
