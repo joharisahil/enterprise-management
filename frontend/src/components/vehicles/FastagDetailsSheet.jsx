@@ -3,7 +3,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import {
   Zap,
   Wallet,
@@ -29,13 +28,12 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
     setFetchingBalance(true);
     try {
       const response = await api.post(`/vehicles/${vehicle.id}/fastag-balance`);
-      console.log('FASTag API Response:', response.data);
-      console.log('Available Balance Raw:', response.data.fastag_data?.available_balance);
+      console.log('Full API Response:', response.data);
+      console.log('Fastag Data:', response.data.fastag_data);
+      console.log('Balance:', response.data.fastag_data?.available_balance);
       
-      // Store the data directly
       setFastagData(response.data.fastag_data);
       
-      // If transactions are included in the response, set them too
       if (response.data.fastag_data?.transactions?.length > 0) {
         setTransactions(response.data.fastag_data.transactions);
       }
@@ -77,86 +75,57 @@ export const FastagDetailsSheet = ({ vehicle, open, onOpenChange }) => {
     });
   };
 
-  // CRITICAL FIX: Properly format currency with commas and decimal places
+  // CRITICAL FIX: Properly format currency
   const formatCurrency = (amount) => {
-    // Debug logging
-    console.log('Formatting amount:', amount, 'Type:', typeof amount);
-    
-    // Handle null, undefined, or empty values
-    if (amount === null || amount === undefined || amount === '') {
-      console.log('Amount is null/undefined/empty, returning ₹0.00');
-      return '₹0.00';
-    }
+    // Handle null/undefined
+    if (!amount && amount !== 0) return '₹0.00';
     
     let numAmount;
     
-    // If it's a string, clean it
     if (typeof amount === 'string') {
-      // Remove all commas first
+      // Remove commas and any non-numeric characters except decimal and minus
       let cleaned = amount.replace(/,/g, '');
-      console.log('After removing commas:', cleaned);
-      
-      // Remove any other non-numeric characters except decimal point and minus
       cleaned = cleaned.replace(/[^0-9.-]/g, '');
-      console.log('After removing non-numeric:', cleaned);
-      
       numAmount = parseFloat(cleaned);
-      console.log('After parseFloat:', numAmount);
-    } 
-    // If it's already a number
-    else if (typeof amount === 'number') {
+    } else if (typeof amount === 'number') {
       numAmount = amount;
-    } 
-    // Fallback
-    else {
-      console.log('Unknown amount type, returning ₹0.00');
+    } else {
       return '₹0.00';
     }
     
-    // Check if parsing was successful
-    if (isNaN(numAmount)) {
-      console.warn('Failed to parse amount:', amount);
-      return '₹0.00';
-    }
+    if (isNaN(numAmount)) return '₹0.00';
     
     // Format with 2 decimal places
-    const fixedAmount = numAmount.toFixed(2);
-    console.log('Fixed amount:', fixedAmount);
+    const formatted = numAmount.toFixed(2);
     
-    // Split into integer and decimal parts
-    const parts = fixedAmount.split('.');
+    // Add Indian number formatting (commas)
+    const parts = formatted.split('.');
     const integerPart = parts[0];
     const decimalPart = parts[1];
     
-    // Add commas to integer part (Indian format: groups of 3 from right, but first group can be 1-3 digits)
-    const lastThree = integerPart.slice(-3);
-    const otherNumbers = integerPart.slice(0, -3);
-    let formattedInteger;
+    // Add commas for Indian numbering system
+    let lastThree = integerPart.slice(-3);
+    let otherNumbers = integerPart.slice(0, -3);
     
+    let formattedInteger;
     if (otherNumbers !== '') {
       formattedInteger = otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + lastThree;
     } else {
       formattedInteger = lastThree;
     }
     
-    const result = `₹${formattedInteger}.${decimalPart}`;
-    console.log('Final formatted result:', result);
-    
-    return result;
+    return `₹${formattedInteger}.${decimalPart}`;
   };
 
   const getBalanceColor = (balance) => {
     let numBalance = 0;
     
-    // Parse balance to number
     if (typeof balance === 'string') {
       const cleaned = balance.replace(/,/g, '').replace(/[^0-9.-]/g, '');
       numBalance = parseFloat(cleaned) || 0;
     } else if (typeof balance === 'number') {
       numBalance = balance;
     }
-    
-    console.log('Balance for color:', numBalance);
     
     if (numBalance <= 100) return 'text-rose-600';
     if (numBalance <= 500) return 'text-orange-600';

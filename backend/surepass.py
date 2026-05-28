@@ -430,51 +430,51 @@ class SurepassService:
                     "success": False,
                     "error": "API key not configured"
                 }
-        
+    
             # First API: Get FASTag verification details with transactions
             verification_headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}"
             }
-        
+    
             verification_payload = {
                 "rc_number": rc_number
             }
-        
+    
             logger.info(f"Fetching FASTag verification for RC: {rc_number}")
-        
+    
             async with httpx.AsyncClient(timeout=30.0) as client:
-                 # First API call - Get verification and transactions
+                # First API call - Get verification and transactions
                 response = await client.post(
                     self.fastag_verification_url,
                     json=verification_payload,
                     headers=verification_headers
                 )
-            
+        
                 logger.info(f"Verification API response status: {response.status_code}")
-            
+        
                 if response.status_code != 200:
                     logger.error(f"FASTag verification API error: {response.status_code} - {response.text}")
                     return {
                         "success": False,
                         "error": f"API error: {response.status_code}"
                     }
-            
+        
                 verification_data = response.json()
-            
+        
                 if not verification_data.get("success"):
                     logger.error(f"FASTag verification unsuccessful: {verification_data}")
                     return {
                         "success": False,
                         "error": verification_data.get("message", "Failed to fetch FASTag details")
                     }
-            
+        
                 # Get the provider name from verification response
                 bank_name = verification_data.get("data", {}).get("bank_name", "").strip()
                 tag_id = verification_data.get("data", {}).get("tag_id")
-            
+        
                 logger.info(f"Bank name from verification: {bank_name}, Tag ID: {tag_id}")
-            
+        
                 # If no bank name, return just the verification data
                 if not bank_name:
                     logger.warning(f"No bank name found for RC: {rc_number}")
@@ -486,14 +486,14 @@ class SurepassService:
                             "bank_name": None,
                             "tag_status": verification_data.get("data", {}).get("status", "Unknown"),
                             "transactions": verification_data.get("data", {}).get("transactions", []),
-                            "available_balance": "0",
-                            "available_recharge_limit": "0",
+                            "available_balance": "0.00",
+                            "available_recharge_limit": "0.00",
                             "customer_name": None,
                             "vehicle_class": None,
                             "vehicle_class_desc": None
                         }
                     }
-            
+        
                 # Map bank name to provider name for second API
                 provider_mapping = {
                     "IDFC First Bank": "idfc_first_bank",
@@ -534,63 +534,95 @@ class SurepassService:
                     "Kotak Mahindra Bank": "kotak_mahindra_bank",
                     "Kotak Bank": "kotak_mahindra_bank",
                 }
-            
+        
                 provider_name = provider_mapping.get(bank_name, "idfc_first_bank")
-            
+        
                 # Second API: Get balance details
                 balance_headers = {
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {self.api_key}"
                 }
-            
+        
                 balance_payload = {
                     "rc_number": rc_number,
                     "provider_name": provider_name
                 }
-            
+        
                 logger.info(f"Fetching FASTag balance for RC: {rc_number} with provider: {provider_name}")
-            
+        
                 balance_response = await client.post(
                     self.fastag_balance_url,
                     json=balance_payload,
                     headers=balance_headers
                 )
-            
+        
                 logger.info(f"Balance API response status: {balance_response.status_code}")
-            
+        
                 # Initialize default balance data
-                available_balance = "0"
-                available_recharge_limit = "0"
+                available_balance = "0.00"
+                available_recharge_limit = "0.00"
                 customer_name = None
                 vehicle_class = None
                 vehicle_class_desc = None
                 tag_status = verification_data.get("data", {}).get("status", "Unknown")
-            
+        
                 # Parse balance response if successful
                 if balance_response.status_code == 200:
                     try:
                         balance_data = balance_response.json()
                         logger.info(f"Balance API response: {balance_data}")
-                    
+                
                         if balance_data.get("success"):
                             balance_info = balance_data.get("data", {})
-                            # Extract balance values (handle both string and number formats)
-                            available_balance = str(balance_info.get("available_balance", "0"))
-                            available_recharge_limit = str(balance_info.get("available_recharge_limit", "0"))
+                        
+                            # CRITICAL FIX: Clean and format balance values
+                            raw_balance = balance_info.get("available_balance", "0")
+                            raw_limit = balance_info.get("available_recharge_limit", "0")
+                        
+                            # Remove any commas and convert to float, then back to string with 2 decimals
+                            try:
+                                if isinstance(raw_balance, str):
+                                    clean_balance = raw_balance.replace(',', '').strip()
+                                    balance_float = float(clean_balance)
+                                    available_balance = f"{balance_float:.2f}"
+                                elif isinstance(raw_balance, (int, float)):
+                                    available_balance = f"{float(raw_balance):.2f}"
+                                else:
+                                    available_balance = "0.00"
+                            except (ValueError, TypeError) as e:
+                                logger.warning(f"Could not parse balance: {raw_balance}, error: {e}")
+                                available_balance = "0.00"
+                        
+                            try:
+                                if isinstance(raw_limit, str):
+                                    clean_limit = raw_limit.replace(',', '').strip()
+                                    limit_float = float(clean_limit)
+                                    available_recharge_limit = f"{limit_float:.2f}"
+                                elif isinstance(raw_limit, (int, float)):
+                                    available_recharge_limit = f"{float(raw_limit):.2f}"
+                                else:
+                                    available_recharge_limit = "0.00"
+                            except (ValueError, TypeError) as e:
+                                logger.warning(f"Could not parse limit: {raw_limit}, error: {e}")
+                                available_recharge_limit = "0.00"
+                        
                             customer_name = balance_info.get("customer_name")
                             vehicle_class = balance_info.get("vehicle_class")
                             vehicle_class_desc = balance_info.get("vehicle_class_desc")
+                        
                             # Update tag status if available in balance response
                             if balance_info.get("tag_status"):
                                 tag_status = balance_info.get("tag_status")
+                            
+                            logger.info(f"Parsed balance: {available_balance}, Limit: {available_recharge_limit}")
                         else:
                             logger.warning(f"Balance API returned success=false: {balance_data}")
-                        
+                    
                     except Exception as e:
                         logger.error(f"Failed to parse balance response: {e}")
                 else:
                     logger.warning(f"Balance API returned non-200 status: {balance_response.status_code}")
-            
+        
                 # Combine both responses
                 result = {
                     "success": True,
@@ -598,7 +630,7 @@ class SurepassService:
                         "rc_number": rc_number,
                         "tag_id": tag_id,
                         "bank_name": bank_name,
-                        "provider_code": None,  # Will be set if available from balance response
+                        "provider_code": None,
                         "customer_name": customer_name,
                         "available_balance": available_balance,
                         "available_recharge_limit": available_recharge_limit,
@@ -608,7 +640,7 @@ class SurepassService:
                         "transactions": verification_data.get("data", {}).get("transactions", [])
                     }
                 }
-            
+        
                 # Add provider_code if available from balance response
                 if balance_response.status_code == 200:
                     try:
@@ -617,17 +649,17 @@ class SurepassService:
                             result["data"]["provider_code"] = balance_data["data"]["provider_code"]
                     except:
                         pass
-            
+        
                 logger.info(f"Successfully fetched FASTag details for {rc_number}. Balance: {available_balance}")
                 return result
-            
+        
         except Exception as e:
             logger.error(f"Error fetching FASTag details: {e}", exc_info=True)
             return {
                 "success": False,
-                 "error": str(e)
+                "error": str(e)
             }
-        
+            
     async def fetch_fastag_transactions(self, rc_number: str):
         """
         Fetch only FASTag transaction details
